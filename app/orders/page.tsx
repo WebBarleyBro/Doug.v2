@@ -396,9 +396,11 @@ export default function OrdersPage() {
     const prod = clientProducts.find(p => p.name === li.product_name)
     const cases = (li as any).cases || 0
     const bottles = (li as any).bottles || 0
-    const caseTotal = cases * (prod?.price ?? li.price ?? 0)
-    const bottleTotal = bottles * (prod?.bottle_price ?? (prod?.price ? prod.price / (prod as any).case_count || 1 : li.price) ?? 0)
-    return s + caseTotal + bottleTotal
+    const casePrice = prod?.price ?? li.price ?? 0
+    const bottlePrice = prod?.bottle_price != null
+      ? prod.bottle_price
+      : (prod?.price && (prod as any).case_count ? prod.price / (prod as any).case_count : 0)
+    return s + cases * casePrice + bottles * bottlePrice
   }, 0)
   const selectedClient = clients.find(c => c.slug === form.client_slug)
   const orderCommission = orderTotal * (selectedClient?.commission_rate || 0)
@@ -1051,7 +1053,7 @@ export default function OrdersPage() {
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Product</span>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Cases</span>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Bottles</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Unit Price</span>
+                <span style={{ fontSize: '10px', color: t.text.muted }}>Case Price</span>
                 <span />
               </div>
               {form.line_items.map((li, i) => (
@@ -1112,7 +1114,9 @@ export default function OrdersPage() {
                     const cases = (li as any).cases || 0
                     const bottles = (li as any).bottles || 0
                     const caseAmt = cases * (prod?.price ?? li.price ?? 0)
-                    const btlAmt = bottles * (prod?.bottle_price ?? 0)
+                    const btlAmt = bottles * (prod?.bottle_price != null
+                      ? prod.bottle_price
+                      : (prod?.price && (prod as any).case_count ? prod.price / (prod as any).case_count : 0))
                     const sub = caseAmt + btlAmt
                     if (sub <= 0) return null
                     return (
@@ -1290,6 +1294,7 @@ export default function OrdersPage() {
             setForm(f => ({ ...f, account_id: account.id, deliver_to_name: account.name, deliver_to_address: account.address || f.deliver_to_address }))
             setShowAddAccount(false)
           }}
+          isMobile={isMobile}
         />
       )}
     </LayoutShell>

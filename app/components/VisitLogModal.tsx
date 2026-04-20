@@ -15,6 +15,7 @@ interface Props {
   onSuccess?: () => void
   userId?: string
   defaultAccountId?: string
+  defaultAccountName?: string
   defaultClientSlugs?: string[]
   isMobile?: boolean
 }
@@ -52,7 +53,7 @@ const emptyForm = (defaultDate: string): FormState => ({
 })
 
 export default function VisitLogModal({
-  isOpen, onClose, onSuccess, userId, defaultAccountId, defaultClientSlugs, isMobile,
+  isOpen, onClose, onSuccess, userId, defaultAccountId, defaultAccountName, defaultClientSlugs, isMobile,
 }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm(todayMT()))
   const [clients, setClients] = useState<Client[]>([])
@@ -107,7 +108,7 @@ export default function VisitLogModal({
     setForm({
       ...emptyForm(d),
       account_id: defaultAccountId || '',
-      account_name: '',
+      account_name: defaultAccountName || '',
       client_slugs: defaultClientSlugs || [],
       followup_days: null,
       create_checkin: false,
@@ -555,40 +556,40 @@ export default function VisitLogModal({
     </div>
   )
 
-  if (isMobile) {
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
-        <div onClick={onClose} style={{
-          position: 'absolute', inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-        }} />
-        <div className="slide-up" style={{
-          ...mobileSheetContent,
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          maxHeight: '95vh',
-          overflowY: 'auto',
-        }}>
-          {content}
-        </div>
+  const modalWrapper = isMobile ? (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      <div onClick={onClose} style={{
+        position: 'absolute', inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+      }} />
+      <div className="slide-up" style={{
+        ...mobileSheetContent,
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        maxHeight: '95vh',
+        overflowY: 'auto',
+      }}>
+        {content}
       </div>
-    )
-  }
+    </div>
+  ) : (
+    <div style={modalOverlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="fade-in" style={{
+        backgroundColor: t.bg.elevated,
+        border: `1px solid ${t.border.hover}`,
+        borderRadius: '16px',
+        width: '100%',
+        maxWidth: '540px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+      }}>
+        {content}
+      </div>
+    </div>
+  )
 
   return (
     <>
-      <div style={modalOverlay} onClick={e => e.target === e.currentTarget && onClose()}>
-        <div className="fade-in" style={{
-          backgroundColor: t.bg.elevated,
-          border: `1px solid ${t.border.hover}`,
-          borderRadius: '16px',
-          width: '100%',
-          maxWidth: '540px',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-        }}>
-          {content}
-        </div>
-      </div>
+      {modalWrapper}
       {showAddAccountModal && (
         <AddAccountModal
           onClose={() => setShowAddAccountModal(false)}
@@ -596,6 +597,7 @@ export default function VisitLogModal({
             selectAccount(acc as Account)
             setShowAddAccountModal(false)
           }}
+          isMobile={isMobile}
         />
       )}
     </>

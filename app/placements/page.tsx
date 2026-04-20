@@ -253,7 +253,7 @@ export default function PlacementsPage() {
 
         {/* Lost modal */}
         {lostModal.open && (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
             <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '14px', padding: '28px', width: '100%', maxWidth: '400px' }}>
               <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary, marginBottom: '16px' }}>Mark Placement Lost</h3>
               <label style={labelStyle}>Reason (optional)</label>

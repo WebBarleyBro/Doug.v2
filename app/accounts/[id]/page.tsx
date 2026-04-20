@@ -191,10 +191,20 @@ export default function AccountDetailPage() {
   useEffect(() => { load() }, [load])
   useEffect(() => { loadTab(tab) }, [tab, loadTab])
 
-  const reloadAll = useCallback(() => {
+  const reloadAll = useCallback(async () => {
     loadedTabsRef.current.clear()
-    load().then(() => loadTab(tab))
-  }, [load, loadTab, tab])
+    await load()
+    // Bypass the loadedTabsRef gate — fetch everything fresh
+    const [vs, ps, os] = await Promise.all([
+      getVisits({ accountId: id, limit: 50 }),
+      getPlacements({ accountId: id }),
+      getOrders({ accountId: id }),
+    ])
+    setVisits(vs)
+    setPlacements(ps)
+    setOrders(os)
+    loadedTabsRef.current = new Set(['activity', 'visits', 'placements', 'orders'])
+  }, [id, load])
 
   function openEditModal() {
     if (!account) return
@@ -568,6 +578,7 @@ export default function AccountDetailPage() {
             onSuccess={reloadAll}
             userId={profile.id}
             defaultAccountId={id}
+            defaultAccountName={account?.name}
             isMobile={isMobile}
           />
         )}

@@ -32,9 +32,11 @@ const emptyContact = (): ContactDraft => ({ name: '', role: '', category: 'buyer
 export default function AddAccountModal({
   onClose,
   onAdded,
+  isMobile = false,
 }: {
   onClose: () => void
   onAdded: (account: any) => void
+  isMobile?: boolean
 }) {
   const [form, setForm] = useState({ name: '', address: '', phone: '', account_type: 'on_premise' })
   const [contacts, setContacts] = useState<ContactDraft[]>([])
@@ -250,7 +252,8 @@ export default function AddAccountModal({
           onClose={() => { onAdded(savedAccount); onClose() }}
           onSuccess={() => { onAdded(savedAccount); onClose() }}
           defaultAccountId={savedAccount.id}
-          isMobile={false}
+          defaultAccountName={savedAccount.name}
+          isMobile={isMobile}
         />
       )}
     </>

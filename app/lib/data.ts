@@ -1,6 +1,6 @@
 'use client'
 import { getSupabase } from './supabase'
-import { cached, invalidate } from './cache'
+import { cached, invalidate, invalidatePrefix } from './cache'
 import { startOfMonthMT, endOfMonthMT, nDaysAgoMT, todayMT } from './formatters'
 import type {
   Account, Client, Visit, Placement, PurchaseOrder, POLineItem,
@@ -239,6 +239,14 @@ export async function logVisit(visit: {
     .from('accounts')
     .update({ last_visited: visit.visited_at })
     .eq('id', visit.account_id)
+
+  // Invalidate stale caches
+  invalidate('overdue-accounts')
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  for (const slug of slugsToInsert) {
+    if (slug) invalidate(`visits:${slug}`)
+  }
 
   // Save competitive sightings if any
   if (visit.competitive_sightings?.length && insertedVisits?.[0]) {

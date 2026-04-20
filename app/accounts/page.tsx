@@ -255,6 +255,7 @@ export default function AccountsPage() {
           <AddAccountModal
             onClose={() => setShowAddAccount(false)}
             onAdded={() => { setShowAddAccount(false); load() }}
+            isMobile={isMobile}
           />
         )}
       </div>
