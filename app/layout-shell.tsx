@@ -458,14 +458,14 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   useEffect(() => {
     const sb = getSupabase()
     sb.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) { router.push('/login'); setLoading(false); return }
+      if (!user) { window.location.replace('/login'); return }
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
-      if (!p) { router.push('/login'); setLoading(false); return }
-      if (p.role === 'intern') { router.replace('/intern'); return }
-      if (p.role === 'portal' && p.client_slug) { router.replace(`/portal/${p.client_slug}`); return }
+      if (!p) { window.location.replace('/login'); return }
+      if (p.role === 'intern') { window.location.replace('/intern'); return }
+      if (p.role === 'portal' && p.client_slug) { window.location.replace(`/portal/${p.client_slug}`); return }
       setProfile(p)
       setLoading(false)
-    }).catch(() => { router.push('/login'); setLoading(false) })
+    }).catch(() => { window.location.replace('/login') })
   }, [router])
 
   if (loading) {
