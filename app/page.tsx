@@ -41,18 +41,20 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
   const load = useCallback(async () => {
     try {
-      const [s, sched, fu, od, t, orders, clients] = await Promise.all([
-        getDashboardStats(profile.id, isOwner),
-        getTodaySchedule(profile.id),
-        getFollowUpVisits(),
-        getOverdueAccounts(),
-        getTasks({ userId: profile.id, completed: false }),
-        getOrders(),
-        getClients(),
+      const [s, sched, fu, od, t] = await Promise.all([
+        getDashboardStats(profile.id, isOwner).catch(e => { console.error('stats err', e); return null }),
+        getTodaySchedule(profile.id).catch(e => { console.error('schedule err', e); return null }),
+        getFollowUpVisits().catch(e => { console.error('followup err', e); return [] }),
+        getOverdueAccounts().catch(e => { console.error('overdue err', e); return [] }),
+        getTasks({ userId: profile.id, completed: false }).catch(e => { console.error('tasks err', e); return [] }),
       ])
-      setStats(s); setSchedule(sched); setFollowups(fu); setOverdue(od); setTasks(t)
+      setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(t ?? [])
+    } catch (e) { console.error('dashboard load err', e) }
+    finally { setLoading(false) }
 
-      // Commission — same logic as finance page, computed directly from orders
+    // Commission in a separate try so it never blocks the rest
+    try {
+      const [orders, clients] = await Promise.all([getOrders(), getClients()])
       const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
       const thisMonth = new Date().toISOString().slice(0, 7)
       const monthComm = orders
@@ -60,13 +62,10 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         .reduce((sum: number, o: any) => {
           const stored = Number(o.commission_amount) || 0
           if (stored > 0) return sum + stored
-          const lineTotal = (o.po_line_items || []).reduce((s: number, li: any) =>
-            s + Number(li.total || 0) || (Number(li.unit_price || li.price || 0) * (Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 1))), 0)
-          return sum + (Number(o.total_amount) || lineTotal) * (rateMap[o.client_slug] || 0)
+          return sum + Number(o.total_amount || 0) * (rateMap[o.client_slug] || 0)
         }, 0)
       setCommission(monthComm)
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
+    } catch (e) { console.error('commission err', e) }
   }, [profile.id, isOwner])
 
   useEffect(() => { load() }, [load])
