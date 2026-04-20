@@ -392,7 +392,14 @@ export default function OrdersPage() {
     }))
   }
 
-  const orderTotal = form.line_items.reduce((s, li) => s + (li.quantity * li.price), 0)
+  const orderTotal = form.line_items.reduce((s, li) => {
+    const prod = clientProducts.find(p => p.name === li.product_name)
+    const cases = (li as any).cases || 0
+    const bottles = (li as any).bottles || 0
+    const caseTotal = cases * (prod?.price ?? li.price ?? 0)
+    const bottleTotal = bottles * (prod?.bottle_price ?? (prod?.price ? prod.price / (prod as any).case_count || 1 : li.price) ?? 0)
+    return s + caseTotal + bottleTotal
+  }, 0)
   const selectedClient = clients.find(c => c.slug === form.client_slug)
   const orderCommission = orderTotal * (selectedClient?.commission_rate || 0)
 
@@ -1082,29 +1089,41 @@ export default function OrdersPage() {
                       style={{ ...inputStyle, fontSize: '13px' }}
                     />
                   )}
-                  <input type="number" value={(li as any).cases || ''} min="0" placeholder="0"
+                  <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
                     onChange={e => {
                       const cases = parseInt(e.target.value) || 0
-                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) || 1 }) }))
+                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) }) }))
                     }}
                     style={{ ...inputStyle, fontSize: '13px' }} />
-                  <input type="number" value={(li as any).bottles || ''} min="0" placeholder="0"
+                  <input type="number" value={(li as any).bottles ?? ''} min="0" placeholder="0"
                     onChange={e => {
                       const bottles = parseInt(e.target.value) || 0
-                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles, quantity: ((item as any).cases || 0) + bottles || 1 }) }))
+                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles, quantity: ((item as any).cases || 0) + bottles }) }))
                     }}
                     style={{ ...inputStyle, fontSize: '13px' }} />
                   <input type="number" value={li.price || ''} min="0" step="0.01"
                     onChange={e => updateLineItem(i, 'price', parseFloat(e.target.value) || 0)}
-                    placeholder="0.00" style={{ ...inputStyle, fontSize: '13px' }} />
+                    placeholder="$/case" style={{ ...inputStyle, fontSize: '13px' }} />
                   {form.line_items.length > 1 && (
                     <button onClick={() => removeLineItem(i)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px' }}><X size={14} /></button>
                   )}
-                  {li.product_name && li.price > 0 && (
-                    <div style={{ gridColumn: '1 / -1', fontSize: '11px', color: t.text.muted, paddingLeft: '2px', marginTop: '-4px' }}>
-                      Subtotal: {formatCurrency(li.quantity * li.price)}
-                    </div>
-                  )}
+                  {li.product_name && (() => {
+                    const prod = clientProducts.find(p => p.name === li.product_name)
+                    const cases = (li as any).cases || 0
+                    const bottles = (li as any).bottles || 0
+                    const caseAmt = cases * (prod?.price ?? li.price ?? 0)
+                    const btlAmt = bottles * (prod?.bottle_price ?? 0)
+                    const sub = caseAmt + btlAmt
+                    if (sub <= 0) return null
+                    return (
+                      <div style={{ gridColumn: '1 / -1', fontSize: '11px', color: t.text.muted, paddingLeft: '2px', marginTop: '-4px' }}>
+                        {cases > 0 && <span>{cases} case{cases !== 1 ? 's' : ''} × {formatCurrency(prod?.price ?? li.price ?? 0)}</span>}
+                        {cases > 0 && bottles > 0 && <span> + </span>}
+                        {bottles > 0 && <span>{bottles} btl × {formatCurrency(prod?.bottle_price ?? 0)}</span>}
+                        <span style={{ color: t.gold, fontWeight: '600' }}> = {formatCurrency(sub)}</span>
+                      </div>
+                    )
+                  })()}
                 </div>
               ))}
               <button onClick={addLineItem} style={{ fontSize: '12px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0' }}>
