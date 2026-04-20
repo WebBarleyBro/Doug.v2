@@ -253,7 +253,8 @@ export interface Product {
   name: string
   category?: string
   sku?: string
-  price?: number       // price per case
+  price?: number
+  bottle_price?: number
   active: boolean
 }
 

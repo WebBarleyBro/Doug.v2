@@ -708,7 +708,12 @@ export async function getProducts(clientSlug: string): Promise<Product[]> {
     .eq('client_slug', clientSlug)
     .order('name')
   if (error) throw error
-  return data || []
+  // Normalize price across possible column names
+  return (data || []).map((p: any) => ({
+    ...p,
+    price: Number(p.price ?? p.price_per_case ?? p.case_price ?? p.price_per_bottle ?? p.bottle_price ?? p.unit_price ?? 0) || undefined,
+    bottle_price: Number(p.bottle_price ?? p.price_per_bottle ?? p.unit_price ?? 0) || undefined,
+  }))
 }
 
 export async function createProduct(product: Omit<Product, 'id'>): Promise<Product> {
