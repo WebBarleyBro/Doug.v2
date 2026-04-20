@@ -136,7 +136,7 @@ export function getOverdueAccounts(): Promise<Account[]> {
     if (error) throw error
     const today = new Date()
     return (data || []).filter((a: any) => {
-      if (!a.last_visited) return true
+      if (!a.last_visited) return false
       const lastVisit = new Date(a.last_visited)
       const daysSince = Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24))
       return daysSince >= a.visit_frequency_days
