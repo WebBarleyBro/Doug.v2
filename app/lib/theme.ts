@@ -296,14 +296,14 @@ export function skeletonBlock(width = '100%', height = '16px', borderRadius = '6
 
 // Overdue color by days since last visit
 export function overdueColor(daysAgo: number | null): string {
-  if (daysAgo === null) return t.status.danger
+  if (daysAgo === null) return t.text.muted
   if (daysAgo <= 14) return t.status.success
   if (daysAgo <= 30) return t.status.warning
   return t.status.danger
 }
 
 export function overdueColorBg(daysAgo: number | null): string {
-  if (daysAgo === null) return t.status.dangerBg
+  if (daysAgo === null) return 'rgba(255,255,255,0.06)'
   if (daysAgo <= 14) return t.status.successBg
   if (daysAgo <= 30) return t.status.warningBg
   return t.status.dangerBg
