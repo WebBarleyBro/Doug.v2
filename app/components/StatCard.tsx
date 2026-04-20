@@ -26,6 +26,8 @@ export default function StatCard({ label, value, icon, color, subtext, trend, hr
       overflow: 'hidden',
       transition: 'all 150ms ease',
       cursor: href ? 'pointer' : 'default',
+      height: '100%',
+      boxSizing: 'border-box',
     }}>
       {/* Accent bar top */}
       <div style={{
@@ -79,7 +81,7 @@ export default function StatCard({ label, value, icon, color, subtext, trend, hr
   )
 
   if (href) {
-    return <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>{inner}</Link>
+    return <Link href={href} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>{inner}</Link>
   }
   return inner
 }
