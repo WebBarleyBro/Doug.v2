@@ -484,7 +484,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     )
   }
 
-  if (!profile) return null
+  if (!profile) return (
+    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page }} />
+  )
 
   const nav = profile.role === 'owner' ? ownerNav : repNav
 
