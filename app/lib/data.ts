@@ -123,6 +123,23 @@ export async function updateAccount(id: string, updates: Partial<Account>) {
   if (error) throw error
 }
 
+export async function deleteAccount(id: string): Promise<void> {
+  const sb = getSupabase()
+  const { error } = await sb.from('accounts').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function updateAccountClients(accountId: string, clientSlugs: string[]): Promise<void> {
+  const sb = getSupabase()
+  await sb.from('account_clients').delete().eq('account_id', accountId)
+  if (clientSlugs.length > 0) {
+    await sb.from('account_clients').insert(
+      clientSlugs.map(slug => ({ account_id: accountId, client_slug: slug }))
+    )
+  }
+  invalidate('accounts:all')
+}
+
 export function getOverdueAccounts(): Promise<Account[]> {
   return cached('overdue-accounts', 2 * 60_000, async () => {
     const sb = getSupabase()
@@ -471,6 +488,17 @@ export async function getDistributorReps(clientSlug: string): Promise<Contact[]>
     .select('*')
     .eq('client_slug', clientSlug)
     .eq('role', 'Distributor Rep')
+    .order('name')
+  if (error) throw error
+  return data || []
+}
+
+export async function getDistributorContacts(): Promise<Contact[]> {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('contacts')
+    .select('*')
+    .eq('category', 'distributor')
     .order('name')
   if (error) throw error
   return data || []

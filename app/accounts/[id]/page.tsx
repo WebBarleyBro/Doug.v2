@@ -1,17 +1,29 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   MapPin, Phone, Plus, ChevronLeft, Edit2, Trash2,
-  Package, ShoppingCart, Users, Activity, Shield,
+  Package, ShoppingCart, Users, Activity, X,
 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
 import VisitLogModal from '../../components/VisitLogModal'
 import ConfirmModal from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
-import { getAccount, getVisits, getPlacements, getOrders, getContacts, deleteVisit, createContact, updateContact, deleteContact, createPlacement, getClients } from '../../lib/data'
+import {
+  getAccount, getVisits, getPlacements, getOrders, getContacts,
+  deleteVisit, createContact, updateContact, deleteContact,
+  createPlacement, getClients, updateAccount, updateAccountClients,
+  deleteAccount,
+} from '../../lib/data'
+import { invalidate } from '../../lib/cache'
 import { clientLogoUrl } from '../../lib/constants'
+import { getSupabase } from '../../lib/supabase'
+import { t, card, btnPrimary, btnSecondary, btnIcon, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
+import { formatShortDateMT, daysAgoMT, formatCurrency } from '../../lib/formatters'
+import { overdueColor } from '../../lib/theme'
+import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS } from '../../lib/constants'
+import type { UserProfile, Client } from '../../lib/types'
 
 function resolveTotal(o: any): number {
   const items: any[] = o.po_line_items || []
@@ -27,18 +39,35 @@ function resolveTotal(o: any): number {
   }
   return Number(o.total_amount || (o as any).total || 0)
 }
-import { getSupabase } from '../../lib/supabase'
-import { t, card, btnPrimary, btnSecondary, btnDanger, btnIcon, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, relativeTimeStr, daysAgoMT, formatCurrency } from '../../lib/formatters'
-import { overdueColor } from '../../lib/theme'
-import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS } from '../../lib/constants'
-import type { UserProfile, Client } from '../../lib/types'
+
+declare global { interface Window { google: any } }
+
+const CONTACT_CATEGORIES = [
+  { value: 'general',     label: 'General' },
+  { value: 'distributor', label: 'Distributor Rep' },
+  { value: 'buyer',       label: 'Buyer' },
+  { value: 'chef',        label: 'Chef / Bar Manager' },
+  { value: 'gm_owner',   label: 'GM / Owner' },
+  { value: 'media',       label: 'Media / Press' },
+  { value: 'other',       label: 'Other' },
+]
+
+const CATEGORY_COLORS: Record<string, string> = {
+  distributor: t.status.info,
+  buyer:       t.gold,
+  chef:        t.status.success,
+  gm_owner:   t.status.warning,
+  media:       '#a78bfa',
+  general:     t.text.muted,
+  other:       t.text.muted,
+}
 
 const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts'] as const
 type Tab = typeof TABS[number]
 
 export default function AccountDetailPage() {
   const { id } = useParams() as { id: string }
+  const router = useRouter()
   const [account, setAccount] = useState<any>(null)
   const [visits, setVisits] = useState<any[]>([])
   const [placements, setPlacements] = useState<any[]>([])
@@ -51,9 +80,31 @@ export default function AccountDetailPage() {
   const [loading, setLoading] = useState(true)
   const loadedTabsRef = useRef<Set<string>>(new Set())
   const [isMobile, setIsMobile] = useState(false)
+
+  // Edit account modal
+  const [showEdit, setShowEdit] = useState(false)
+  const [editForm, setEditForm] = useState({
+    name: '', address: '', phone: '',
+    account_type: 'on_premise',
+    visit_frequency_days: 21,
+    client_slugs: [] as string[],
+  })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editErr, setEditErr] = useState('')
+  const editAddressRef = useRef<HTMLInputElement>(null)
+  const editAcRef = useRef<any>(null)
+
+  // Delete account
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
+
+  // Contacts
   const [addContact, setAddContact] = useState(false)
-  const [contactForm, setContactForm] = useState({ name: '', role: '', email: '', phone: '', is_decision_maker: false })
+  const [editingContact, setEditingContact] = useState<any>(null)
+  const [contactForm, setContactForm] = useState({ name: '', role: '', email: '', phone: '', category: 'general', notes: '', is_decision_maker: false })
   const [savingContact, setSavingContact] = useState(false)
+  const [deleteContactTarget, setDeleteContactTarget] = useState('')
+
+  // Placements
   const [addPlacement, setAddPlacement] = useState(false)
   const [placementForm, setPlacementForm] = useState({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
   const [savingPlacement, setSavingPlacement] = useState(false)
@@ -74,6 +125,35 @@ export default function AccountDetailPage() {
       }
     })
   }, [])
+
+  // Set up Google Places autocomplete on edit address field when modal opens
+  useEffect(() => {
+    if (!showEdit) { editAcRef.current = null; return }
+    let alive = true
+    function initAC() {
+      if (!alive || !editAddressRef.current || editAcRef.current) return
+      editAcRef.current = new window.google.maps.places.Autocomplete(editAddressRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'us' },
+        fields: ['formatted_address'],
+      })
+      editAcRef.current.addListener('place_changed', () => {
+        const place = editAcRef.current.getPlace()
+        if (place?.formatted_address) {
+          setEditForm(f => ({ ...f, address: place.formatted_address }))
+        }
+      })
+    }
+    if (window.google?.maps?.places) {
+      initAC()
+    } else {
+      const interval = setInterval(() => {
+        if (window.google?.maps?.places) { clearInterval(interval); initAC() }
+      }, 100)
+      return () => { alive = false; clearInterval(interval) }
+    }
+    return () => { alive = false }
+  }, [showEdit])
 
   const loadTab = useCallback(async (t: Tab) => {
     if (!id || loadedTabsRef.current.has(t)) return
@@ -116,6 +196,83 @@ export default function AccountDetailPage() {
     load().then(() => loadTab(tab))
   }, [load, loadTab, tab])
 
+  function openEditModal() {
+    if (!account) return
+    const currentSlugs = (account.account_clients || []).map((ac: any) => ac.client_slug)
+    setEditForm({
+      name: account.name || '',
+      address: account.address || '',
+      phone: account.phone || '',
+      account_type: account.account_type || 'on_premise',
+      visit_frequency_days: account.visit_frequency_days || 21,
+      client_slugs: currentSlugs,
+    })
+    setEditErr('')
+    setShowEdit(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!editForm.name.trim()) { setEditErr('Account name is required'); return }
+    setEditSaving(true); setEditErr('')
+    try {
+      await updateAccount(id, {
+        name: editForm.name.trim(),
+        address: editForm.address || undefined,
+        phone: editForm.phone || undefined,
+        account_type: editForm.account_type as any,
+        visit_frequency_days: editForm.visit_frequency_days,
+      })
+      await updateAccountClients(id, editForm.client_slugs)
+      invalidate('accounts:all')
+      setShowEdit(false)
+      reloadAll()
+    } catch (e: any) {
+      setEditErr(e.message || 'Failed to save')
+    } finally { setEditSaving(false) }
+  }
+
+  async function handleDeleteAccount() {
+    try {
+      await deleteAccount(id)
+      invalidate('accounts:all')
+      router.push('/accounts')
+    } catch (e: any) {
+      console.error(e)
+    }
+  }
+
+  function openAddContact() {
+    setEditingContact(null)
+    setContactForm({ name: '', role: '', email: '', phone: '', category: 'general', notes: '', is_decision_maker: false })
+    setAddContact(true)
+  }
+
+  function openEditContact(c: any) {
+    setEditingContact(c)
+    setContactForm({ name: c.name || '', role: c.role || '', email: c.email || '', phone: c.phone || '', category: c.category || 'general', notes: c.notes || '', is_decision_maker: c.is_decision_maker || false })
+    setAddContact(true)
+  }
+
+  async function handleSaveContact() {
+    if (!contactForm.name) return
+    setSavingContact(true)
+    try {
+      if (editingContact) {
+        await updateContact(editingContact.id, { ...contactForm })
+      } else {
+        await createContact({ ...contactForm, account_id: id })
+      }
+      setContactForm({ name: '', role: '', email: '', phone: '', category: 'general', notes: '', is_decision_maker: false })
+      setAddContact(false)
+      setEditingContact(null)
+      loadedTabsRef.current.delete('contacts')
+      const cs = await getContacts({ accountId: id })
+      setContacts(cs)
+      loadedTabsRef.current.add('contacts')
+    } catch (e) { console.error(e) }
+    finally { setSavingContact(false) }
+  }
+
   if (loading || !account) {
     return (
       <LayoutShell>
@@ -130,7 +287,6 @@ export default function AccountDetailPage() {
   const overdueClr = overdueColor(days)
   const pad = isMobile ? '16px' : '32px 36px'
 
-  // Unified timeline
   const timeline = [
     ...visits.map(v => ({ ...v, _type: 'visit', _date: v.visited_at })),
     ...placements.map(p => ({ ...p, _type: 'placement', _date: p.created_at })),
@@ -177,9 +333,14 @@ export default function AccountDetailPage() {
                 {account.visit_frequency_days ? ` · Target: every ${account.visit_frequency_days} days` : ''}
               </div>
             </div>
-            <button onClick={() => setVisitModal(true)} style={{ ...btnPrimary, padding: '9px 14px', fontSize: '13px', flexShrink: 0 }}>
-              <Plus size={15} /> Log Visit
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              <button onClick={openEditModal} style={{ ...btnSecondary, padding: '8px 12px', fontSize: '13px' }}>
+                <Edit2 size={14} /> Edit
+              </button>
+              <button onClick={() => setVisitModal(true)} style={{ ...btnPrimary, padding: '9px 14px', fontSize: '13px' }}>
+                <Plus size={15} /> Log Visit
+              </button>
+            </div>
           </div>
 
           {/* Client logos */}
@@ -365,57 +526,40 @@ export default function AccountDetailPage() {
         {tab === 'contacts' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-              <button onClick={() => setAddContact(true)} style={{ ...btnPrimary, padding: '8px 14px', fontSize: '13px' }}>
+              <button onClick={openAddContact} style={{ ...btnPrimary, padding: '8px 14px', fontSize: '13px' }}>
                 <Plus size={14} /> Add Contact
               </button>
             </div>
             {contacts.length === 0 && !addContact ? (
               <EmptyState icon={<Users size={32} />} title="No contacts yet" action={
-                <button onClick={() => setAddContact(true)} style={btnPrimary}><Plus size={14} /> Add Contact</button>
+                <button onClick={openAddContact} style={btnPrimary}><Plus size={14} /> Add Contact</button>
               } />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {contacts.map((c: any) => (
-                  <ContactCard key={c.id} contact={c} onDelete={() => deleteContact(c.id).then(reloadAll)} />
+                  <ContactCard key={c.id} contact={c}
+                    onEdit={() => openEditContact(c)}
+                    onDelete={() => setDeleteContactTarget(c.id)}
+                  />
                 ))}
-              </div>
-            )}
-            {addContact && (
-              <div style={{ ...card, marginTop: '12px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary, marginBottom: '14px' }}>New Contact</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                  {[
-                    { label: 'Name', key: 'name', type: 'text', placeholder: 'Full name' },
-                    { label: 'Role', key: 'role', type: 'text', placeholder: 'General Manager, Buyer...' },
-                    { label: 'Email', key: 'email', type: 'email', placeholder: 'email@example.com' },
-                    { label: 'Phone', key: 'phone', type: 'tel', placeholder: '(970) 555-0100' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label style={labelStyle}>{f.label}</label>
-                      <input type={f.type} value={(contactForm as any)[f.key]} onChange={e => setContactForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                        placeholder={f.placeholder} style={inputStyle} />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '16px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setAddContact(false)} style={btnSecondary}>Cancel</button>
-                  <button onClick={async () => {
-                    if (!contactForm.name) return
-                    setSavingContact(true)
-                    await createContact({ ...contactForm, account_id: id })
-                    setContactForm({ name: '', role: '', email: '', phone: '', is_decision_maker: false })
-                    setAddContact(false)
-                    setSavingContact(false)
-                    reloadAll()
-                  }} style={btnPrimary} disabled={savingContact}>
-                    {savingContact ? 'Saving...' : 'Save Contact'}
-                  </button>
-                </div>
               </div>
             )}
           </div>
         )}
 
+        <ConfirmModal
+          isOpen={!!deleteContactTarget}
+          onClose={() => setDeleteContactTarget('')}
+          onConfirm={() => deleteContact(deleteContactTarget).then(() => {
+            setDeleteContactTarget('')
+            loadedTabsRef.current.delete('contacts')
+            getContacts({ accountId: id }).then(cs => { setContacts(cs); loadedTabsRef.current.add('contacts') })
+          })}
+          title="Remove Contact"
+          message="Remove this contact permanently?"
+          confirmLabel="Remove"
+          danger
+        />
 
         {profile && (
           <VisitLogModal
@@ -428,6 +572,158 @@ export default function AccountDetailPage() {
           />
         )}
       </div>
+
+      {/* ── Edit Account Modal ── */}
+      {showEdit && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '20px' }}>
+          <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: '700', color: t.text.primary }}>Edit Account</h3>
+              <button onClick={() => setShowEdit(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Account Name</label>
+                <input type="text" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} placeholder="Business name" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Address (Google Places)</label>
+                <input
+                  ref={editAddressRef}
+                  type="text"
+                  value={editForm.address}
+                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="Street address — type to search"
+                  style={inputStyle}
+                  autoComplete="off"
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Phone</label>
+                  <input type="text" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Account Type</label>
+                  <select value={editForm.account_type} onChange={e => setEditForm(f => ({ ...f, account_type: e.target.value }))} style={selectStyle}>
+                    <option value="on_premise">On-Premise</option>
+                    <option value="off_premise">Off-Premise</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Visit Frequency (days)</label>
+                <input type="number" min="1" value={editForm.visit_frequency_days} onChange={e => setEditForm(f => ({ ...f, visit_frequency_days: parseInt(e.target.value) || 21 }))} style={inputStyle} />
+              </div>
+
+              {/* Client slugs multi-select */}
+              <div>
+                <label style={labelStyle}>Brands</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                  {clients.map(c => {
+                    const selected = editForm.client_slugs.includes(c.slug)
+                    return (
+                      <button key={c.slug} type="button"
+                        onClick={() => setEditForm(f => ({
+                          ...f,
+                          client_slugs: selected
+                            ? f.client_slugs.filter(s => s !== c.slug)
+                            : [...f.client_slugs, c.slug],
+                        }))}
+                        style={{
+                          padding: '5px 10px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+                          border: `1px solid ${selected ? c.color : t.border.default}`,
+                          backgroundColor: selected ? `${c.color}22` : 'transparent',
+                          color: selected ? c.color : t.text.secondary,
+                          fontWeight: selected ? '600' : '400',
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {editErr && <div style={{ fontSize: '12px', color: t.status.danger, marginTop: '12px' }}>{editErr}</div>}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', justifyContent: 'space-between' }}>
+              <button onClick={() => { setShowEdit(false); setShowDeleteAccount(true) }}
+                style={{ ...btnSecondary, color: t.status.danger, borderColor: 'rgba(224,82,82,0.3)', fontSize: '13px' }}>
+                <Trash2 size={13} /> Delete Account
+              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setShowEdit(false)} style={btnSecondary}>Cancel</button>
+                <button onClick={handleSaveEdit} disabled={editSaving || !editForm.name.trim()}
+                  style={{ ...btnPrimary, opacity: editSaving || !editForm.name.trim() ? 0.6 : 1 }}>
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add / Edit Contact Modal ── */}
+      {addContact && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '20px' }}>
+          <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary }}>{editingContact ? 'Edit Contact' : 'New Contact'}</h3>
+              <button onClick={() => { setAddContact(false); setEditingContact(null) }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={labelStyle}>Name *</label>
+                <input type="text" value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Category</label>
+                <select value={contactForm.category} onChange={e => setContactForm(f => ({ ...f, category: e.target.value }))} style={selectStyle}>
+                  {CONTACT_CATEGORIES.map(cat => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Role / Title</label>
+                <input type="text" value={contactForm.role} onChange={e => setContactForm(f => ({ ...f, role: e.target.value }))} placeholder="General Manager, Buyer..." style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Phone</label>
+                <input type="tel" value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} placeholder="(970) 555-0100" style={inputStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Email</label>
+                <input type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} placeholder="email@example.com" style={inputStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Notes</label>
+                <input type="text" value={contactForm.notes} onChange={e => setContactForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', justifyContent: 'flex-end' }}>
+              <button onClick={() => { setAddContact(false); setEditingContact(null) }} style={btnSecondary}>Cancel</button>
+              <button onClick={handleSaveContact} disabled={savingContact || !contactForm.name}
+                style={{ ...btnPrimary, opacity: savingContact || !contactForm.name ? 0.6 : 1 }}>
+                {savingContact ? 'Saving...' : editingContact ? 'Save Changes' : 'Add Contact'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm Delete Account ── */}
+      <ConfirmModal
+        isOpen={showDeleteAccount}
+        onClose={() => setShowDeleteAccount(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Account"
+        message={`Permanently delete "${account?.name}"? This cannot be undone.`}
+        confirmLabel="Delete Account"
+        danger
+      />
     </LayoutShell>
   )
 }
@@ -494,32 +790,45 @@ function VisitCard({ visit, onDelete, isOwner }: { visit: any; onDelete: () => v
   )
 }
 
-function ContactCard({ contact, onDelete }: { contact: any; onDelete: () => void }) {
-  const [confirm, setConfirm] = useState(false)
+function CategoryBadge({ category }: { category?: string }) {
+  if (!category || category === 'general') return null
+  const cat = CONTACT_CATEGORIES.find(c => c.value === category)
+  const color = CATEGORY_COLORS[category] || t.text.muted
   return (
-    <>
-      <div style={{ ...card, padding: '14px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{contact.name}</div>
-              {contact.is_decision_maker && (
-                <span style={{ fontSize: '10px', backgroundColor: t.goldDim, color: t.gold, padding: '1px 6px', borderRadius: '8px', fontWeight: '600' }}>Decision Maker</span>
-              )}
-            </div>
-            {contact.role && <div style={{ fontSize: '12px', color: t.text.muted }}>{contact.role}</div>}
-            <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
-              {contact.email && <a href={`mailto:${contact.email}`} style={{ fontSize: '12px', color: t.gold, textDecoration: 'none' }}>{contact.email}</a>}
-              {contact.phone && <a href={`tel:${contact.phone}`} style={{ fontSize: '12px', color: t.text.secondary, textDecoration: 'none' }}>{contact.phone}</a>}
-            </div>
+    <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: color + '1a', color, fontWeight: '600', border: `1px solid ${color}33` }}>
+      {cat?.label || category}
+    </span>
+  )
+}
+
+function ContactCard({ contact, onEdit, onDelete }: { contact: any; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div style={{ ...card, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{contact.name}</div>
+            {contact.is_decision_maker && (
+              <span style={{ fontSize: '10px', backgroundColor: t.goldDim, color: t.gold, padding: '1px 6px', borderRadius: '8px', fontWeight: '600' }}>Decision Maker</span>
+            )}
+            <CategoryBadge category={contact.category} />
           </div>
-          <button onClick={() => setConfirm(true)} style={{ ...btnIcon, color: t.text.muted }}>
-            <Trash2 size={14} />
+          {contact.role && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{contact.role}</div>}
+          <div style={{ display: 'flex', gap: '12px', marginTop: '6px', flexWrap: 'wrap' }}>
+            {contact.email && <a href={`mailto:${contact.email}`} style={{ fontSize: '12px', color: t.gold, textDecoration: 'none' }}>{contact.email}</a>}
+            {contact.phone && <a href={`tel:${contact.phone}`} style={{ fontSize: '12px', color: t.text.secondary, textDecoration: 'none' }}>{contact.phone}</a>}
+          </div>
+          {contact.notes && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '4px', fontStyle: 'italic' }}>{contact.notes}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+          <button onClick={onEdit} style={{ ...btnIcon, color: t.text.muted }}>
+            <Edit2 size={13} />
+          </button>
+          <button onClick={onDelete} style={{ ...btnIcon, color: t.status.danger }}>
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
-      <ConfirmModal isOpen={confirm} onClose={() => setConfirm(false)} onConfirm={() => { onDelete(); setConfirm(false) }}
-        title="Remove Contact" message="Remove this contact from this account?" confirmLabel="Remove" danger />
-    </>
+    </div>
   )
 }

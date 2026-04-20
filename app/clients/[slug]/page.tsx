@@ -4,10 +4,10 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
-import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient } from '../../lib/data'
+import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
-import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle } from '../../lib/theme'
+import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
 import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear } from '../../lib/formatters'
 import { PLACEMENT_STATUS_LABELS, EVENT_TYPE_LABELS, clientLogoUrl } from '../../lib/constants'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -69,6 +69,7 @@ export default function ClientDetailPage() {
   const [copied, setCopied] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [editForm, setEditForm] = useState<Partial<Client>>({})
+  const [distributorContacts, setDistributorContacts] = useState<any[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editErr, setEditErr] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
@@ -84,6 +85,11 @@ export default function ClientDetailPage() {
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Load distributor contacts for the settings panel
+  useEffect(() => {
+    getDistributorContacts().then(setDistributorContacts).catch(() => {})
   }, [])
 
   // Load user role
@@ -271,6 +277,24 @@ export default function ClientDetailPage() {
                 </ResponsiveContainer>
               </div>
             )}
+
+            {/* Distributor info */}
+            {(client.distributor_name || client.distributor_rep_id) && (() => {
+              const rep = distributorContacts.find(c => c.id === client.distributor_rep_id)
+              return (
+                <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '14px 18px', marginBottom: '16px', fontSize: '13px', color: t.text.secondary }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginRight: '10px' }}>Distributor</span>
+                  {client.distributor_name && <span style={{ color: t.text.primary, fontWeight: '600', marginRight: '6px' }}>{client.distributor_name}</span>}
+                  {rep && (
+                    <span style={{ color: t.text.secondary }}>
+                      {' · Rep: '}<strong style={{ color: t.text.primary }}>{rep.name}</strong>
+                      {rep.phone && <a href={`tel:${rep.phone}`} style={{ color: t.gold, textDecoration: 'none', marginLeft: '6px' }}>{rep.phone}</a>}
+                      {rep.email && <a href={`mailto:${rep.email}`} style={{ color: t.gold, textDecoration: 'none', marginLeft: '6px' }}>{rep.email}</a>}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             {visits.length === 0 && placements.length === 0 && orders.length === 0 && (
               <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>
@@ -715,6 +739,24 @@ export default function ClientDetailPage() {
                         value={editForm.commission_rate !== undefined ? (editForm.commission_rate * 100) : (client.commission_rate * 100)}
                         onChange={e => setEditForm(f => ({ ...f, commission_rate: parseFloat(e.target.value) / 100 || 0 }))}
                         placeholder="e.g. 12" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Distributor Name</label>
+                      <input type="text" value={editForm.distributor_name ?? client.distributor_name ?? ''} onChange={e => setEditForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="e.g. Republic National" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Distributor Rep</label>
+                      <select
+                        value={editForm.distributor_rep_id ?? client.distributor_rep_id ?? ''}
+                        onChange={e => setEditForm(f => ({ ...f, distributor_rep_id: e.target.value || undefined }))}
+                        style={selectStyle}
+                      >
+                        <option value="">None</option>
+                        {distributorContacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.email ? ` (${c.email})` : ''}</option>)}
+                      </select>
+                      {distributorContacts.length === 0 && (
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>Add contacts with category "Distributor Rep" on account pages to see them here.</div>
+                      )}
                     </div>
                     <div>
                       <label style={labelStyle}>Notes</label>

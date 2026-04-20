@@ -25,6 +25,8 @@ export interface Client {
   contact_phone?: string
   address?: string
   territory?: string
+  distributor_name?: string
+  distributor_rep_id?: string
   order_type: 'direct' | 'distributor'
   since_date?: string
   active: boolean
@@ -64,8 +66,10 @@ export interface Contact {
   client_slug?: string
   name: string
   role?: string
+  category?: string
   email?: string
   phone?: string
+  notes?: string
   is_decision_maker?: boolean
   created_at: string
   // joined

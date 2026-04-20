@@ -292,6 +292,8 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [resendTo, setResendTo] = useState('')
   const [resendState, setResendState] = useState<'idle' | 'open' | 'sending' | 'sent'>('idle')
+  const [showEmailPreview, setShowEmailPreview] = useState(false)
+  const [previewEmail, setPreviewEmail] = useState('')
   const [distributorReps, setDistributorReps] = useState<Contact[]>([])
   const [showAddDistributor, setShowAddDistributor] = useState(false)
   const [showAddAccount, setShowAddAccount] = useState(false)
@@ -377,7 +379,16 @@ export default function OrdersPage() {
   function updateLineItem(i: number, field: string, value: any) {
     setForm(f => ({
       ...f,
-      line_items: f.line_items.map((li, idx) => idx !== i ? li : { ...li, [field]: value }),
+      line_items: f.line_items.map((li, idx) => {
+        if (idx !== i) return li
+        const updated = { ...li, [field]: value }
+        // Auto-fill price from products when product_name changes
+        if (field === 'product_name') {
+          const match = clientProducts.find(p => p.name.toLowerCase() === String(value).toLowerCase())
+          if (match?.price) updated.price = match.price
+        }
+        return updated
+      }),
     }))
   }
 
@@ -392,6 +403,84 @@ export default function OrdersPage() {
       distributor_rep_id: '', distributor_email: '', distributor_rep_name: '',
       line_items: [{ product_name: '', quantity: 1, price: 0 }],
     })
+  }
+
+  function buildEmailBody(recipientEmail: string): { subject: string; text: string; html: string } {
+    const client = selectedClient
+    const lineItems = form.line_items.filter(li => li.product_name)
+    const total = lineItems.reduce((s, li) => s + li.quantity * li.price, 0)
+    const commission = total * (client?.commission_rate || 0)
+    const isOI = orderType === 'distributor'
+
+    const itemLines = lineItems.map(li =>
+      `  • ${li.product_name} — Qty: ${li.quantity}${li.price > 0 ? ` @ $${li.price.toFixed(2)} = $${(li.quantity * li.price).toFixed(2)}` : ''}`
+    ).join('\n')
+
+    const subject = isOI
+      ? `Order Inquiry ${form.po_number} – ${form.deliver_to_name}`
+      : `PO ${form.po_number} – ${form.deliver_to_name}`
+
+    const text = [
+      isOI ? `Order Inquiry: ${form.po_number}` : `PO Number: ${form.po_number}`,
+      `Client: ${client?.name || form.client_slug}`,
+      `Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
+      `Deliver To: ${form.deliver_to_name}${form.deliver_to_address ? ' · ' + form.deliver_to_address : ''}`,
+      '',
+      'Line Items:',
+      itemLines || '  (no items)',
+      '',
+      `Subtotal: $${total.toFixed(2)}`,
+      (client?.commission_rate || 0) > 0 ? `Commission (${((client?.commission_rate || 0) * 100).toFixed(0)}%): $${commission.toFixed(2)}` : null,
+      `Total: $${total.toFixed(2)}`,
+      form.notes ? `\nNotes: ${form.notes}` : null,
+      '',
+      isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
+      '',
+      'Sent by Barley Bros | doug-v2-three.vercel.app',
+    ].filter(l => l !== null).join('\n')
+
+    const htmlRows = lineItems.map(li =>
+      `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${li.quantity}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right">$${li.price.toFixed(2)}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(li.quantity * li.price).toFixed(2)}</td></tr>`
+    ).join('')
+
+    const html = `
+<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#5a5754;margin-bottom:6px">Barley Bros</div>
+  <h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${form.po_number}</h2>
+  <p style="font-size:13px;color:#9a9790;margin:0 0 24px">${client?.name || form.client_slug} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+  <div style="background:#161614;border-radius:8px;padding:16px 18px;margin-bottom:18px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#5a5754;margin-bottom:6px">Deliver To</div>
+    <div style="font-size:15px;font-weight:700;color:#eceae4">${form.deliver_to_name}</div>
+    ${form.deliver_to_address ? `<div style="font-size:13px;color:#9a9790;margin-top:3px">${form.deliver_to_address}</div>` : ''}
+  </div>
+  <table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px">
+    <thead><tr style="background:#202020">
+      <th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Product</th>
+      <th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Qty</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Price</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Total</th>
+    </tr></thead>
+    <tbody>${htmlRows}</tbody>
+  </table>
+  <div style="background:#161614;border-radius:8px;padding:14px 18px;margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:13px;color:#9a9790">Subtotal</span>
+      <span style="font-size:13px;color:#eceae4;font-weight:600">$${total.toFixed(2)}</span>
+    </div>
+    ${(client?.commission_rate || 0) > 0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:13px;color:#9a9790">Commission (${((client?.commission_rate || 0) * 100).toFixed(0)}%)</span>
+      <span style="font-size:13px;color:#d4a843;font-weight:600">$${commission.toFixed(2)}</span>
+    </div>` : ''}
+    <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a26;padding-top:8px;margin-top:4px">
+      <span style="font-size:15px;font-weight:700;color:#d4a843">Total</span>
+      <span style="font-size:18px;font-weight:800;color:#eceae4">$${total.toFixed(2)}</span>
+    </div>
+  </div>
+  ${form.notes ? `<div style="background:#111110;border-radius:6px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#9a9790">${form.notes}</div>` : ''}
+  <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}<br>Sent by Barley Bros &nbsp;|&nbsp; <a href="https://doug-v2-three.vercel.app" style="color:#d4a843">doug-v2-three.vercel.app</a></p>
+</div>`
+
+    return { subject, text, html }
   }
 
   async function handleCreate() {
@@ -421,7 +510,6 @@ export default function OrdersPage() {
       setShowCreate(false)
       resetForm()
       load()
-      // Switch to relevant tab
       setActiveTab(orderType === 'distributor' ? 'inquiries' : 'direct')
     } catch (e) { console.error(e) }
     finally { setCreating(false) }
@@ -1011,14 +1099,116 @@ export default function OrdersPage() {
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button onClick={() => { setShowCreate(false); resetForm() }} style={btnSecondary}>Cancel</button>
-              <button onClick={handleCreate} disabled={creating || !form.client_slug || !form.deliver_to_name}
-                style={{ ...btnPrimary, opacity: creating || !form.client_slug || !form.deliver_to_name ? 0.6 : 1 }}>
-                {creating ? 'Creating...' : orderType === 'distributor' ? 'Create Inquiry' : 'Create & Send'}
-              </button>
+              {orderType === 'direct' ? (
+                <button
+                  onClick={() => {
+                    const { subject, text, html } = buildEmailBody(selectedClient?.contact_email || '')
+                    setPreviewEmail(selectedClient?.contact_email || '')
+                    setShowEmailPreview(true)
+                  }}
+                  disabled={!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)}
+                  style={{ ...btnPrimary, opacity: (!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)) ? 0.6 : 1 }}
+                >
+                  Preview & Send
+                </button>
+              ) : (
+                <button onClick={handleCreate} disabled={creating || !form.client_slug || !form.deliver_to_name}
+                  style={{ ...btnPrimary, opacity: creating || !form.client_slug || !form.deliver_to_name ? 0.6 : 1 }}>
+                  {creating ? 'Creating...' : 'Create Inquiry'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* ── Email Preview Modal ── */}
+      {showEmailPreview && (() => {
+        const { subject, text, html } = buildEmailBody(previewEmail)
+        return (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, padding: '20px' }}>
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '14px', width: '100%', maxWidth: '620px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${t.border.default}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Email Preview</h3>
+                  <p style={{ fontSize: '12px', color: t.text.muted, margin: '2px 0 0' }}>Review before sending</p>
+                </div>
+                <button onClick={() => setShowEmailPreview(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}><X size={18} /></button>
+              </div>
+
+              {/* Meta */}
+              <div style={{ padding: '16px 24px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, width: '52px', textAlign: 'right', flexShrink: 0 }}>To:</span>
+                  <input
+                    type="email"
+                    value={previewEmail}
+                    onChange={e => setPreviewEmail(e.target.value)}
+                    placeholder="Recipient email..."
+                    style={{ flex: 1, backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.primary, fontSize: '13px', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, width: '52px', textAlign: 'right', flexShrink: 0 }}>Subject:</span>
+                  <span style={{ fontSize: '13px', color: t.text.secondary }}>{subject}</span>
+                </div>
+              </div>
+
+              {/* Body preview */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div style={{ backgroundColor: t.bg.card, borderRadius: '8px', padding: '0', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
+                  <div dangerouslySetInnerHTML={{ __html: html }} />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '16px 24px', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowEmailPreview(false)} style={btnSecondary}>Cancel</button>
+                <button
+                  disabled={creating || !previewEmail}
+                  onClick={async () => {
+                    if (!previewEmail) return
+                    setCreating(true)
+                    try {
+                      const extra = { order_type: 'direct' as const }
+                      const newOrder = await createOrder({
+                        client_slug: form.client_slug,
+                        account_id: form.account_id || undefined,
+                        deliver_to_name: form.deliver_to_name,
+                        deliver_to_address: form.deliver_to_address,
+                        po_number: form.po_number,
+                        notes: form.notes,
+                        line_items: form.line_items.filter(li => li.product_name),
+                        commission_rate: selectedClient?.commission_rate || 0,
+                        ...extra,
+                      })
+                      await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
+                      // Send email
+                      const { subject: subj, text: txt } = buildEmailBody(previewEmail)
+                      await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ to: previewEmail, subject: subj, text: txt }),
+                      }).catch(() => {})
+                      invalidatePrefix('dashboard-stats')
+                      setShowEmailPreview(false)
+                      setShowCreate(false)
+                      resetForm()
+                      load()
+                      setActiveTab('direct')
+                    } catch (e) { console.error(e) }
+                    finally { setCreating(false) }
+                  }}
+                  style={{ ...btnPrimary, opacity: (creating || !previewEmail) ? 0.6 : 1 }}
+                >
+                  <Send size={14} /> {creating ? 'Sending...' : 'Send Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Add Distributor Modal */}
       {showAddDistributor && form.client_slug && (
