@@ -1040,35 +1040,70 @@ export default function OrdersPage() {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 28px', gap: '6px', marginBottom: '4px', padding: '0 2px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 90px 28px', gap: '6px', marginBottom: '4px', padding: '0 2px' }}>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Product</span>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Cases</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Price/Case</span>
+                <span style={{ fontSize: '10px', color: t.text.muted }}>Bottles</span>
+                <span style={{ fontSize: '10px', color: t.text.muted }}>Unit Price</span>
                 <span />
               </div>
               {form.line_items.map((li, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 28px', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text" value={li.product_name}
-                    onChange={e => {
-                      updateLineItem(i, 'product_name', e.target.value)
-                      // Auto-fill price if product matches
-                      const match = clientProducts.find(p => p.name.toLowerCase() === e.target.value.toLowerCase())
-                      if (match?.price) updateLineItem(i, 'price', match.price)
-                    }}
-                    placeholder="Product name"
-                    list={`products-${i}`}
-                    style={{ ...inputStyle, fontSize: '13px' }}
-                  />
-                  {clientProducts.length > 0 && (
-                    <datalist id={`products-${i}`}>
-                      {clientProducts.map(p => <option key={p.id} value={p.name} />)}
-                    </datalist>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 90px 28px', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                  {clientProducts.length > 0 ? (
+                    <select
+                      value={li.product_name}
+                      onChange={e => {
+                        const prod = clientProducts.find(p => p.name === e.target.value)
+                        setForm(f => ({
+                          ...f,
+                          line_items: f.line_items.map((item, idx) =>
+                            idx !== i ? item : {
+                              ...item,
+                              product_name: e.target.value,
+                              price: prod?.price ?? item.price,
+                            }
+                          ),
+                        }))
+                      }}
+                      style={{ ...selectStyle, fontSize: '13px' }}
+                    >
+                      <option value="">Select product…</option>
+                      {clientProducts.map(p => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}{p.price ? ` — ${formatCurrency(p.price)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text" value={li.product_name}
+                      onChange={e => updateLineItem(i, 'product_name', e.target.value)}
+                      placeholder="Product name"
+                      style={{ ...inputStyle, fontSize: '13px' }}
+                    />
                   )}
-                  <input type="number" value={li.quantity} min="1" onChange={e => updateLineItem(i, 'quantity', parseInt(e.target.value) || 1)} style={{ ...inputStyle, fontSize: '13px' }} />
-                  <input type="number" value={li.price || ''} min="0" step="0.01" onChange={e => updateLineItem(i, 'price', parseFloat(e.target.value) || 0)} placeholder="0.00" style={{ ...inputStyle, fontSize: '13px' }} />
+                  <input type="number" value={(li as any).cases || ''} min="0" placeholder="0"
+                    onChange={e => {
+                      const cases = parseInt(e.target.value) || 0
+                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) || 1 }) }))
+                    }}
+                    style={{ ...inputStyle, fontSize: '13px' }} />
+                  <input type="number" value={(li as any).bottles || ''} min="0" placeholder="0"
+                    onChange={e => {
+                      const bottles = parseInt(e.target.value) || 0
+                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles, quantity: ((item as any).cases || 0) + bottles || 1 }) }))
+                    }}
+                    style={{ ...inputStyle, fontSize: '13px' }} />
+                  <input type="number" value={li.price || ''} min="0" step="0.01"
+                    onChange={e => updateLineItem(i, 'price', parseFloat(e.target.value) || 0)}
+                    placeholder="0.00" style={{ ...inputStyle, fontSize: '13px' }} />
                   {form.line_items.length > 1 && (
                     <button onClick={() => removeLineItem(i)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px' }}><X size={14} /></button>
+                  )}
+                  {li.product_name && li.price > 0 && (
+                    <div style={{ gridColumn: '1 / -1', fontSize: '11px', color: t.text.muted, paddingLeft: '2px', marginTop: '-4px' }}>
+                      Subtotal: {formatCurrency(li.quantity * li.price)}
+                    </div>
                   )}
                 </div>
               ))}

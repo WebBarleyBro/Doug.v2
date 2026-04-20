@@ -248,11 +248,13 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
       alignItems: 'center',
       justifyContent: 'space-between',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ width: '24px', height: '24px', borderRadius: '6px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ color: t.gold, fontSize: '12px', fontWeight: '700' }}>D</span>
-        </div>
-        <span style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.01em' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <img
+          src="https://res.cloudinary.com/dhg83nxda/image/upload/v1776653105/Doug_Logo_2_1_okgk0i.png"
+          alt="Doug"
+          style={{ height: '28px', width: 'auto', objectFit: 'contain' }}
+        />
+        <span style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.01em' }}>
           {title}
         </span>
       </div>
@@ -266,7 +268,7 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
   )
 }
 
-function MobileBottomNav({ onLogVisit }: { onLogVisit: () => void }) {
+function MobileBottomNav() {
   const pathname = usePathname()
   const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href)
 
@@ -277,62 +279,22 @@ function MobileBottomNav({ onLogVisit }: { onLogVisit: () => void }) {
       borderTop: `1px solid ${t.border.default}`,
       display: 'flex',
       alignItems: 'stretch',
-      height: '72px',
+      height: '64px',
     }}>
-      {mobileBottomNav.map((item, i) => {
+      {mobileBottomNav.map((item) => {
         const Icon = item.icon
         const active = isActive(item.href)
-        // Insert FAB in the middle
-        const showFab = i === 2
-
         return (
-          <div key={item.href} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            {showFab && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {/* FAB slot */}
-                <button onClick={onLogVisit} style={{
-                  position: 'absolute',
-                  bottom: '44px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`,
-                  border: `3px solid ${t.bg.sidebar}`,
-                  boxShadow: `0 4px 20px rgba(212,168,67,0.4)`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  zIndex: 200,
-                  pointerEvents: 'all',
-                }}>
-                  <Plus size={24} color="#0f0f0d" strokeWidth={2.5} />
-                </button>
-                <Link href={item.href} style={{
-                  flex: 1, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'flex-end',
-                  paddingBottom: '8px', textDecoration: 'none',
-                  color: active ? t.gold : t.text.muted, gap: '3px',
-                }}>
-                  <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-                  <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
-                </Link>
-              </div>
-            )}
-            {!showFab && (
-              <Link href={item.href} style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'flex-end',
-                paddingBottom: '8px', textDecoration: 'none',
-                color: active ? t.gold : t.text.muted, gap: '3px',
-              }}>
-                <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-                <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
-              </Link>
-            )}
-          </div>
+          <Link key={item.href} href={item.href} style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            textDecoration: 'none',
+            color: active ? t.gold : t.text.muted, gap: '4px',
+            paddingBottom: '4px',
+          }}>
+            <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+            <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
+          </Link>
         )
       })}
     </nav>
@@ -513,7 +475,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           }}>
             {children}
           </main>
-          <MobileBottomNav onLogVisit={() => setShowVisitLog(true)} />
+          <MobileBottomNav />
           <MobileDrawer
             open={drawerOpen}
             onClose={() => setDrawerOpen(false)}
