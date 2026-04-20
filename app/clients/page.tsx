@@ -13,6 +13,14 @@ import type { Client } from '../lib/types'
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     getClients().then(cls => { setClients(cls); setLoading(false) }).catch(() => setLoading(false))
@@ -20,7 +28,7 @@ export default function ClientsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Clients</h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your brand portfolio</p>
@@ -37,7 +45,7 @@ export default function ClientsPage() {
                   cursor: 'pointer',
                   transition: 'background 150ms ease',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: '16px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                     {/* Logo */}
                     {(() => {
                       const logo = clientLogoUrl(client)

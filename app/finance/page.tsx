@@ -50,6 +50,14 @@ export default function FinancePage() {
   const [orders, setOrders] = useState<any[]>([])
   const [trendData, setTrendData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     // Fetch both sent and fulfilled orders for full history
@@ -114,15 +122,15 @@ export default function FinancePage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Finance</h1>
+          <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Finance</h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Commission and revenue tracking</p>
         </div>
 
         {/* Stats */}
         {loading ? <StatsSkeleton /> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
             <StatCard label="Commission This Month" value={formatCurrency(thisMonthCommission)} icon={<DollarSign size={20} />} color={t.gold} />
             <StatCard label="Revenue This Month" value={formatCurrency(thisMonthRevenue)} icon={<TrendingUp size={20} />} color={t.status.success} />
             <StatCard label="Commission YTD" value={formatCurrency(ytdCommission)} icon={<DollarSign size={20} />} color={t.status.info} />
@@ -131,22 +139,22 @@ export default function FinancePage() {
         )}
 
         {/* Chart */}
-        <div style={{ ...card, marginBottom: '20px', padding: '22px 24px' }}>
+        <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>
           <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '18px' }}>
             Commission — Last 12 Months
           </div>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={isMobile ? 160 : 200}>
             <BarChart data={trendData} barCategoryGap="30%">
               <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: t.text.muted, fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: t.text.muted, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+              <XAxis dataKey="month" tick={{ fill: t.text.muted, fontSize: isMobile ? 9 : 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: t.text.muted, fontSize: isMobile ? 9 : 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
               <Bar dataKey="commission" name="Commission" fill={t.gold} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: perClient.length > 0 ? '1fr 1fr' : '1fr', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : (perClient.length > 0 ? '1fr 1fr' : '1fr'), gap: '20px' }}>
 
           {/* Per-client breakdown */}
           {perClient.length > 0 && (
@@ -157,9 +165,10 @@ export default function FinancePage() {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {perClient.map((c, i) => (
                   <div key={c.slug} style={{
-                    display: 'flex', alignItems: 'center', gap: '14px',
+                    display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '14px',
                     padding: '14px 0',
                     borderBottom: i < perClient.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
+                    flexWrap: isMobile ? 'wrap' : 'nowrap',
                   }}>
                     {(() => {
                       const logo = clientLogoUrl(c)
@@ -194,7 +203,7 @@ export default function FinancePage() {
           )}
 
           {/* Recent orders */}
-          <div style={card}>
+          <div style={{ ...card, overflowX: isMobile ? 'auto' : 'visible' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 Recent Orders

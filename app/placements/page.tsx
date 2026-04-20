@@ -18,6 +18,14 @@ export default function PlacementsPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
   const [statusFilter, setStatusFilter] = useState<PlacementStatus | 'all'>('all')
   const [clientFilter, setClientFilter] = useState('all')
   const [showCreate, setShowCreate] = useState(false)
@@ -79,7 +87,7 @@ export default function PlacementsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Placements</h1>
@@ -137,8 +145,8 @@ export default function PlacementsPage() {
             {filtered.map(p => {
               const client = clients.find(c => c.slug === p.client_slug)
               return (
-                <div key={p.id} style={{ ...card, padding: '16px 20px', borderLeft: `3px solid ${client?.color || t.gold}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+                <div key={p.id} style={{ ...card, padding: isMobile ? '14px' : '16px 20px', borderLeft: `3px solid ${client?.color || t.gold}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         {client && (() => { const logo = clientLogoUrl(client); return logo ? <img src={logo} alt={client.name} style={{ width: '18px', height: '18px', objectFit: 'contain', borderRadius: '3px' }} /> : null })()}

@@ -76,7 +76,15 @@ export default function ClientDetailPage() {
   const [productForm, setProductForm] = useState({ name: '', sku: '', category: '', active: true })
   const [productSaving, setProductSaving] = useState(false)
   const [userRole, setUserRole] = useState<string>('owner')
+  const [isMobile, setIsMobile] = useState(false)
   const loaded = useRef(new Set<string>())
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // Load user role
   useEffect(() => {
@@ -176,7 +184,7 @@ export default function ClientDetailPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
           <button onClick={() => router.push('/clients')} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px', display: 'flex' }}>
@@ -235,7 +243,7 @@ export default function ClientDetailPage() {
         {/* Overview Tab */}
         {tab === 'overview' && !tabLoading && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
               {[
                 { label: 'Total Visits', value: visits.length },
                 { label: 'Active Placements', value: activePlacements.length },
@@ -486,7 +494,7 @@ export default function ClientDetailPage() {
         {tab === 'tastings' && !tabLoading && (
           <div>
             {tastings.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
                 {[
                   { label: 'Responses', value: tastings.length },
                   { label: 'Avg Rating', value: avgRating ? `${avgRating} / 5` : '—' },
@@ -582,7 +590,7 @@ export default function ClientDetailPage() {
               <button onClick={() => window.print()} style={btnSecondary}><Download size={14} /> Export</button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
               {[
                 { label: 'Total Visits', value: visits.length },
                 { label: 'Active Placements', value: activePlacements.length },

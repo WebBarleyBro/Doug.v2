@@ -225,7 +225,7 @@ function FollowUpKanban({ orders, clients, onUpdate }: { orders: any[]; clients:
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', padding: '4px 0' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', padding: '4px 0', overflowX: 'auto', minWidth: 0 }}>
       {followUpColumns.map(col => {
         const Icon = col.icon
         const colOrders = distributorOrders.filter(o => (o.follow_up_status || 'not_started') === col.key)
@@ -276,6 +276,14 @@ export default function OrdersPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
   const [activeTab, setActiveTab] = useState<'direct' | 'inquiries' | 'followups'>('direct')
   const [showCreate, setShowCreate] = useState(false)
   const [orderType, setOrderType] = useState<'direct' | 'distributor'>('direct')
@@ -423,7 +431,7 @@ export default function OrdersPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1280px', margin: '0 auto', width: '100%' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
@@ -437,14 +445,14 @@ export default function OrdersPage() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '28px' }}>
           <StatCard label="Direct Orders This Month" value={monthDirectSent.length} icon={<Send size={18} />} color={t.gold} />
           <StatCard label="Revenue This Month" value={formatCurrency(monthRevenue)} color={t.status.success} />
           <StatCard label="Commission Earned" value={formatCurrency(monthCommission)} color={t.status.info} />
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', backgroundColor: t.bg.card, borderRadius: '10px', padding: '4px', border: `1px solid ${t.border.default}`, width: 'fit-content' }}>
+        <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', backgroundColor: t.bg.card, borderRadius: '10px', padding: '4px', border: `1px solid ${t.border.default}`, width: isMobile ? '100%' : 'fit-content', overflowX: isMobile ? 'auto' : 'visible' }}>
           {([
             { key: 'direct', label: 'Direct Orders', icon: FileText, count: directOrders.length },
             { key: 'inquiries', label: 'Order Inquiries', icon: Truck, count: inquiryOrders.length },

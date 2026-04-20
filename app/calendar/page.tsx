@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import LayoutShell from '../layout-shell'
-import { getEvents, getClients, createEvent, deleteEvent } from '../lib/data'
+import { getEvents, getClients, createEvent, deleteEvent, getCampaigns } from '../lib/data'
+import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT, todayMT } from '../lib/formatters'
 import { EVENT_TYPE_LABELS } from '../lib/constants'
@@ -12,6 +13,13 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   tasting: '#d4a843', meeting: '#4a9eff', planned_stop: '#3dba78',
   milestone: '#a78bfa', training: '#e89a2e', other: '#6b6966',
 }
+
+const CAMPAIGN_COLOR = '#a78bfa'
+const MILESTONE_COLOR = '#f472b6'
+
+const CATEGORY_OPTIONS = [
+  'All', 'Tasting', 'Dinner', 'Meeting', 'Demo', 'Training', 'Event', 'Campaign', 'Milestone',
+]
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate()
@@ -25,31 +33,117 @@ export default function CalendarPage() {
   const [viewMonth, setViewMonth] = useState(today.getMonth())
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [events, setEvents] = useState<any[]>([])
+  const [campaigns, setCampaigns] = useState<any[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', status: 'planned' })
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Filters
+  const [filterUser, setFilterUser] = useState('all')
+  const [filterClient, setFilterClient] = useState('all')
+  const [filterCategory, setFilterCategory] = useState('All')
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const load = useCallback(async () => {
     const monthStart = new Date(viewYear, viewMonth, 1).toISOString()
     const monthEnd = new Date(viewYear, viewMonth + 1, 0, 23, 59, 59).toISOString()
-    const [evs, cls] = await Promise.all([getEvents({ since: monthStart, until: monthEnd }), getClients()])
+    const [evs, cls, camps] = await Promise.all([
+      getEvents({ since: monthStart, until: monthEnd }),
+      getClients(),
+      getCampaigns().catch(() => []),
+    ])
     setEvents(evs)
     setClients(cls)
+    setCampaigns(camps)
   }, [viewMonth, viewYear])
 
   useEffect(() => { load() }, [load])
+
+  // Load users for filter
+  useEffect(() => {
+    const sb = getSupabase()
+    sb.from('user_profiles').select('id, name, full_name').in('role', ['owner', 'rep'])
+      .then(({ data }) => setUsers(data || []))
+      .catch(() => {})
+  }, [])
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth)
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth)
   const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
+  // Build campaign entries for the month
+  const campaignEntries: { dateStr: string; title: string; color: string; isCampaign: boolean; isMilestone: boolean }[] = []
+  campaigns.forEach((camp: any) => {
+    const color = camp.clients?.color || CAMPAIGN_COLOR
+    // Campaign start/end as entries
+    if (camp.start_date) {
+      const d = camp.start_date.slice(0, 10)
+      const [y, m] = d.split('-').map(Number)
+      if (y === viewYear && m - 1 === viewMonth) {
+        campaignEntries.push({ dateStr: d, title: `📣 ${camp.title}`, color, isCampaign: true, isMilestone: false })
+      }
+    }
+    // Milestones
+    if (camp.campaign_milestones) {
+      camp.campaign_milestones.forEach((ms: any) => {
+        if (ms.due_date) {
+          const d = ms.due_date.slice(0, 10)
+          const [y, m] = d.split('-').map(Number)
+          if (y === viewYear && m - 1 === viewMonth) {
+            campaignEntries.push({ dateStr: d, title: ms.title, color: MILESTONE_COLOR, isCampaign: false, isMilestone: true })
+          }
+        }
+      })
+    }
+  })
+
   function getEventsForDay(day: number) {
     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    return events.filter(e => e.start_time?.startsWith(dateStr))
+    let evs = events.filter(e => e.start_time?.startsWith(dateStr))
+
+    // Apply filters
+    if (filterUser !== 'all') {
+      evs = evs.filter(e => e.user_id === filterUser || e.created_by === filterUser)
+    }
+    if (filterClient !== 'all') {
+      evs = evs.filter(e => e.client_slug === filterClient)
+    }
+    if (filterCategory !== 'All') {
+      const cat = filterCategory.toLowerCase()
+      evs = evs.filter(e => {
+        const type = (e.event_type || '').toLowerCase()
+        return type === cat || type.includes(cat)
+      })
+    }
+
+    const camps = filterCategory === 'All' || filterCategory === 'Campaign'
+      ? campaignEntries.filter(ce => ce.dateStr === dateStr && !ce.isMilestone)
+      : []
+    const milestones = filterCategory === 'All' || filterCategory === 'Milestone'
+      ? campaignEntries.filter(ce => ce.dateStr === dateStr && ce.isMilestone)
+      : []
+
+    return { evs, camps, milestones }
   }
 
-  const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : []
+  const selectedDateStr = selectedDay
+    ? `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`
+    : null
+  const selectedDayData = selectedDay ? getEventsForDay(selectedDay) : { evs: [], camps: [], milestones: [] }
+  const allSelectedItems = [
+    ...selectedDayData.evs,
+    ...selectedDayData.camps.map(c => ({ ...c, _isCampaignEntry: true })),
+    ...selectedDayData.milestones.map(m => ({ ...m, _isMilestoneEntry: true })),
+  ]
 
   async function handleCreate() {
     await createEvent({ ...form, start_time: new Date(form.start_time).toISOString(), end_time: form.end_time ? new Date(form.end_time).toISOString() : undefined } as any)
@@ -58,12 +152,21 @@ export default function CalendarPage() {
     load()
   }
 
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    padding: '5px 12px', borderRadius: '16px', fontSize: '12px', cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    backgroundColor: active ? t.goldDim : t.bg.card,
+    color: active ? t.gold : t.text.secondary,
+    fontWeight: active ? '600' : '400',
+    border: `1px solid ${active ? t.gold : t.border.default}`,
+  })
+
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1300px', margin: '0 auto', width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1300px', margin: '0 auto', width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>{monthName}</h1>
+            <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>{monthName}</h1>
             <div style={{ display: 'flex', gap: '4px' }}>
               <button onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1) } else setViewMonth(m => m - 1) }}
                 style={{ background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', color: t.text.secondary, cursor: 'pointer', padding: '5px 9px' }}>
@@ -75,13 +178,57 @@ export default function CalendarPage() {
               </button>
             </div>
           </div>
-          <button onClick={() => setShowCreate(true)} style={btnPrimary}><Plus size={16} /> Add Event</button>
+          {!isMobile && (
+            <button onClick={() => setShowCreate(true)} style={btnPrimary}><Plus size={16} /> Add Event</button>
+          )}
+        </div>
+
+        {/* Filter bar */}
+        <div style={{
+          display: 'flex', gap: '8px', marginBottom: '16px',
+          overflowX: 'auto', paddingBottom: '4px',
+          msOverflowStyle: 'none', scrollbarWidth: 'none',
+        }}>
+          {/* User filter */}
+          {users.length > 0 && (
+            <select
+              value={filterUser}
+              onChange={e => setFilterUser(e.target.value)}
+              style={{ ...pillStyle(filterUser !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none' }}
+            >
+              <option value="all">All Users</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name || u.full_name}</option>)}
+            </select>
+          )}
+
+          {/* Client filter */}
+          <select
+            value={filterClient}
+            onChange={e => setFilterClient(e.target.value)}
+            style={{ ...pillStyle(filterClient !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none' }}
+          >
+            <option value="all">All Brands</option>
+            {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+          </select>
+
+          {/* Category filter pills */}
+          {CATEGORY_OPTIONS.map(cat => (
+            <button key={cat} onClick={() => setFilterCategory(cat)} style={pillStyle(filterCategory === cat)}>
+              {cat}
+            </button>
+          ))}
+
+          {isMobile && (
+            <button onClick={() => setShowCreate(true)} style={{ ...pillStyle(false), backgroundColor: t.goldDim, color: t.gold, border: `1px solid ${t.gold}`, flexShrink: 0 }}>
+              <Plus size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />Add
+            </button>
+          )}
         </div>
 
         {/* Day headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', marginBottom: '1px' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} style={{ padding: '8px', textAlign: 'center', fontSize: '11px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d}</div>
+            <div key={d} style={{ padding: isMobile ? '4px 2px' : '8px', textAlign: 'center', fontSize: isMobile ? '9px' : '11px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{d}</div>
           ))}
         </div>
 
@@ -89,32 +236,47 @@ export default function CalendarPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', backgroundColor: t.border.subtle }}>
           {/* Empty cells before first day */}
           {[...Array(firstDay)].map((_, i) => (
-            <div key={`empty-${i}`} style={{ backgroundColor: t.bg.page, minHeight: '80px' }} />
+            <div key={`empty-${i}`} style={{ backgroundColor: t.bg.page, minHeight: isMobile ? '48px' : '80px' }} />
           ))}
           {/* Day cells */}
           {[...Array(daysInMonth)].map((_, i) => {
             const day = i + 1
             const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()
-            const dayEvents = getEventsForDay(day)
+            const { evs: dayEvents, camps: dayCamps, milestones: dayMilestones } = getEventsForDay(day)
+            const allDayItems = [...dayEvents, ...dayCamps, ...dayMilestones]
             const isSelected = selectedDay === day
             return (
               <div key={day} onClick={() => setSelectedDay(day === selectedDay ? null : day)} style={{
                 backgroundColor: isSelected ? t.bg.card : t.bg.page,
-                minHeight: '80px',
-                padding: '8px',
+                minHeight: isMobile ? '48px' : '80px',
+                padding: isMobile ? '4px' : '8px',
                 cursor: 'pointer',
                 transition: 'background 150ms ease',
               }}>
                 <div style={{
-                  width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '13px', fontWeight: isToday ? '700' : '400',
+                  width: isMobile ? 20 : 26, height: isMobile ? 20 : 26, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: isMobile ? '11px' : '13px', fontWeight: isToday ? '700' : '400',
                   backgroundColor: isToday ? t.gold : 'transparent',
                   color: isToday ? '#0f0f0d' : t.text.primary,
-                  marginBottom: '4px',
+                  marginBottom: '2px',
                 }}>
                   {day}
                 </div>
-                {dayEvents.slice(0, 3).map(e => {
+                {!isMobile && allDayItems.slice(0, 3).map((e: any, idx: number) => {
+                  if (e._isCampaignEntry || e._isMilestoneEntry) {
+                    return (
+                      <div key={`camp-${idx}`} style={{
+                        fontSize: '10px', padding: '1px 5px', borderRadius: '4px', marginBottom: '2px',
+                        backgroundColor: e.color + '20',
+                        color: e.color,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontWeight: '500',
+                      }}>
+                        {e.title}
+                      </div>
+                    )
+                  }
                   const client = clients.find(c => c.slug === e.client_slug)
                   return (
                     <div key={e.id} style={{
@@ -128,19 +290,41 @@ export default function CalendarPage() {
                     </div>
                   )
                 })}
-                {dayEvents.length > 3 && <div style={{ fontSize: '10px', color: t.text.muted }}>+{dayEvents.length - 3} more</div>}
+                {isMobile && allDayItems.length > 0 && (
+                  <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    {allDayItems.slice(0, 3).map((e: any, idx: number) => {
+                      const color = e._isCampaignEntry || e._isMilestoneEntry
+                        ? e.color
+                        : (clients.find(c => c.slug === e.client_slug)?.color || EVENT_TYPE_COLORS[e.event_type] || t.gold)
+                      return <div key={idx} style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color }} />
+                    })}
+                    {allDayItems.length > 3 && <div style={{ fontSize: '8px', color: t.text.muted }}>+{allDayItems.length - 3}</div>}
+                  </div>
+                )}
+                {!isMobile && allDayItems.length > 3 && <div style={{ fontSize: '10px', color: t.text.muted }}>+{allDayItems.length - 3} more</div>}
               </div>
             )
           })}
         </div>
 
         {/* Selected day events */}
-        {selectedDay && selectedDayEvents.length > 0 && (
-          <div style={{ ...card, marginTop: '20px', padding: '20px 24px' }}>
+        {selectedDay && allSelectedItems.length > 0 && (
+          <div style={{ ...card, marginTop: '20px', padding: isMobile ? '16px' : '20px 24px' }}>
             <h3 style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary, marginBottom: '14px' }}>
               {new Date(viewYear, viewMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h3>
-            {selectedDayEvents.map(e => {
+            {allSelectedItems.map((e: any, idx: number) => {
+              if (e._isCampaignEntry || e._isMilestoneEntry) {
+                return (
+                  <div key={`camp-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: e.color, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: '500', color: t.text.primary }}>{e.title}</div>
+                      <div style={{ fontSize: '11px', color: t.text.muted }}>{e.isMilestone ? 'Campaign Milestone' : 'Campaign'}</div>
+                    </div>
+                  </div>
+                )
+              }
               const client = clients.find(c => c.slug === e.client_slug)
               const color = client?.color || EVENT_TYPE_COLORS[e.event_type] || t.gold
               return (
@@ -166,14 +350,14 @@ export default function CalendarPage() {
         {/* Create event modal */}
         {showCreate && (
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px' }}>
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>New Event</h3>
                 <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div><label style={labelStyle}>Title</label><input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Event name..." style={inputStyle} /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div><label style={labelStyle}>Type</label>
                     <select value={form.event_type} onChange={e => setForm(f => ({ ...f, event_type: e.target.value }))} style={selectStyle}>
                       {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -186,7 +370,7 @@ export default function CalendarPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={inputStyle} /></div>
                   <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={inputStyle} /></div>
                 </div>

@@ -305,7 +305,8 @@ function MobileBottomNav({ onLogVisit }: { onLogVisit: () => void }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  zIndex: 51,
+                  zIndex: 200,
+                  pointerEvents: 'all',
                 }}>
                   <Plus size={24} color="#0f0f0d" strokeWidth={2.5} />
                 </button>
@@ -364,9 +365,15 @@ function MobileDrawer({ open, onClose, profile, nav }: {
         overflowY: 'auto',
         paddingBottom: 'env(safe-area-inset-bottom, 16px)',
       }}>
-        {/* Handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px' }}>
+        {/* Handle + close button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px 8px' }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: t.border.hover }} />
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer',
+            padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <X size={20} />
+          </button>
         </div>
 
         {/* Profile */}

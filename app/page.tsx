@@ -341,8 +341,9 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 // ─── Mobile Dashboard ─────────────────────────────────────────────────────
 
 function MobileDashboard({ profile }: { profile: UserProfile }) {
-  const { setShowVisitLog } = useApp()
+  const { showVisitLog, setShowVisitLog } = useApp()
   const [stats, setStats] = useState<any>(null)
+  const [commission, setCommission] = useState(0)
   const [schedule, setSchedule] = useState<any>(null)
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
@@ -360,9 +361,32 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
       setStats(s); setSchedule(sched); setFollowups(fu); setOverdue(od)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
+
+    // Commission in a separate try so it never blocks the rest
+    try {
+      const [orders, clients] = await Promise.all([getOrders(), getClients()])
+      const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
+      const thisMonth = new Date().toISOString().slice(0, 7)
+      const monthComm = orders
+        .filter((o: any) => (o.created_at || '').slice(0, 7) === thisMonth)
+        .reduce((sum: number, o: any) => {
+          const stored = Number(o.commission_amount) || 0
+          if (stored > 0) return sum + stored
+          return sum + Number(o.total_amount || 0) * (rateMap[o.client_slug] || 0)
+        }, 0)
+      setCommission(monthComm)
+    } catch (e) { console.error('mobile commission err', e) }
   }, [profile.id, profile.role])
 
   useEffect(() => { load() }, [load])
+
+  // Sync FAB -> open local modal
+  useEffect(() => {
+    if (showVisitLog) {
+      setVisitModal(true)
+      setShowVisitLog(false)
+    }
+  }, [showVisitLog, setShowVisitLog])
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
@@ -413,7 +437,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
           <>
             <MiniStat label="Visits This Month" value={stats?.teamVisits || 0} color={t.gold} />
             <MiniStat label="Active Placements" value={stats?.activePlacements || 0} color={t.status.success} href="/placements" />
-            <MiniStat label="Follow-Ups Due" value={followups.length} color={followups.length > 0 ? t.status.warning : t.text.muted} />
+            <MiniStat label="Commission MTD" value={formatCurrency(commission)} color={t.status.success} href="/finance" />
             <MiniStat label="Open Tasks" value={stats?.openTasks || 0} color={stats?.openTasks > 5 ? t.status.warning : t.text.muted} />
           </>
         )}
