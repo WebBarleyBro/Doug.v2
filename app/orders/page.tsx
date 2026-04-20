@@ -13,7 +13,7 @@ import {
   getOrders, getClients, getAccounts, createOrder, updateOrder, deleteOrder,
   getDistributorReps, createDistributorRep, getNextOrderNumber, getProducts,
 } from '../lib/data'
-import { invalidate } from '../lib/cache'
+import { invalidate, invalidatePrefix } from '../lib/cache'
 import AddAccountModal from '../components/AddAccountModal'
 import type { Product } from '../lib/types'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
@@ -409,6 +409,7 @@ export default function OrdersPage() {
         ...extra,
       })
       await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
+      invalidatePrefix('dashboard-stats')
       setShowCreate(false)
       resetForm()
       load()

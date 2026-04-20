@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Search, Check, Plus, AlertCircle } from 'lucide-react'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary, modalOverlay, mobileSheetContent } from '../lib/theme'
 import { logVisit, getAccounts, getClients, getProducts, getContacts } from '../lib/data'
+import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
 import { VISIT_STATUSES, PLACEMENT_TYPES } from '../lib/constants'
 import type { Account, Client, Product, Contact, VisitStatus } from '../lib/types'
@@ -12,7 +13,7 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
-  userId: string
+  userId?: string
   defaultAccountId?: string
   defaultClientSlugs?: string[]
   isMobile?: boolean
@@ -94,7 +95,9 @@ export default function VisitLogModal({
   // Search accounts
   useEffect(() => {
     if (!accountSearch || accountSearch.length < 2) { setAccountResults([]); return }
-    getAccounts({ search: accountSearch, limit: 8 }).then(setAccountResults).catch(() => {})
+    getAccounts({ search: accountSearch, limit: 8 })
+      .then(res => setAccountResults(res.filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)))
+      .catch(() => {})
   }, [accountSearch])
 
   // Set defaults
@@ -181,9 +184,14 @@ export default function VisitLogModal({
 
     setSaving(true)
     try {
+      let resolvedUserId = userId
+      if (!resolvedUserId) {
+        const { data: { user } } = await getSupabase().auth.getUser()
+        resolvedUserId = user?.id
+      }
       await logVisit({
         account_id: form.account_id,
-        user_id: userId,
+        user_id: resolvedUserId,
         client_slugs: form.client_slugs,
         visited_at: saveDateMT(form.visited_at),
         status: form.status,

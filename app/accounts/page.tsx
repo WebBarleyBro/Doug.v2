@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { MapPin, Plus, Search, Filter, ChevronRight, X } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
+import AddAccountModal from '../components/AddAccountModal'
 import EmptyState from '../components/EmptyState'
 import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getAccounts, getClients } from '../lib/data'
@@ -76,6 +77,7 @@ export default function AccountsPage() {
   const [filterClient, setFilterClient] = useState('all')
   const [sortBy, setSortBy] = useState<'name' | 'overdue' | 'recent'>('overdue')
   const [visitModal, setVisitModal] = useState(false)
+  const [showAddAccount, setShowAddAccount] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -144,9 +146,14 @@ export default function AccountsPage() {
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Accounts</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{accounts.length} accounts total</p>
           </div>
-          <button onClick={() => setVisitModal(true)} style={{ ...btnPrimary, padding: '9px 14px', fontSize: '13px' }}>
-            <Plus size={15} /> Log Visit
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setVisitModal(true)} style={{ ...btnSecondary, padding: '9px 14px', fontSize: '13px' }}>
+              <MapPin size={15} /> Log Visit
+            </button>
+            <button onClick={() => setShowAddAccount(true)} style={{ ...btnPrimary, padding: '9px 14px', fontSize: '13px' }}>
+              <Plus size={15} /> Add Account
+            </button>
+          </div>
         </div>
 
         {/* Search + Filters */}
@@ -242,6 +249,12 @@ export default function AccountsPage() {
             onSuccess={load}
             userId={profile.id}
             isMobile={isMobile}
+          />
+        )}
+        {showAddAccount && (
+          <AddAccountModal
+            onClose={() => setShowAddAccount(false)}
+            onAdded={() => { setShowAddAccount(false); load() }}
           />
         )}
       </div>

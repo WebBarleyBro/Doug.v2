@@ -806,58 +806,56 @@ export async function saveDepletionEntry(entry: Partial<DepletionEntry>) {
 
 export function getDashboardStats(userId: string, isOwner: boolean) {
   return cached(`dashboard-stats:${userId}:${isOwner}`, 30_000, async () => {
-  const sb = getSupabase()
-  const monthStart = startOfMonthMT()
-  const monthEnd = endOfMonthMT()
+    const sb = getSupabase()
+    const monthStart = startOfMonthMT()
+    const monthEnd = endOfMonthMT()
 
-  const [
-    teamVisits,
-    myVisits,
-    activePlacements,
-    openTasks,
-    commissionResult,
-    clientsResult,
-  ] = await Promise.all([
-    // Team visits this month (owners see all, reps see own)
-    isOwner
-      ? sb.from('visits').select('id', { count: 'exact', head: true })
-          .gte('visited_at', monthStart).lte('visited_at', monthEnd)
-      : sb.from('visits').select('id', { count: 'exact', head: true })
-          .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
-    // My visits this month
-    sb.from('visits').select('id', { count: 'exact', head: true })
-      .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
-    // Active placements
-    sb.from('placements').select('id', { count: 'exact', head: true }).is('lost_at', null),
-    // Open tasks
-    sb.from('tasks').select('id', { count: 'exact', head: true })
-      .eq('completed', false)
-      .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
-    // Commission this month
-    sb.from('purchase_orders')
-      .select('commission_amount, total_amount, client_slug')
-      .in('status', ['sent', 'fulfilled'])
-      .gte('created_at', monthStart).lte('created_at', monthEnd),
-    // Client rates for fallback commission calc
-    sb.from('clients').select('slug, commission_rate'),
-  ])
+    const [teamVisits, myVisits, activePlacements, openTasks] = await Promise.all([
+      isOwner
+        ? sb.from('visits').select('id', { count: 'exact', head: true })
+            .gte('visited_at', monthStart).lte('visited_at', monthEnd)
+        : sb.from('visits').select('id', { count: 'exact', head: true })
+            .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
+      sb.from('visits').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
+      sb.from('placements').select('id', { count: 'exact', head: true }).is('lost_at', null),
+      sb.from('tasks').select('id', { count: 'exact', head: true })
+        .eq('completed', false)
+        .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
+    ])
 
-  const rateMap: Record<string, number> = {}
-  for (const c of clientsResult.data || []) rateMap[c.slug] = c.commission_rate
+    // Use getOrders() — same function that powers the orders page (proven to return commission_amount)
+    const [allOrders, clients] = await Promise.all([getOrders(), getClients()])
 
-  const commission = (commissionResult.data || []).reduce((sum: number, o: any) => {
-    const stored = Number(o.commission_amount) || 0
-    if (stored > 0) return sum + stored
-    return sum + Number(o.total_amount || 0) * (rateMap[o.client_slug] || 0)
-  }, 0)
+    const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
-  return {
-    teamVisits: teamVisits.count || 0,
-    myVisits: myVisits.count || 0,
-    activePlacements: activePlacements.count || 0,
-    openTasks: openTasks.count || 0,
-    commissionThisMonth: commission,
-  }
+    function resolveComm(o: any): number {
+      const stored = Number(o.commission_amount) || 0
+      if (stored > 0) return stored
+      // fallback: compute from line items
+      const lineTotal = (o.po_line_items || []).reduce((s: number, li: any) => {
+        const t = Number(li.total || 0) || Number(li.unit_price || li.price || 0) * (Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1)
+        return s + t
+      }, 0)
+      const base = Number(o.total_amount) || lineTotal
+      return base * (rateMap[o.client_slug] || 0)
+    }
+
+    const thisMonth = new Date().toISOString().slice(0, 7) // "2026-04"
+    const commissionThisMonth = allOrders
+      .filter(o => (o.created_at || '').slice(0, 7) === thisMonth)
+      .reduce((s, o) => s + resolveComm(o), 0)
+
+    return {
+      teamVisits: teamVisits.count || 0,
+      myVisits: myVisits.count || 0,
+      activePlacements: activePlacements.count || 0,
+      openTasks: openTasks.count || 0,
+      commissionThisMonth,
+      commissionYTD: allOrders
+        .filter(o => (o.created_at || '').startsWith(thisMonth.slice(0, 4)))
+        .reduce((s, o) => s + resolveComm(o), 0),
+    }
   })
 }
 

@@ -14,6 +14,7 @@ import { StatsSkeleton, CardSkeleton } from './components/LoadingSkeleton'
 import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
+  getOrders, getClients,
 } from './lib/data'
 import { getSupabase } from './lib/supabase'
 import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
@@ -25,6 +26,7 @@ import type { UserProfile, Task } from './lib/types'
 
 function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [stats, setStats] = useState<any>(null)
+  const [commission, setCommission] = useState(0)
   const [schedule, setSchedule] = useState<any>(null)
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
@@ -39,14 +41,30 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
   const load = useCallback(async () => {
     try {
-      const [s, sched, fu, od, t] = await Promise.all([
+      const [s, sched, fu, od, t, orders, clients] = await Promise.all([
         getDashboardStats(profile.id, isOwner),
         getTodaySchedule(profile.id),
         getFollowUpVisits(),
         getOverdueAccounts(),
         getTasks({ userId: profile.id, completed: false }),
+        getOrders(),
+        getClients(),
       ])
       setStats(s); setSchedule(sched); setFollowups(fu); setOverdue(od); setTasks(t)
+
+      // Commission — same logic as finance page, computed directly from orders
+      const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
+      const thisMonth = new Date().toISOString().slice(0, 7)
+      const monthComm = orders
+        .filter((o: any) => (o.created_at || '').slice(0, 7) === thisMonth)
+        .reduce((sum: number, o: any) => {
+          const stored = Number(o.commission_amount) || 0
+          if (stored > 0) return sum + stored
+          const lineTotal = (o.po_line_items || []).reduce((s: number, li: any) =>
+            s + Number(li.total || 0) || (Number(li.unit_price || li.price || 0) * (Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 1))), 0)
+          return sum + (Number(o.total_amount) || lineTotal) * (rateMap[o.client_slug] || 0)
+        }, 0)
+      setCommission(monthComm)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [profile.id, isOwner])
@@ -168,8 +186,9 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
             color={t.status.success}
             href="/placements"
           />
-          <StatCard label="Commission This Month"
-            value={formatCurrency(stats?.commissionThisMonth || 0)}
+          <StatCard
+            label="Commission This Month"
+            value={formatCurrency(commission)}
             icon={<DollarSign size={22} />}
             color={t.status.info}
             href="/finance"

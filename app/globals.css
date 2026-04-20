@@ -232,6 +232,30 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
   border: none;
 }
 
+/* ─── Google Places autocomplete ────────────────────────────────────────── */
+
+.pac-container {
+  z-index: 9999 !important;
+  background-color: #202020;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+.pac-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  color: #9a9790;
+  font-size: 13px;
+}
+.pac-item:first-child { border-top: none; }
+.pac-item:hover, .pac-item-selected { background-color: rgba(212,168,67,0.1); }
+.pac-item-query { color: #eceae4; font-size: 13px; }
+.pac-icon { display: none; }
+.pac-logo::after { display: none; }
+
 /* ─── Print ──────────────────────────────────────────────────────────────── */
 
 @media print {
