@@ -13,7 +13,7 @@ import EmptyState from '../../components/EmptyState'
 import {
   getAccount, getVisits, getPlacements, getOrders, getContacts,
   deleteVisit, createContact, updateContact, deleteContact,
-  createPlacement, getClients, updateAccount, updateAccountClients,
+  createPlacement, getProducts, getClients, updateAccount, updateAccountClients,
   deleteAccount,
 } from '../../lib/data'
 import { invalidate } from '../../lib/cache'
@@ -108,6 +108,7 @@ export default function AccountDetailPage() {
   const [addPlacement, setAddPlacement] = useState(false)
   const [placementForm, setPlacementForm] = useState({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
   const [savingPlacement, setSavingPlacement] = useState(false)
+  const [placementProducts, setPlacementProducts] = useState<any[]>([])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -190,6 +191,14 @@ export default function AccountDetailPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { loadTab(tab) }, [tab, loadTab])
+
+  useEffect(() => {
+    if (placementForm.client_slug) {
+      getProducts(placementForm.client_slug).then(setPlacementProducts).catch(() => setPlacementProducts([]))
+    } else {
+      setPlacementProducts([])
+    }
+  }, [placementForm.client_slug])
 
   const reloadAll = useCallback(async () => {
     loadedTabsRef.current.clear()
@@ -467,11 +476,18 @@ export default function AccountDetailPage() {
                   </div>
                   <div>
                     <label style={labelStyle}>Product Name</label>
-                    <input type="text" value={placementForm.product_name} onChange={e => setPlacementForm(f => ({ ...f, product_name: e.target.value }))}
-                      placeholder="e.g. Single Barrel Bourbon 750ml" style={inputStyle} />
+                    {placementProducts.length > 0 ? (
+                      <select value={placementForm.product_name} onChange={e => setPlacementForm(f => ({ ...f, product_name: e.target.value }))} style={selectStyle}>
+                        <option value="">Select product...</option>
+                        {placementProducts.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" value={placementForm.product_name} onChange={e => setPlacementForm(f => ({ ...f, product_name: e.target.value }))}
+                        placeholder="e.g. Single Barrel Bourbon 750ml" style={inputStyle} />
+                    )}
                   </div>
                   <div>
-                    <label style={labelStyle}>Price Point ($)</label>
+                    <label style={labelStyle}>Price Point (optional)</label>
                     <input type="number" value={placementForm.price_point} onChange={e => setPlacementForm(f => ({ ...f, price_point: e.target.value }))}
                       placeholder="0.00" step="0.01" style={inputStyle} />
                   </div>

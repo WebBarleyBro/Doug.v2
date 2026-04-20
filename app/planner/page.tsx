@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, GripVertical, Check, Clock, MapPin } from 'lucide-react'
+import { Plus, GripVertical, Check, Clock, MapPin, X } from 'lucide-react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   DragEndEvent,
@@ -31,10 +31,11 @@ interface Stop {
   accountId?: string
 }
 
-function SortableStop({ stop, onComplete, onLogVisit }: {
+function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
   stop: Stop
   onComplete: (id: string) => void
   onLogVisit: (accountId: string) => void
+  onRemove: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id })
 
@@ -91,6 +92,12 @@ function SortableStop({ stop, onComplete, onLogVisit }: {
           Log
         </button>
       )}
+      <button onClick={() => onRemove(stop.id)} style={{
+        background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer',
+        padding: '4px', display: 'flex', flexShrink: 0,
+      }}>
+        <X size={13} />
+      </button>
     </div>
   )
 }
@@ -264,7 +271,7 @@ export default function PlannerPage() {
                 <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
                     {stops.map(stop => (
-                      <SortableStop key={stop.id} stop={stop} onComplete={toggleComplete} onLogVisit={(accountId) => setVisitModal({ open: true, accountId })} />
+                      <SortableStop key={stop.id} stop={stop} onComplete={toggleComplete} onLogVisit={(accountId) => setVisitModal({ open: true, accountId })} onRemove={removeStop} />
                     ))}
                   </div>
                 </SortableContext>

@@ -89,7 +89,7 @@ export default function CalendarPage() {
       const d = camp.start_date.slice(0, 10)
       const [y, m] = d.split('-').map(Number)
       if (y === viewYear && m - 1 === viewMonth) {
-        campaignEntries.push({ dateStr: d, title: `📣 ${camp.title}`, color, isCampaign: true, isMilestone: false })
+        campaignEntries.push({ dateStr: d, title: `📣 ${camp.name}`, color, isCampaign: true, isMilestone: false })
       }
     }
     // Milestones

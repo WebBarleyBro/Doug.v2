@@ -71,8 +71,6 @@ export default function MarketingPage() {
   const [newMilestone, setNewMilestone] = useState<Record<string, string>>({})
   const [newMilestoneDue, setNewMilestoneDue] = useState<Record<string, string>>({})
   const [addingMilestone, setAddingMilestone] = useState<string | null>(null)
-  const [newAsset, setNewAsset] = useState<Record<string, { label: string; url: string }>>({})
-  const [addingAsset, setAddingAsset] = useState<string | null>(null)
   const [emailFilter, setEmailFilter] = useState('all')
   const [copiedEmail, setCopiedEmail] = useState(false)
   const [form, setForm] = useState({ ...BLANK_FORM })

@@ -5,7 +5,7 @@ import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
 import ConfirmModal from '../components/ConfirmModal'
 import { CardSkeleton } from '../components/LoadingSkeleton'
-import { getPlacements, getClients, getAccounts, createPlacement, advancePlacementStatus, revertPlacementStatus, markPlacementLost } from '../lib/data'
+import { getPlacements, getClients, getAccounts, getProducts, createPlacement, advancePlacementStatus, revertPlacementStatus, markPlacementLost } from '../lib/data'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
 import { PLACEMENT_STATUS_LABELS, PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, clientLogoUrl } from '../lib/constants'
@@ -17,6 +17,7 @@ export default function PlacementsPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
+  const [clientProducts, setClientProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -56,6 +57,15 @@ export default function PlacementsPage() {
       getAccounts({ limit: 500 }).then(setAccounts).catch(() => {})
     }
   }, [showCreate, accounts.length])
+
+  // Load products when brand is selected
+  useEffect(() => {
+    if (form.client_slug) {
+      getProducts(form.client_slug).then(setClientProducts).catch(() => setClientProducts([]))
+    } else {
+      setClientProducts([])
+    }
+  }, [form.client_slug])
 
   async function handleCreate() {
     if (!form.account_id || !form.client_slug || !form.product_name) return
@@ -221,7 +231,14 @@ export default function PlacementsPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Product Name</label>
-                  <input type="text" value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="e.g. Barley Bros Wheat Whiskey 750ml" style={inputStyle} />
+                  {clientProducts.length > 0 ? (
+                    <select value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} style={selectStyle}>
+                      <option value="">Select product...</option>
+                      {clientProducts.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                  ) : (
+                    <input type="text" value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="e.g. Barley Bros Wheat Whiskey 750ml" style={inputStyle} />
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
@@ -231,7 +248,7 @@ export default function PlacementsPage() {
                     </select>
                   </div>
                   <div>
-                    <label style={labelStyle}>Price Point ($)</label>
+                    <label style={labelStyle}>Price Point (optional)</label>
                     <input type="number" value={form.price_point} onChange={e => setForm(f => ({ ...f, price_point: e.target.value }))} placeholder="0.00" step="0.01" style={inputStyle} />
                   </div>
                 </div>

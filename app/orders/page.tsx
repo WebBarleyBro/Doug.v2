@@ -1051,8 +1051,8 @@ export default function OrdersPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 90px 28px', gap: '6px', marginBottom: '4px', padding: '0 2px' }}>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Product</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Cases</span>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Bottles</span>
+                <span style={{ fontSize: '10px', color: t.text.muted }}>Cases</span>
                 <span style={{ fontSize: '10px', color: t.text.muted }}>Case Price</span>
                 <span />
               </div>
@@ -1091,16 +1091,16 @@ export default function OrdersPage() {
                       style={{ ...inputStyle, fontSize: '13px' }}
                     />
                   )}
-                  <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
-                    onChange={e => {
-                      const cases = parseInt(e.target.value) || 0
-                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) }) }))
-                    }}
-                    style={{ ...inputStyle, fontSize: '13px' }} />
                   <input type="number" value={(li as any).bottles ?? ''} min="0" placeholder="0"
                     onChange={e => {
                       const bottles = parseInt(e.target.value) || 0
                       setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles, quantity: ((item as any).cases || 0) + bottles }) }))
+                    }}
+                    style={{ ...inputStyle, fontSize: '13px' }} />
+                  <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
+                    onChange={e => {
+                      const cases = parseInt(e.target.value) || 0
+                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) }) }))
                     }}
                     style={{ ...inputStyle, fontSize: '13px' }} />
                   <input type="number" value={li.price || ''} min="0" step="0.01"
