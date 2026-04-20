@@ -1,0 +1,38 @@
+{
+  "name": "Doug CRM — Barley Bros",
+  "short_name": "Doug",
+  "description": "The spirits rep agency CRM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f0d",
+  "theme_color": "#d4a843",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Log Visit",
+      "short_name": "Log Visit",
+      "url": "/?log=1",
+      "description": "Quick log a visit"
+    },
+    {
+      "name": "Accounts",
+      "short_name": "Accounts",
+      "url": "/accounts"
+    }
+  ]
+}

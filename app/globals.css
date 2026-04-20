@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+:root {
+  --bg-page:       #0c0c0a;
+  --bg-card:       #161614;
+  --bg-card-hover: #1c1c19;
+  --bg-elevated:   #202020;
+  --bg-input:      #111110;
+  --bg-sidebar:    #0a0a08;
+
+  --border-default: rgba(255,255,255,0.08);
+  --border-subtle:  rgba(255,255,255,0.04);
+  --border-hover:   rgba(255,255,255,0.16);
+  --border-focus:   rgba(212,168,67,0.6);
+  --border-gold:    rgba(212,168,67,0.35);
+
+  --text-primary:     #eceae4;
+  --text-secondary:   #9a9790;
+  --text-muted:       #5a5754;
+  --text-placeholder: #484542;
+
+  --gold:        #d4a843;
+  --gold-hover:  #e0b84e;
+  --gold-dim:    rgba(212,168,67,0.12);
+  --gold-border: rgba(212,168,67,0.22);
+  --gold-glow:   rgba(212,168,67,0.3);
+
+  --success:    #3dba78;
+  --success-bg: rgba(61,186,120,0.08);
+  --warning:    #e89a2e;
+  --warning-bg: rgba(232,154,46,0.08);
+  --danger:     #e05252;
+  --danger-bg:  rgba(224,82,82,0.08);
+  --info:       #a78bfa;
+  --info-bg:    rgba(167,139,250,0.08);
+  --neutral:    #6b6966;
+  --neutral-bg: rgba(107,105,102,0.12);
+
+  --sidebar-width: 220px;
+  --mobile-nav-height: 72px;
+
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Mono', 'Consolas', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+
+/* Prevent browser default button hover/active appearance */
+button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+}
+button::-moz-focus-inner { border: 0; padding: 0; }
+
+/* Prevent default link color */
+a { color: inherit; }
+
+/* ─── Sidebar nav hover ─────────────────────────────────────────────────── */
+.sidebar-link:hover {
+  background-color: rgba(212,168,67,0.07) !important;
+  color: var(--text-primary) !important;
+}
+.sidebar-link.active:hover {
+  background-color: rgba(212,168,67,0.15) !important;
+}
+
+/* ─── Interactive card hover ─────────────────────────────────────────────── */
+.card-hover:hover {
+  background-color: var(--bg-card-hover) !important;
+  border-color: rgba(255,255,255,0.13) !important;
+}
+
+/* ─── Recharts overrides ─────────────────────────────────────────────────── */
+.recharts-tooltip-cursor { fill: rgba(255,255,255,0.04) !important; }
+.recharts-active-dot circle { fill: var(--gold) !important; }
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Subtle sci-fi grid */
+  background-image:
+    linear-gradient(rgba(212,168,67,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212,168,67,0.018) 1px, transparent 1px);
+  background-size: 52px 52px;
+  background-attachment: fixed;
+}
+
+/* ─── Sci-fi / HUD utilities ────────────────────────────────────────────── */
+
+/* Monospace for data values */
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+/* HUD panel — corner accent marks */
+.hud {
+  position: relative;
+}
+.hud::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px;
+  width: 14px; height: 14px;
+  border-top: 1.5px solid var(--gold);
+  border-left: 1.5px solid var(--gold);
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: 1;
+}
+.hud::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; right: -1px;
+  width: 14px; height: 14px;
+  border-bottom: 1.5px solid var(--gold);
+  border-right: 1.5px solid var(--gold);
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Glowing gold */
+.glow-gold {
+  box-shadow:
+    0 0 0 1px rgba(212,168,67,0.2),
+    0 0 20px rgba(212,168,67,0.18),
+    0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* Status active dot */
+.dot-live {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+/* Scan line flash effect on cards */
+.scan-card {
+  position: relative;
+  overflow: hidden;
+}
+.scan-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(212,168,67,0.04), transparent);
+  animation: scan-pass 4s linear infinite;
+  pointer-events: none;
+}
+
+/* ─── Keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.65; }
+}
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(212,168,67,0.15); }
+  50%       { box-shadow: 0 0 22px rgba(212,168,67,0.38); }
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--success); }
+  50%       { opacity: 0.6; box-shadow: 0 0 10px var(--success); }
+}
+@keyframes scan-pass {
+  0%   { left: -60%; }
+  100% { left: 160%; }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ─── Utility classes ───────────────────────────────────────────────────── */
+
+.skeleton { background: rgba(255,255,255,0.06); border-radius: 6px; animation: skeleton-pulse 1.2s ease-in-out infinite; }
+.slide-up       { animation: slide-up 280ms cubic-bezier(0.32,0.72,0,1) both; }
+.fade-in        { animation: fade-in 200ms ease both; }
+.spin           { animation: spin 700ms linear infinite; }
+.slide-in-right { animation: slide-in-right 220ms cubic-bezier(0.32,0.72,0,1) both; }
+
+/* ─── Scrollbars ─────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212,168,67,0.25); }
+
+/* ─── Focus ─────────────────────────────────────────────────────────────── */
+
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* ─── Form inputs ───────────────────────────────────────────────────────── */
+
+input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
+
+/* ─── Mobile safe area ───────────────────────────────────────────────────── */
+
+.mobile-nav-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ─── Section divider ────────────────────────────────────────────────────── */
+
+.section-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+  margin: 20px 0;
+  border: none;
+}
+
+/* ─── Print ──────────────────────────────────────────────────────────────── */
+
+@media print {
+  body { background: white; color: black; background-image: none; }
+  .no-print { display: none !important; }
+}
