@@ -130,7 +130,6 @@ export function getOverdueAccounts(): Promise<Account[]> {
       .from('accounts')
       .select('id, name, address, account_type, visit_frequency_days, last_visited, account_clients(client_slug)')
       .not('visit_frequency_days', 'is', null)
-      .gt('visit_frequency_days', 0)
       .order('last_visited', { ascending: true, nullsFirst: true })
       .limit(100)
     if (error) throw error
@@ -139,7 +138,8 @@ export function getOverdueAccounts(): Promise<Account[]> {
       if (!a.last_visited) return false
       const lastVisit = new Date(a.last_visited)
       const daysSince = Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24))
-      return daysSince >= a.visit_frequency_days
+      const freq = a.visit_frequency_days || 21
+      return daysSince >= freq
     }).slice(0, 20)
   })
 }

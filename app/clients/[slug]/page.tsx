@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
 import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient } from '../../lib/data'
+import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
 import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle } from '../../lib/theme'
 import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear } from '../../lib/formatters'
@@ -74,7 +75,18 @@ export default function ClientDetailPage() {
   const [editingProduct, setEditingProduct] = useState<any | null>(null)
   const [productForm, setProductForm] = useState({ name: '', sku: '', category: '', active: true })
   const [productSaving, setProductSaving] = useState(false)
+  const [userRole, setUserRole] = useState<string>('owner')
   const loaded = useRef(new Set<string>())
+
+  // Load user role
+  useEffect(() => {
+    const sb = getSupabase()
+    sb.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: p } = await sb.from('user_profiles').select('role').eq('id', user.id).single()
+      if (p?.role) setUserRole(p.role)
+    })
+  }, [])
 
   // Load client from cache
   useEffect(() => {
@@ -195,8 +207,12 @@ export default function ClientDetailPage() {
         </div>
 
         {/* Tabs */}
+        {(() => {
+          const INTERN_ALLOWED_TABS = new Set(['overview', 'visits', 'placements', 'events', 'products'])
+          const visibleTabs = userRole === 'intern' ? TABS.filter(tb => INTERN_ALLOWED_TABS.has(tb.key)) : TABS
+          return (
         <div style={{ display: 'flex', gap: '2px', marginBottom: '24px', borderBottom: `1px solid ${t.border.default}`, overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {TABS.map(tb => (
+          {visibleTabs.map(tb => (
             <button key={tb.key} onClick={() => setTab(tb.key)} style={{
               display: 'flex', alignItems: 'center', gap: '5px',
               padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer',
@@ -209,6 +225,8 @@ export default function ClientDetailPage() {
             </button>
           ))}
         </div>
+          )
+        })()}
 
         {tabLoading && (
           <div style={spinnerStyle}>Loading…</div>
@@ -582,7 +600,7 @@ export default function ClientDetailPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '24px' }}>
               {visits.length === 0 ? (
                 <div style={{ fontSize: '13px', color: t.text.muted, padding: '8px 0' }}>No visits yet</div>
-              ) : visits.slice(0, 10).map(v => (
+              ) : visits.filter((v: any) => !v.client_slug || v.client_slug === slug).slice(0, 10).map(v => (
                 <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
                   <span style={{ fontSize: '13px', color: t.text.primary }}>{v.accounts?.name}</span>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>

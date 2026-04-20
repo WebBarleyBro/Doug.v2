@@ -6,7 +6,7 @@ import {
   Home, MapPin, Users, Calendar, BarChart3, DollarSign,
   ShoppingCart, TrendingUp, Megaphone, Shield, Package,
   BookOpen, ChevronRight, ChevronLeft, Search, Bell, X, Menu, Plus,
-  LogOut, Map, ClipboardList, UserCircle,
+  LogOut, Map, ClipboardList, UserCircle, FolderOpen, Upload,
 } from 'lucide-react'
 import { t, btnPrimary } from './lib/theme'
 import { signOut } from './lib/auth'
@@ -59,10 +59,11 @@ const repNav = [
 ]
 
 const internNav = [
-  { href: '/intern',        label: 'My Work',   icon: Home },
-  { href: '/intern/tasks',  label: 'Tasks',     icon: ClipboardList },
-  { href: '/intern/projects',label:'Projects',  icon: TrendingUp },
-  { href: '/intern/assets', label: 'Assets',    icon: Package },
+  { href: '/intern',           label: 'My Work',   icon: Home },
+  { href: '/intern/tasks',     label: 'Tasks',     icon: ClipboardList },
+  { href: '/intern/projects',  label: 'Projects',  icon: FolderOpen },
+  { href: '/intern/assets',    label: 'Assets',    icon: Upload },
+  { href: '/intern/resources', label: 'Resources', icon: BookOpen },
 ]
 
 // Mobile bottom nav (5 tabs max + FAB)
@@ -461,7 +462,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       if (!user) { window.location.replace('/login'); return }
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       if (!p) { window.location.replace('/login'); return }
-      if (p.role === 'intern') { window.location.replace('/intern'); return }
+      if (p.role === 'intern' && !window.location.pathname.startsWith('/intern')) {
+        window.location.replace('/intern'); return
+      }
       if (p.role === 'portal' && p.client_slug) { window.location.replace(`/portal/${p.client_slug}`); return }
       setProfile(p)
       setLoading(false)
@@ -488,7 +491,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     <div style={{ minHeight: '100vh', backgroundColor: t.bg.page }} />
   )
 
-  const nav = profile.role === 'owner' ? ownerNav : repNav
+  const nav = profile.role === 'owner' ? ownerNav : profile.role === 'intern' ? internNav : repNav
 
   return (
     <AppContext.Provider value={{ profile, isMobile, showVisitLog, setShowVisitLog }}>
