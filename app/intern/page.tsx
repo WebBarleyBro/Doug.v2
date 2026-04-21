@@ -8,7 +8,7 @@ import { t, card } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
 
 const RESOURCES = [
-  { label: 'Sales Territory Map', href: '#', icon: '🗺️' },
+  { label: 'Sales Territory Map', href: '/planner', icon: '🗺️' },
   { label: 'Account List', href: '/accounts', icon: '📋' },
   { label: 'Brand Assets', href: '/clients', icon: '📦' },
 ]

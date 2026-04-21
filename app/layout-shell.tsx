@@ -11,6 +11,7 @@ import {
 import { t, btnPrimary } from './lib/theme'
 import { signOut } from './lib/auth'
 import { getSupabase } from './lib/supabase'
+import VisitLogModal from './components/VisitLogModal'
 import type { UserProfile } from './lib/types'
 
 // ─── App Context ─────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ const internNav = [
   { href: '/intern/resources', label: 'Resources', icon: BookOpen },
 ]
 
-// Mobile bottom nav (5 tabs max + FAB)
+// Mobile bottom nav (4 tabs + center FAB)
 const mobileBottomNav = [
   { href: '/',          label: 'Home',     icon: Home },
   { href: '/accounts',  label: 'Accounts', icon: MapPin },
@@ -74,11 +75,56 @@ const mobileBottomNav = [
   { href: '/clients',   label: 'Clients',  icon: Users },
 ]
 
+// Grouped nav for desktop sidebar
+type NavItem = { href: string; label: string; icon: any }
+type NavGroup = { label: string; items: NavItem[] }
+
+const ownerNavGroups: NavGroup[] = [
+  { label: 'FIELD', items: [
+    { href: '/',           label: 'Dashboard',   icon: Home },
+    { href: '/planner',    label: 'Day Planner', icon: Map },
+    { href: '/accounts',   label: 'Accounts',    icon: MapPin },
+    { href: '/clients',    label: 'Clients',     icon: Users },
+  ]},
+  { label: 'SALES', items: [
+    { href: '/placements', label: 'Placements',  icon: Package },
+    { href: '/orders',     label: 'Orders',      icon: ShoppingCart },
+    { href: '/finance',    label: 'Finance',     icon: DollarSign },
+  ]},
+  { label: 'INTEL', items: [
+    { href: '/analytics',  label: 'Analytics',   icon: BarChart3 },
+    { href: '/calendar',   label: 'Calendar',    icon: Calendar },
+    { href: '/contacts',   label: 'Contacts',    icon: UserCircle },
+    { href: '/marketing',  label: 'Marketing',   icon: Megaphone },
+    { href: '/compliance', label: 'Compliance',  icon: Shield },
+  ]},
+  { label: 'TEAM', items: [
+    { href: '/intern-hub', label: 'Intern Hub',  icon: BookOpen },
+  ]},
+]
+
+const repNavGroups: NavGroup[] = [
+  { label: 'FIELD', items: [
+    { href: '/',           label: 'Dashboard',   icon: Home },
+    { href: '/planner',    label: 'Day Planner', icon: Map },
+    { href: '/accounts',   label: 'Accounts',    icon: MapPin },
+    { href: '/clients',    label: 'Clients',     icon: Users },
+  ]},
+  { label: 'SALES', items: [
+    { href: '/placements', label: 'Placements',  icon: Package },
+    { href: '/orders',     label: 'Orders',      icon: ShoppingCart },
+  ]},
+  { label: 'INTEL', items: [
+    { href: '/calendar',   label: 'Calendar',    icon: Calendar },
+    { href: '/contacts',   label: 'Contacts',    icon: UserCircle },
+  ]},
+]
+
 // ─── Desktop Sidebar ─────────────────────────────────────────────────────
 
-function DesktopSidebar({ profile, nav, collapsed, setCollapsed }: {
+function DesktopSidebar({ profile, navGroups, collapsed, setCollapsed }: {
   profile: UserProfile
-  nav: typeof ownerNav
+  navGroups: NavGroup[]
   collapsed: boolean
   setCollapsed: (v: boolean) => void
 }) {
@@ -143,33 +189,42 @@ function DesktopSidebar({ profile, nav, collapsed, setCollapsed }: {
         )}
       </div>
 
-      {/* Nav links */}
-      <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
-        {nav.map(item => {
-          const Icon = item.icon
-          const active = isActive(item.href)
-          return (
-            <Link key={item.href} href={item.href}
-              className={`sidebar-link${active ? ' active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: collapsed ? '10px 0' : '9px 16px',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                color: active ? t.gold : t.text.secondary,
-                textDecoration: 'none',
-                fontSize: '13.5px',
-                fontWeight: active ? '600' : '400',
-                backgroundColor: active ? t.goldDim : 'transparent',
-                borderRight: active ? `2px solid ${t.gold}` : '2px solid transparent',
-                transition: 'all 120ms ease',
-              }}>
-              <Icon size={16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink: 0 }} />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          )
-        })}
+      {/* Nav links — grouped */}
+      <nav style={{ flex: 1, padding: '4px 0', overflowY: 'auto' }}>
+        {navGroups.map((group, gi) => (
+          <div key={group.label}>
+            {gi > 0 && (
+              <div style={{ height: '1px', backgroundColor: t.border.subtle, margin: collapsed ? '6px 0' : '6px 10px' }} />
+            )}
+            {!collapsed && (
+              <div style={{ padding: '8px 16px 4px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {group.label}
+              </div>
+            )}
+            {group.items.map(item => {
+              const Icon = item.icon
+              const active = isActive(item.href)
+              return (
+                <Link key={item.href} href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: collapsed ? '10px 0' : '8px 14px 8px 16px',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    color: active ? t.gold : t.text.secondary,
+                    textDecoration: 'none', fontSize: '13px',
+                    fontWeight: active ? '600' : '400',
+                    backgroundColor: active ? t.goldDim : 'transparent',
+                    borderLeft: active ? `3px solid ${t.gold}` : '3px solid transparent',
+                    transition: 'all 100ms ease',
+                  }}>
+                  <Icon size={16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink: 0 }} />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* User footer */}
@@ -268,29 +323,58 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
   )
 }
 
-function MobileBottomNav() {
+function MobileBottomNav({ onFabPress }: { onFabPress: () => void }) {
   const pathname = usePathname()
   const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href)
+  const left = mobileBottomNav.slice(0, 2)
+  const right = mobileBottomNav.slice(2)
 
   return (
     <nav className="mobile-nav-safe" style={{
       position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
       backgroundColor: t.bg.sidebar,
       borderTop: `1px solid ${t.border.default}`,
-      display: 'flex',
-      alignItems: 'stretch',
-      height: '64px',
+      display: 'flex', alignItems: 'stretch', height: '64px',
     }}>
-      {mobileBottomNav.map((item) => {
+      {left.map((item) => {
         const Icon = item.icon
         const active = isActive(item.href)
         return (
           <Link key={item.href} href={item.href} style={{
-            flex: 1, display: 'flex', flexDirection: 'column',
+            flex: 1, display: 'flex', flexDirection: 'column', minHeight: '44px',
             alignItems: 'center', justifyContent: 'center',
-            textDecoration: 'none',
-            color: active ? t.gold : t.text.muted, gap: '4px',
-            paddingBottom: '4px',
+            textDecoration: 'none', color: active ? t.gold : t.text.muted,
+            gap: '3px', paddingBottom: '4px',
+          }}>
+            <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+            <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
+          </Link>
+        )
+      })}
+
+      {/* Center FAB */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        <button onClick={onFabPress} style={{
+          width: 52, height: 52, borderRadius: '50%',
+          backgroundColor: t.gold, border: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', boxShadow: `0 4px 16px ${t.gold}55`,
+          position: 'absolute', bottom: '10px',
+          transition: 'transform 100ms ease, box-shadow 100ms ease',
+        }}>
+          <Plus size={24} color="#0c0c0a" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {right.map((item) => {
+        const Icon = item.icon
+        const active = isActive(item.href)
+        return (
+          <Link key={item.href} href={item.href} style={{
+            flex: 1, display: 'flex', flexDirection: 'column', minHeight: '44px',
+            alignItems: 'center', justifyContent: 'center',
+            textDecoration: 'none', color: active ? t.gold : t.text.muted,
+            gap: '3px', paddingBottom: '4px',
           }}>
             <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
             <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
@@ -461,6 +545,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   )
 
   const nav = profile.role === 'owner' ? ownerNav : profile.role === 'intern' ? internNav : repNav
+  const navGroups = profile.role === 'owner' ? ownerNavGroups : profile.role === 'intern'
+    ? [{ label: 'INTERN', items: internNav }]
+    : repNavGroups
 
   return (
     <AppContext.Provider value={{ profile, isMobile, showVisitLog, setShowVisitLog }}>
@@ -468,32 +555,29 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         // ── MOBILE LAYOUT ──
         <div style={{ backgroundColor: t.bg.page, minHeight: '100vh' }}>
           <MobileHeader profile={profile} onMenuOpen={() => setDrawerOpen(true)} />
-          <main style={{
-            paddingTop: '52px',
-            paddingBottom: '80px',
-            minHeight: '100vh',
-          }}>
+          <main style={{ paddingTop: '52px', paddingBottom: '80px', minHeight: '100vh' }}>
             {children}
           </main>
-          <MobileBottomNav />
-          <MobileDrawer
-            open={drawerOpen}
-            onClose={() => setDrawerOpen(false)}
-            profile={profile}
-            nav={nav}
-          />
+          <MobileBottomNav onFabPress={() => setShowVisitLog(true)} />
+          <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} profile={profile} nav={nav} />
+          {showVisitLog && profile.role !== 'intern' && (
+            <VisitLogModal
+              isOpen={showVisitLog}
+              onClose={() => setShowVisitLog(false)}
+              onSuccess={() => setShowVisitLog(false)}
+              userId={profile.id}
+              isMobile
+            />
+          )}
         </div>
       ) : (
         // ── DESKTOP LAYOUT ──
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: t.bg.page }}>
-          <DesktopSidebar profile={profile} nav={nav} collapsed={collapsed} setCollapsed={setCollapsed} />
+          <DesktopSidebar profile={profile} navGroups={navGroups} collapsed={collapsed} setCollapsed={setCollapsed} />
           <main style={{
-            flex: 1,
-            marginLeft: collapsed ? '60px' : '220px',
-            minHeight: '100vh',
-            transition: 'margin-left 200ms ease',
-            display: 'flex',
-            flexDirection: 'column',
+            flex: 1, marginLeft: collapsed ? '60px' : '220px',
+            minHeight: '100vh', transition: 'margin-left 200ms ease',
+            display: 'flex', flexDirection: 'column',
           }}>
             {children}
           </main>

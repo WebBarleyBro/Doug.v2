@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
 import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts } from '../../lib/data'
+import ConfirmModal from '../../components/ConfirmModal'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
 import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
@@ -76,6 +77,7 @@ export default function ClientDetailPage() {
   const [editingProduct, setEditingProduct] = useState<any | null>(null)
   const [productForm, setProductForm] = useState({ name: '', sku: '', category: '', active: true })
   const [productSaving, setProductSaving] = useState(false)
+  const [deleteProductTarget, setDeleteProductTarget] = useState<any>(null)
   const [userRole, setUserRole] = useState<string>('owner')
   const [isMobile, setIsMobile] = useState(false)
   const loaded = useRef(new Set<string>())
@@ -412,7 +414,7 @@ export default function ClientDetailPage() {
                     <button onClick={() => { setEditingProduct(p); setProductForm({ name: p.name, sku: p.sku || '', category: p.category || '', active: p.active }); setShowAddProduct(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '4px', display: 'flex' }}>
                       <Pencil size={14} />
                     </button>
-                    <button onClick={async () => { if (!confirm(`Delete "${p.name}"?`)) return; await deleteProduct(p.id); setProducts(prev => prev.filter(x => x.id !== p.id)) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e05252', padding: '4px', display: 'flex' }}>
+                    <button onClick={() => setDeleteProductTarget(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e05252', padding: '4px', display: 'flex' }}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -788,6 +790,20 @@ export default function ClientDetailPage() {
           </>
         )}
       </div>
+      <ConfirmModal
+        isOpen={!!deleteProductTarget}
+        onClose={() => setDeleteProductTarget(null)}
+        onConfirm={async () => {
+          if (!deleteProductTarget) return
+          await deleteProduct(deleteProductTarget.id)
+          setProducts(prev => prev.filter(x => x.id !== deleteProductTarget.id))
+          setDeleteProductTarget(null)
+        }}
+        title="Delete Product"
+        message={`Delete "${deleteProductTarget?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+      />
     </LayoutShell>
   )
 }

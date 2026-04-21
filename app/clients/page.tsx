@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { DollarSign, MapPin, ChevronRight } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import { CardSkeleton } from '../components/LoadingSkeleton'
+import EmptyState from '../components/EmptyState'
 import { getClients } from '../lib/data'
 import { t, card } from '../lib/theme'
 import { formatPercent } from '../lib/formatters'
@@ -34,7 +35,9 @@ export default function ClientsPage() {
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your brand portfolio</p>
         </div>
 
-        {loading ? <CardSkeleton count={4} /> : (
+        {loading ? <CardSkeleton count={4} /> : clients.length === 0 ? (
+          <EmptyState icon={<DollarSign size={36} />} title="No brands yet" subtitle="Contact your Barley Bros manager to add brands to your account" />
+        ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {clients.map(client => (
               <Link key={client.slug} href={`/clients/${client.slug}`} style={{ textDecoration: 'none' }}>
@@ -95,11 +98,6 @@ export default function ClientsPage() {
                 </div>
               </Link>
             ))}
-            {clients.length === 0 && (
-              <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>
-                No clients found — add them in Supabase under the clients table.
-              </div>
-            )}
           </div>
         )}
       </div>

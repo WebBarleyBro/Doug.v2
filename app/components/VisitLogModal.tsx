@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { X, Search, Check, Plus, AlertCircle } from 'lucide-react'
+import { X, Search, Check, Plus, AlertCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary, modalOverlay, mobileSheetContent } from '../lib/theme'
 import { logVisit, getAccounts, getClients, getProducts, getContacts } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
@@ -67,6 +67,8 @@ export default function VisitLogModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [competitiveSightings, setCompetitiveSightings] = useState<{ brand_name: string; product_name: string; placement_type: string }[]>([])
+  const [showCompetitive, setShowCompetitive] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Load clients on mount
@@ -103,7 +105,7 @@ export default function VisitLogModal({
 
   // Set defaults
   useEffect(() => {
-    if (!isOpen) { setSaved(false); setError(''); return }
+    if (!isOpen) { setSaved(false); setError(''); setCompetitiveSightings([]); setShowCompetitive(false); return }
     const d = todayMT()
     setForm({
       ...emptyForm(d),
@@ -198,7 +200,7 @@ export default function VisitLogModal({
         status: form.status,
         notes: form.notes || undefined,
         tasting_notes: tastingParts.length ? tastingParts.join('\n') : undefined,
-        competitive_sightings: [],
+        competitive_sightings: competitiveSightings.filter(s => s.brand_name.trim()),
         create_followup: !!(form.followup_days || form.create_checkin),
         followup_note: followupNote,
       })
@@ -461,6 +463,49 @@ export default function VisitLogModal({
               })}
             </Section>
           )}
+
+          {/* ── Competitive Sightings ── */}
+          <Section label="What Else Did You See? (optional)">
+            <button type="button" onClick={() => {
+              setShowCompetitive(o => !o)
+              if (!showCompetitive && competitiveSightings.length === 0) {
+                setCompetitiveSightings([{ brand_name: '', product_name: '', placement_type: 'shelf' }])
+              }
+            }} style={{
+              display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+              color: showCompetitive ? t.gold : t.text.muted,
+              background: 'none', border: `1px solid ${showCompetitive ? t.border.gold : t.border.default}`,
+              borderRadius: '8px', padding: '8px 14px', cursor: 'pointer',
+              backgroundColor: showCompetitive ? t.goldDim : 'transparent',
+            }}>
+              {showCompetitive ? <ChevronUp size={14} /> : <Plus size={14} />}
+              {showCompetitive ? 'Hide competitive intel' : 'Add competitive sighting'}
+            </button>
+            {showCompetitive && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {competitiveSightings.map((s, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '6px', alignItems: 'center' }}>
+                    <input type="text" value={s.brand_name} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, brand_name: e.target.value } : x))}
+                      placeholder="Brand name" style={{ ...inputStyle, fontSize: '12px', padding: '7px 10px' }} />
+                    <input type="text" value={s.product_name} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, product_name: e.target.value } : x))}
+                      placeholder="Product (optional)" style={{ ...inputStyle, fontSize: '12px', padding: '7px 10px' }} />
+                    <select value={s.placement_type} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, placement_type: e.target.value } : x))}
+                      style={{ ...inputStyle, fontSize: '12px', padding: '7px 8px', minWidth: 80 }}>
+                      {PLACEMENT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setCompetitiveSightings(prev => prev.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setCompetitiveSightings(prev => [...prev, { brand_name: '', product_name: '', placement_type: 'shelf' }])}
+                  style={{ fontSize: '12px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Plus size={12} /> Add another sighting
+                </button>
+              </div>
+            )}
+          </Section>
 
           {/* ── Follow-up ── */}
           <Section label="Follow-Up">

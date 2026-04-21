@@ -118,6 +118,42 @@ export function isFutureDate(dateStr: string): boolean {
   return new Date(dateStr + 'T23:59:59') > today
 }
 
+export type HealthStatus = 'active' | 'warm' | 'cold' | 'dormant'
+
+export interface AccountHealth {
+  status: HealthStatus
+  color: string
+  label: string
+  reason: string
+}
+
+export function accountHealth(
+  account: { last_visited?: string | null; visit_frequency_days?: number | null },
+  placements?: Array<{ status?: string; updated_at?: string }>
+): AccountHealth {
+  const days = daysAgoMT(account.last_visited)
+  const freq = account.visit_frequency_days || 30
+  const hasActivePlacement = placements?.some(p => p.status === 'active') ?? false
+  const stalePlacement = placements?.some(p => {
+    if (p.status !== 'active') return false
+    const d = daysAgoMT(p.updated_at)
+    return d !== null && d > 60
+  }) ?? false
+
+  if (days === null) {
+    return { status: 'dormant', color: '#666', label: 'Dormant', reason: 'Never visited' }
+  }
+  if (days <= freq && (hasActivePlacement || placements === undefined)) {
+    return { status: 'active', color: '#22c55e', label: 'Active', reason: `Visited ${days === 0 ? 'today' : `${days}d ago`}${hasActivePlacement ? ', active placement' : ''}` }
+  }
+  if (days > freq * 1.5 || stalePlacement) {
+    const reason = stalePlacement ? 'Placement stale 60+ days' : `${days - freq}d overdue`
+    return { status: 'cold', color: '#ef4444', label: 'Cold', reason }
+  }
+  const reason = placements !== undefined && !hasActivePlacement ? 'No active placement' : `${days - freq}d past schedule`
+  return { status: 'warm', color: '#f59e0b', label: 'Warm', reason }
+}
+
 export function slugify(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }

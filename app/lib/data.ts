@@ -317,7 +317,7 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     const since = nDaysAgoMT(90)
     const { data, error } = await sb
       .from('visits')
-      .select('*, accounts(id, name, address, account_type)')
+      .select('*, accounts(id, name, address, account_type, visit_frequency_days)')
       .in('status', ['Will Order Soon', 'Needs Follow Up'])
       .gte('visited_at', since)
       .order('visited_at', { ascending: true })
@@ -936,6 +936,66 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
   })
 }
 
+export function getVisitStreak(userId: string) {
+  return cached(`visit-streak:${userId}`, 60_000, async () => {
+    const sb = getSupabase()
+    // Fetch last 60 days of visits for streak calculation
+    const since = nDaysAgoMT(60)
+    const { data: myVisits } = await sb.from('visits').select('visited_at, user_id')
+      .eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false })
+    const { data: teamVisits } = await sb.from('visits').select('visited_at, user_id')
+      .gte('visited_at', nDaysAgoMT(7)).order('visited_at', { ascending: false })
+
+    // Build set of unique MT calendar days user visited
+    const visitedDays = new Set((myVisits || []).map((v: any) => {
+      const d = v.visited_at
+      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') ? new Date(d + 'Z') : new Date(d)
+      return date.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+    }))
+
+    // Streak: consecutive days ending today (or yesterday)
+    let streak = 0
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+    let checkDay = today
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (visitedDays.has(checkDay)) {
+        streak++
+        const d = new Date(checkDay + 'T12:00:00Z')
+        d.setDate(d.getDate() - 1)
+        checkDay = d.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      } else {
+        // Allow a one-day gap (if today has no visits yet, check yesterday)
+        if (streak === 0 && checkDay === today) {
+          const d = new Date(checkDay + 'T12:00:00Z')
+          d.setDate(d.getDate() - 1)
+          checkDay = d.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+          if (visitedDays.has(checkDay)) continue
+        }
+        break
+      }
+    }
+
+    // Best day of week (last 60 days)
+    const dayCount: Record<number, number> = {}
+    ;(myVisits || []).forEach((v: any) => {
+      const d = v.visited_at
+      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') ? new Date(d + 'Z') : new Date(d)
+      const dow = date.getDay()
+      dayCount[dow] = (dayCount[dow] || 0) + 1
+    })
+    const bestDow = Object.entries(dayCount).sort(([, a], [, b]) => b - a)[0]
+    const dowNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const bestDay = bestDow ? dowNames[Number(bestDow[0])] : null
+
+    return {
+      streak,
+      teamWeekVisits: (teamVisits || []).length,
+      bestDay,
+    }
+  })
+}
+
 export function getTodaySchedule(userId: string) {
   return cached(`today-schedule:${userId}`, 30_000, async () => {
     const sb = getSupabase()
@@ -1160,23 +1220,85 @@ export async function getPortalData(clientSlug: string) {
   }
 }
 
+// ─── Planner Stops ───────────────────────────────────────────────────────
+
+export interface PlannerStop {
+  id: string
+  user_id: string
+  plan_date: string
+  account_id?: string | null
+  title: string
+  subtitle?: string | null
+  address?: string | null
+  scheduled_time?: string | null
+  stop_order: number
+  completed: boolean
+  stop_type: 'event' | 'account' | 'task'
+  created_at: string
+}
+
+export async function getPlannerStops(userId: string, date: string): Promise<PlannerStop[]> {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('planner_stops')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('plan_date', date)
+    .order('stop_order')
+  if (error) throw error
+  return data || []
+}
+
+export async function upsertPlannerStop(stop: Omit<PlannerStop, 'id' | 'created_at'> & { id?: string }) {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('planner_stops')
+    .upsert(stop)
+    .select()
+    .single()
+  if (error) throw error
+  return data as PlannerStop
+}
+
+export async function updatePlannerStop(id: string, updates: Partial<PlannerStop>) {
+  const sb = getSupabase()
+  const { error } = await sb.from('planner_stops').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function deletePlannerStop(id: string) {
+  const sb = getSupabase()
+  await sb.from('planner_stops').delete().eq('id', id)
+}
+
+export async function savePlannerOrder(stops: { id: string; stop_order: number }[]) {
+  const sb = getSupabase()
+  await Promise.all(stops.map(s => sb.from('planner_stops').update({ stop_order: s.stop_order }).eq('id', s.id)))
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────
 
 export async function globalSearch(query: string) {
-  if (!query || query.length < 2) return { accounts: [], contacts: [], clients: [] }
+  if (!query || query.length < 2) return { accounts: [], contacts: [], clients: [], placements: [], orders: [], visits: [] }
   const sb = getSupabase()
   const q = `%${query}%`
 
-  const [accounts, contacts, clients] = await Promise.all([
+  const [accounts, contacts, clients, placements, orders, visits] = await Promise.all([
     sb.from('accounts').select('id, name, address, account_type').ilike('name', q).limit(5),
-    sb.from('contacts').select('id, name, role, accounts(id, name)').ilike('name', q).limit(5),
+    sb.from('contacts').select('id, name, role, email, accounts(id, name)').or(`name.ilike.${q},email.ilike.${q},role.ilike.${q}`).limit(5),
     sb.from('clients').select('id, name, slug, color, logo_url').ilike('name', q).limit(3),
+    sb.from('placements').select('id, product_name, client_slug, account_id, accounts(id, name)').ilike('product_name', q).is('lost_at', null).limit(5),
+    sb.from('purchase_orders').select('id, po_number, deliver_to_name, client_slug').or(`po_number.ilike.${q},deliver_to_name.ilike.${q}`).limit(5),
+    sb.from('visits').select('id, notes, account_id, accounts(id, name)').ilike('notes', q).order('visited_at', { ascending: false }).limit(5),
   ])
 
   return {
     accounts: accounts.data || [],
     contacts: contacts.data || [],
     clients: clients.data || [],
+    placements: placements.data || [],
+    orders: orders.data || [],
+    visits: visits.data || [],
   }
 }
 

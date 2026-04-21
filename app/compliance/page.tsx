@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Shield, AlertTriangle, Plus, X } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
+import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getClients, getStateRegistrations, upsertStateRegistration } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT, daysAgoMT } from '../lib/formatters'
@@ -74,7 +75,10 @@ export default function CompliancePage() {
         )}
 
         {/* Per-client sections */}
-        {clients.map(client => {
+        {loading ? <CardSkeleton count={3} /> : clients.length === 0 ? (
+          <EmptyState icon={<Shield size={36} />} title="No brands yet" subtitle="Add brands in the Clients section to track registrations" />
+        ) : null}
+        {!loading && clients.map(client => {
           const clientRegs = registrations.filter(r => r.client_id === client.id)
           return (
             <div key={client.id} style={{ ...card, marginBottom: '20px', padding: '20px 24px' }}>

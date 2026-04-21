@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { DollarSign, TrendingUp, ChevronRight } from 'lucide-react'
+import { DollarSign, TrendingUp, ChevronRight, Download } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -120,12 +120,45 @@ export default function FinancePage() {
 
   const recentOrders = [...orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 20)
 
+  function exportCSV() {
+    const rows = [
+      ['PO Number', 'Date', 'Client', 'Deliver To', 'Revenue', 'Commission', 'Status'],
+      ...orders.map(o => [
+        o.po_number || '',
+        (o.created_at || '').slice(0, 10),
+        clients.find(c => c.slug === o.client_slug)?.name || o.client_slug || '',
+        o.deliver_to_name || '',
+        resolveTotal(o).toFixed(2),
+        resolveCommission(o).toFixed(2),
+        o.status || '',
+      ]),
+    ]
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <LayoutShell>
       <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-        <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Finance</h1>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Commission and revenue tracking</p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px', gap: '12px' }}>
+          <div>
+            <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Finance</h1>
+            <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Commission and revenue tracking</p>
+          </div>
+          <button onClick={exportCSV} style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px', borderRadius: '8px', fontSize: '13px',
+            border: `1px solid ${t.border.default}`, backgroundColor: 'transparent',
+            color: t.text.secondary, cursor: 'pointer', flexShrink: 0,
+          }}>
+            <Download size={14} /> Export CSV
+          </button>
         </div>
 
         {/* Stats */}

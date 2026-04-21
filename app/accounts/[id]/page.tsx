@@ -12,17 +12,17 @@ import ConfirmModal from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
 import {
   getAccount, getVisits, getPlacements, getOrders, getContacts,
-  deleteVisit, createContact, updateContact, deleteContact,
+  deleteVisit, updateVisit, createContact, updateContact, deleteContact,
   createPlacement, getProducts, getClients, updateAccount, updateAccountClients,
-  deleteAccount,
+  deleteAccount, getCompetitiveSightings,
 } from '../../lib/data'
 import { invalidate } from '../../lib/cache'
 import { clientLogoUrl } from '../../lib/constants'
 import { getSupabase } from '../../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, btnIcon, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, daysAgoMT, formatCurrency } from '../../lib/formatters'
+import { formatShortDateMT, daysAgoMT, formatCurrency, accountHealth } from '../../lib/formatters'
 import { overdueColor } from '../../lib/theme'
-import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS } from '../../lib/constants'
+import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client } from '../../lib/types'
 
 function resolveTotal(o: any): number {
@@ -62,7 +62,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   other:       t.text.muted,
 }
 
-const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts'] as const
+const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts', 'competitive'] as const
 type Tab = typeof TABS[number]
 
 export default function AccountDetailPage() {
@@ -73,6 +73,7 @@ export default function AccountDetailPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
+  const [competitive, setCompetitive] = useState<any[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tab, setTab] = useState<Tab>('activity')
@@ -181,6 +182,10 @@ export default function AccountDetailPage() {
       if (t === 'contacts') {
         const cs = await getContacts({ accountId: id })
         setContacts(cs)
+      }
+      if (t === 'competitive') {
+        const cs = await getCompetitiveSightings(id)
+        setCompetitive(cs)
       }
     } catch (e) { console.error(e) }
   }, [id])
@@ -322,6 +327,7 @@ export default function AccountDetailPage() {
 
   const days = daysAgoMT(account.last_visited)
   const overdueClr = overdueColor(days)
+  const health = accountHealth(account, placements)
   const pad = isMobile ? '16px' : '32px 36px'
 
   const timeline = [
@@ -348,6 +354,15 @@ export default function AccountDetailPage() {
                 </h1>
                 <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: t.status.neutralBg, color: t.text.muted, textTransform: 'capitalize' }}>
                   {account.account_type?.replace('_', '-')}
+                </span>
+                <span title={health.reason} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px',
+                  backgroundColor: `${health.color}18`, color: health.color,
+                  border: `1px solid ${health.color}44`,
+                }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: health.color, display: 'inline-block', boxShadow: `0 0 4px ${health.color}88` }} />
+                  {health.label} · {health.reason}
                 </span>
                 {account.priority && account.priority !== 'B' && (
                   <span style={{
@@ -484,7 +499,10 @@ export default function AccountDetailPage() {
             {visits.length === 0 ? (
               <EmptyState icon={<MapPin size={32} />} title="No visits logged" />
             ) : visits.map(v => (
-              <VisitCard key={v.id} visit={v} onDelete={() => deleteVisit(v.id).then(reloadAll)} isOwner={profile?.role === 'owner'} />
+              <VisitCard key={v.id} visit={v}
+                onDelete={() => deleteVisit(v.id).then(reloadAll)}
+                onSave={(updates) => updateVisit(v.id, updates as any).then(reloadAll)}
+              />
             ))}
           </div>
         )}
@@ -631,6 +649,53 @@ export default function AccountDetailPage() {
                   />
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'competitive' && (
+          <div>
+            {competitive.length === 0 ? (
+              <EmptyState
+                icon={<Activity size={32} />}
+                title="No competitive intel logged yet"
+                subtitle="Add what you see on the shelf when you log visits."
+              />
+            ) : (
+              (() => {
+                const grouped: Record<string, any[]> = {}
+                competitive.forEach((s: any) => {
+                  if (!grouped[s.brand_name]) grouped[s.brand_name] = []
+                  grouped[s.brand_name].push(s)
+                })
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {Object.entries(grouped).map(([brand, sightings]) => (
+                      <div key={brand} style={{ ...card }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${t.border.subtle}` }}>
+                          {brand}
+                          <span style={{ fontSize: '11px', color: t.text.muted, fontWeight: '400', marginLeft: '8px' }}>
+                            {sightings.length} sighting{sightings.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {sightings.map((s: any) => (
+                            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                              <div>
+                                {s.product_name && <div style={{ fontSize: '13px', color: t.text.primary }}>{s.product_name}</div>}
+                                {s.placement_type && <div style={{ fontSize: '11px', color: t.text.muted, textTransform: 'capitalize' }}>{s.placement_type.replace('_', ' ')}</div>}
+                              </div>
+                              <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>
+                                {formatShortDateMT(s.sighted_at)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()
             )}
           </div>
         )}
@@ -919,28 +984,83 @@ function TimelineItem({ item }: { item: any }) {
   )
 }
 
-function VisitCard({ visit, onDelete, isOwner }: { visit: any; onDelete: () => void; isOwner: boolean }) {
+function VisitCard({ visit, onDelete, onSave }: {
+  visit: any
+  onDelete: () => void
+  onSave: (updates: { visited_at?: string; status?: string; notes?: string }) => void
+}) {
   const [confirm, setConfirm] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ visited_at: '', status: '', notes: '' })
+
+  function openEdit() {
+    setForm({
+      visited_at: visit.visited_at ? visit.visited_at.slice(0, 10) : '',
+      status: visit.status || 'General Check-In',
+      notes: visit.notes || '',
+    })
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await onSave({ visited_at: form.visited_at || undefined, status: form.status || undefined, notes: form.notes || undefined })
+      setEditing(false)
+    } finally { setSaving(false) }
+  }
+
   return (
     <>
       <div style={{ ...card, padding: '14px 16px', borderLeft: `3px solid ${t.gold}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={badge.visitStatus(visit.status)}>{visit.status}</span>
-              <span style={{ fontSize: '11px', color: t.text.muted }}>{visit.client_slug}</span>
+        {editing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={labelStyle}>Date</label>
+                <input type="date" value={form.visited_at} onChange={e => setForm(f => ({ ...f, visited_at: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={selectStyle}>
+                  {VISIT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
-            {visit.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{visit.notes}</p>}
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>
-              {formatShortDateMT(visit.visited_at)} · {visit.user_profiles?.name}
+            <div>
+              <label style={labelStyle}>Notes</label>
+              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'vertical' as const }} />
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
-          {isOwner && (
-            <button onClick={() => setConfirm(true)} style={{ ...btnIcon, color: t.status.danger }}>
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={badge.visitStatus(visit.status)}>{visit.status}</span>
+                {visit.client_slug && <span style={{ fontSize: '11px', color: t.text.muted }}>{visit.client_slug}</span>}
+              </div>
+              {visit.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{visit.notes}</p>}
+              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>
+                {formatShortDateMT(visit.visited_at)}{visit.user_profiles?.name ? ` · ${visit.user_profiles.name}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+              <button onClick={openEdit} style={{ ...btnIcon, color: t.text.muted }}>
+                <Edit2 size={13} />
+              </button>
+              <button onClick={() => setConfirm(true)} style={{ ...btnIcon, color: t.status.danger }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <ConfirmModal
         isOpen={confirm}

@@ -288,6 +288,7 @@ export default function OrdersPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [orderType, setOrderType] = useState<'direct' | 'distributor'>('direct')
   const [creating, setCreating] = useState(false)
+  const [createErr, setCreateErr] = useState('')
   const [deleteTarget, setDeleteTarget] = useState('')
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [resendTo, setResendTo] = useState('')
@@ -418,7 +419,6 @@ export default function OrdersPage() {
     const client = selectedClient
     const lineItems = form.line_items.filter(li => li.product_name)
     const total = lineItems.reduce((s, li) => s + li.quantity * li.price, 0)
-    const commission = total * (client?.commission_rate || 0)
     const isOI = orderType === 'distributor'
 
     const itemLines = lineItems.map(li =>
@@ -438,8 +438,6 @@ export default function OrdersPage() {
       'Line Items:',
       itemLines || '  (no items)',
       '',
-      `Subtotal: $${total.toFixed(2)}`,
-      (client?.commission_rate || 0) > 0 ? `Commission (${((client?.commission_rate || 0) * 100).toFixed(0)}%): $${commission.toFixed(2)}` : null,
       `Total: $${total.toFixed(2)}`,
       form.notes ? `\nNotes: ${form.notes}` : null,
       '',
@@ -472,15 +470,7 @@ export default function OrdersPage() {
     <tbody>${htmlRows}</tbody>
   </table>
   <div style="background:#161614;border-radius:8px;padding:14px 18px;margin-bottom:24px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-      <span style="font-size:13px;color:#9a9790">Subtotal</span>
-      <span style="font-size:13px;color:#eceae4;font-weight:600">$${total.toFixed(2)}</span>
-    </div>
-    ${(client?.commission_rate || 0) > 0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
-      <span style="font-size:13px;color:#9a9790">Commission (${((client?.commission_rate || 0) * 100).toFixed(0)}%)</span>
-      <span style="font-size:13px;color:#d4a843;font-weight:600">$${commission.toFixed(2)}</span>
-    </div>` : ''}
-    <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a26;padding-top:8px;margin-top:4px">
+    <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a26;padding-top:8px">
       <span style="font-size:15px;font-weight:700;color:#d4a843">Total</span>
       <span style="font-size:18px;font-weight:800;color:#eceae4">$${total.toFixed(2)}</span>
     </div>
@@ -494,7 +484,7 @@ export default function OrdersPage() {
 
   async function handleCreate() {
     if (!form.client_slug || !form.deliver_to_name || !form.line_items[0].product_name) return
-    setCreating(true)
+    setCreating(true); setCreateErr('')
     try {
       const extra = orderType === 'distributor' ? {
         order_type: 'distributor' as const,
@@ -520,7 +510,7 @@ export default function OrdersPage() {
       resetForm()
       load()
       setActiveTab(orderType === 'distributor' ? 'inquiries' : 'direct')
-    } catch (e) { console.error(e) }
+    } catch (e: any) { setCreateErr(e.message || 'Failed to create order') }
     finally { setCreating(false) }
   }
 
@@ -1175,6 +1165,7 @@ export default function OrdersPage() {
                   {creating ? 'Creating...' : 'Create Inquiry'}
                 </button>
               )}
+              {createErr && <div style={{ fontSize: '12px', color: '#e05252', marginTop: '6px', gridColumn: '1 / -1' }}>{createErr}</div>}
             </div>
           </div>
         </div>

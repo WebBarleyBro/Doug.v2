@@ -7,6 +7,7 @@ import { t, card, badge } from '../../lib/theme'
 import { formatShortDateMT, relativeTimeStr, startOfMonthMT, formatCurrency } from '../../lib/formatters'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { MapPin, Package, ShoppingCart, Calendar, LogOut } from 'lucide-react'
+import { clientLogoUrl } from '../../lib/constants'
 
 export default function ClientPortalPage() {
   const { slug } = useParams() as { slug: string }
@@ -50,6 +51,8 @@ export default function ClientPortalPage() {
   }
 
   const { client, visits, placements, orders, events } = data
+  const accent = client?.color || t.gold
+  const logoUrl = client ? clientLogoUrl(client) : null
   const monthStart = startOfMonthMT()
   const monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
   const monthOrders = orders.length
@@ -59,20 +62,23 @@ export default function ClientPortalPage() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, color: t.text.primary, fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }}>
       {/* Header */}
-      <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${t.border.default}`, padding: '0 32px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: 32, height: 32, borderRadius: '8px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '800', color: '#0f0f0d' }}>D</div>
+      <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: '0 32px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {logoUrl ? (
+            <img src={logoUrl} alt={client?.name} style={{ height: '36px', width: 'auto', maxWidth: '120px', objectFit: 'contain' }} />
+          ) : (
+            <div style={{ width: 36, height: 36, borderRadius: '8px', background: `linear-gradient(135deg, ${accent} 0%, ${accent}aa 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '800', color: '#0f0f0d' }}>
+              {client?.name?.[0] || 'P'}
+            </div>
+          )}
           <div>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Doug Portal</div>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>{client?.name || 'Brand'} Portal</div>
             <div style={{ fontSize: '11px', color: t.text.muted }}>Powered by Barley Bros</div>
           </div>
         </div>
-        {client && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: client.color || t.gold }} />
-            <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{client.name}</span>
-          </div>
-        )}
+        <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '7px', padding: '6px 12px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}>
+          <LogOut size={13} /> Sign out
+        </button>
       </header>
 
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px' }}>
@@ -89,7 +95,7 @@ export default function ClientPortalPage() {
         {/* This month at a glance */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
           {[
-            { label: 'Visits This Month', value: monthVisits, icon: <MapPin size={20} />, color: t.gold },
+            { label: 'Visits This Month', value: monthVisits, icon: <MapPin size={20} />, color: accent },
             { label: 'Active Placements', value: activePlacements.length, icon: <Package size={20} />, color: t.status.success },
             { label: 'Orders This Month', value: monthOrders, icon: <ShoppingCart size={20} />, color: t.status.info },
             { label: 'Revenue This Month', value: formatCurrency(monthRevenue), icon: <Calendar size={20} />, color: t.status.warning },
@@ -157,14 +163,9 @@ export default function ClientPortalPage() {
           </div>
         </div>
 
-        <div style={{ marginTop: '24px', padding: '16px 0', borderTop: `1px solid ${t.border.default}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '12px', color: t.text.muted }}>
-            Powered by Doug · Barley Bros spirits rep agency · Fort Collins, CO
-          </div>
-          <button onClick={() => getSupabase().auth.signOut().then(() => window.location.href = '/login')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}>
-            <LogOut size={13} /> Sign Out
-          </button>
+        <div style={{ marginTop: '32px', padding: '20px 0', borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: 20, height: 20, borderRadius: '4px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>D</div>
+          <div style={{ fontSize: '11px', color: t.text.muted }}>Powered by <strong style={{ color: t.text.secondary }}>Barley Bros</strong> · Fort Collins, CO</div>
         </div>
       </main>
     </div>

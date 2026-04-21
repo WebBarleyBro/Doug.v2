@@ -14,7 +14,7 @@ import { StatsSkeleton, CardSkeleton } from './components/LoadingSkeleton'
 import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
-  getOrders, getClients,
+  getOrders, getClients, getVisitStreak,
 } from './lib/data'
 import { getSupabase } from './lib/supabase'
 import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
@@ -31,8 +31,11 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [streak, setStreak] = useState<{ streak: number; teamWeekVisits: number; bestDay: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
+  const [followUpAccountId, setFollowUpAccountId] = useState<string | undefined>(undefined)
+  const [activePlacementAccountIds, setActivePlacementAccountIds] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState<any>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -49,6 +52,12 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         getTasks({ userId: profile.id, completed: false }).catch(e => { console.error('tasks err', e); return [] }),
       ])
       setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(t ?? [])
+      // Fetch active placement account IDs for urgency scoring
+      getSupabase().from('placements').select('account_id').eq('status', 'active').then(({ data }) => {
+        setActivePlacementAccountIds(new Set((data || []).map((p: any) => p.account_id).filter(Boolean)))
+      }).catch(() => {})
+      // Visit streak
+      getVisitStreak(profile.id).then(setStreak).catch(() => {})
     } catch (e) { console.error('dashboard load err', e) }
     finally { setLoading(false) }
 
@@ -154,11 +163,50 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                     <Users size={14} color={t.text.muted} />
                     <div>
                       <div style={{ fontSize: '13px', color: t.text.primary }}>{c.name}</div>
-                      <div style={{ fontSize: '11px', color: t.text.muted }}>{c.role} · {c.accounts?.name}</div>
+                      <div style={{ fontSize: '11px', color: t.text.muted }}>{c.role}{c.accounts?.name ? ` · ${c.accounts.name}` : ''}</div>
                     </div>
                   </Link>
                 ))}
-                {!searchResults.accounts?.length && !searchResults.contacts?.length && (
+                {searchResults.placements?.map((p: any) => (
+                  <Link key={p.id} href={`/placements`} onClick={() => setSearchOpen(false)} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 14px', textDecoration: 'none',
+                    borderBottom: `1px solid ${t.border.subtle}`,
+                  }}>
+                    <Package size={14} color={t.text.muted} />
+                    <div>
+                      <div style={{ fontSize: '13px', color: t.text.primary }}>{p.product_name}</div>
+                      {p.accounts?.name && <div style={{ fontSize: '11px', color: t.text.muted }}>{p.accounts.name}</div>}
+                    </div>
+                  </Link>
+                ))}
+                {searchResults.orders?.map((o: any) => (
+                  <Link key={o.id} href={`/orders`} onClick={() => setSearchOpen(false)} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 14px', textDecoration: 'none',
+                    borderBottom: `1px solid ${t.border.subtle}`,
+                  }}>
+                    <Package size={14} color={t.gold} />
+                    <div>
+                      <div style={{ fontSize: '13px', color: t.text.primary }}>{o.po_number}</div>
+                      {o.deliver_to_name && <div style={{ fontSize: '11px', color: t.text.muted }}>{o.deliver_to_name}</div>}
+                    </div>
+                  </Link>
+                ))}
+                {searchResults.visits?.map((v: any) => (
+                  <Link key={v.id} href={v.accounts?.id ? `/accounts/${v.accounts.id}` : '/accounts'} onClick={() => setSearchOpen(false)} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 14px', textDecoration: 'none',
+                    borderBottom: `1px solid ${t.border.subtle}`,
+                  }}>
+                    <MapPin size={14} color={t.gold} />
+                    <div>
+                      <div style={{ fontSize: '13px', color: t.text.primary }}>{v.accounts?.name || 'Visit'}</div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }}>{v.notes}</div>
+                    </div>
+                  </Link>
+                ))}
+                {!searchResults.accounts?.length && !searchResults.contacts?.length && !searchResults.placements?.length && !searchResults.orders?.length && !searchResults.visits?.length && (
                   <div style={{ padding: '16px 14px', fontSize: '13px', color: t.text.muted }}>No results found</div>
                 )}
               </div>
@@ -200,6 +248,35 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         </div>
       )}
 
+      {/* Visit Streak + Team Momentum */}
+      {streak !== null && (streak.streak > 0 || streak.teamWeekVisits > 0) && (
+        <div style={{ ...card, marginBottom: '20px', padding: '12px 18px', display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+          {streak.streak > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🔥</span>
+              <div>
+                <span style={{ fontSize: '15px', fontWeight: '700', color: t.gold }}>{streak.streak}-day streak</span>
+                <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '6px' }}>keep it up</span>
+              </div>
+            </div>
+          )}
+          {streak.teamWeekVisits > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TrendingUp size={16} color={t.status.success} />
+              <span style={{ fontSize: '13px', color: t.text.secondary }}>
+                <span style={{ fontWeight: '700', color: t.status.success }}>{streak.teamWeekVisits}</span> team visits this week
+              </span>
+            </div>
+          )}
+          {streak.bestDay && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Star size={14} color={t.text.muted} />
+              <span style={{ fontSize: '12px', color: t.text.muted }}>Best day: <span style={{ color: t.text.secondary, fontWeight: '600' }}>{streak.bestDay}</span></span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main 3-column grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
 
@@ -237,7 +314,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
           <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: t.bg.elevated }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Clock size={14} color={t.status.warning} />
-              <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Follow-Ups Due</span>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Follow-Up Queue</span>
               {followups.length > 0 && <span style={{ fontSize: '10px', backgroundColor: 'rgba(234,179,8,0.15)', color: t.status.warning, borderRadius: '10px', padding: '2px 7px', fontWeight: '700' }}>{followups.length}</span>}
             </div>
             <Link href="/accounts" style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>View all <ChevronRight size={11} /></Link>
@@ -247,24 +324,47 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
               <EmptyState icon={<CheckSquare size={28} />} title="No follow-ups pending" subtitle="You're all caught up!" />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {followups.slice(0, 8).map(v => (
-                  <Link key={v.id} href={`/accounts/${v.account_id}`} style={{
-                    backgroundColor: t.bg.card, border: `1px solid ${t.border.subtle}`, borderRadius: '8px',
-                    textDecoration: 'none', display: 'block', padding: '10px 14px',
-                    transition: 'border-color 150ms ease',
+                {[...followups]
+                  .map(v => {
+                    const days = daysAgoMT(v.visited_at) ?? 0
+                    const statusScore = v.status === 'Will Order Soon' ? 40 : v.status === 'Needs Follow Up' ? 30 : 0
+                    const weeksScore = Math.floor(days / 7) * 20
+                    const placementScore = activePlacementAccountIds.has(v.account_id) ? 10 : 0
+                    const freqScore = v.accounts?.visit_frequency_days && v.accounts.visit_frequency_days <= 14 ? 10 : 0
+                    return { ...v, _urgency: statusScore + weeksScore + placementScore + freqScore }
+                  })
+                  .sort((a, b) => b._urgency - a._urgency)
+                  .slice(0, 8)
+                  .map(v => (
+                  <div key={v.id} style={{
+                    backgroundColor: t.bg.elevated, border: `1px solid ${t.border.subtle}`, borderRadius: '8px',
+                    padding: '10px 12px',
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {v.accounts?.name}
-                        </div>
+                        <Link href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {v.accounts?.name}
+                          </div>
+                        </Link>
                         <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
                           {relativeTimeStr(v.visited_at)}
                         </div>
                       </div>
-                      <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '10px', fontWeight: '700', color: v._urgency >= 60 ? t.status.danger : v._urgency >= 40 ? t.status.warning : t.text.muted, backgroundColor: v._urgency >= 60 ? 'rgba(224,82,82,0.12)' : v._urgency >= 40 ? 'rgba(234,179,8,0.12)' : t.bg.card, padding: '2px 6px', borderRadius: '6px' }}>
+                          {v._urgency}
+                        </span>
+                        <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                      </div>
                     </div>
-                  </Link>
+                    <button
+                      onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
+                      style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', width: '100%' }}
+                    >
+                      Log Follow-Up
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -330,9 +430,10 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
       <VisitLogModal
         isOpen={visitModal}
-        onClose={() => setVisitModal(false)}
+        onClose={() => { setVisitModal(false); setFollowUpAccountId(undefined) }}
         onSuccess={load}
         userId={profile.id}
+        defaultAccountId={followUpAccountId}
       />
     </div>
   )

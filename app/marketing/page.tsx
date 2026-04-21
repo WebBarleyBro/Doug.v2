@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
+import { CardSkeleton } from '../components/LoadingSkeleton'
 import {
   getCampaigns, createCampaign, updateCampaign, getAgencyPipeline, upsertPipelineStage,
   toggleMilestone, createMilestone, getEmailList, getClients,
@@ -257,7 +258,7 @@ export default function MarketingPage() {
 
         {/* ── Campaigns Tab ── */}
         {tab === 'campaigns' && (
-          loading ? null : campaigns.length === 0 ? (
+          loading ? <CardSkeleton count={4} /> : campaigns.length === 0 ? (
             <EmptyState icon={<Megaphone size={36} />} title="No campaigns yet"
               subtitle="Track email blasts, events, social pushes, and in-store activations"
               action={<button onClick={() => setShowCreate(true)} style={btnPrimary}><Plus size={14} /> New Campaign</button>}

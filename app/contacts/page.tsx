@@ -5,6 +5,7 @@ import Link from 'next/link'
 import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
 import ConfirmModal from '../components/ConfirmModal'
+import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getContacts, createContact, updateContact, deleteContact, getAccounts } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import type { Contact } from '../lib/types'
@@ -184,7 +185,7 @@ export default function ContactsPage() {
           })}
         </div>
 
-        {loading ? null : filtered.length === 0 ? (
+        {loading ? <CardSkeleton count={5} /> : filtered.length === 0 ? (
           <EmptyState icon={<Phone size={36} />} title="No contacts found"
             subtitle={search || categoryFilter !== 'all' ? 'Try a different filter' : 'Add contacts from account pages or click Add Contact'}
             action={<button onClick={openAdd} style={btnPrimary}><Plus size={14} /> Add Contact</button>}
