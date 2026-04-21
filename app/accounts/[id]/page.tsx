@@ -246,7 +246,6 @@ export default function AccountDetailPage() {
         notes: editForm.notes || undefined,
       })
       await updateAccountClients(id, editForm.client_slugs)
-      invalidate('accounts:all')
       setShowEdit(false)
       reloadAll()
     } catch (e: any) {

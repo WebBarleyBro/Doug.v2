@@ -11,25 +11,10 @@ import StatCard from '../components/StatCard'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
 import { getOrders, getClients, getCommissionTrend } from '../lib/data'
 import { t, card, badge } from '../lib/theme'
-import { formatCurrency, formatShortDateMT, startOfMonthMT } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client } from '../lib/types'
 
-// Compute total from all possible column names (old CRM = "total", new = "total_amount")
-function resolveTotal(o: any): number {
-  const items: any[] = o.po_line_items || []
-  if (items.length > 0) {
-    const fromItems = items.reduce((sum, li) => {
-      const lineTotal = Number(li.total || 0)
-      if (lineTotal > 0) return sum + lineTotal
-      const price = Number(li.unit_price || li.price || 0)
-      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 1) || 1
-      return sum + price * qty
-    }, 0)
-    if (fromItems > 0) return fromItems
-  }
-  return Number(o.total_amount || (o as any).total || 0)
-}
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
@@ -103,7 +88,8 @@ export default function FinancePage() {
   const monthOrders = orders.filter(o => o.created_at >= monthStart)
   const thisMonthCommission = monthOrders.reduce((s, o) => s + resolveCommission(o), 0)
   const thisMonthRevenue = monthOrders.reduce((s, o) => s + resolveTotal(o), 0)
-  const ytdStart = new Date(new Date().getFullYear(), 0, 1).toISOString()
+  const mtYear = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).slice(0, 4)
+  const ytdStart = `${mtYear}-01-01`
   const ytdOrders = orders.filter(o => o.created_at >= ytdStart)
   const ytdCommission = ytdOrders.reduce((s, o) => s + resolveCommission(o), 0)
   const ytdRevenue = ytdOrders.reduce((s, o) => s + resolveTotal(o), 0)

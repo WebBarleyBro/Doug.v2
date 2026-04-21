@@ -6,7 +6,7 @@ import { getPortalData, submitClientSuggestion, getCampaignExpenses, getCampaign
 import { t, card, badge, inputStyle, labelStyle } from '../../lib/theme'
 import { formatShortDateMT, relativeTimeStr, startOfMonthMT, formatCurrency, daysAgoMT } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { MapPin, Package, ShoppingCart, TrendingUp, LogOut, ChevronDown, ChevronUp, CheckCircle, Clock, AlertCircle, Plus, Send, Building2, User, ExternalLink, Upload } from 'lucide-react'
+import { MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Plus, Send, Building2, User, ExternalLink, Upload, FileDown } from 'lucide-react'
 import { clientLogoUrl } from '../../lib/constants'
 
 const SUGGESTION_REASONS = [
@@ -52,6 +52,8 @@ export default function ClientPortalPage() {
   const [submitted, setSubmitted] = useState(false)
   const [suggestErr, setSuggestErr] = useState('')
 
+  const [showInquiries, setShowInquiries] = useState(false)
+
   // Campaign state
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
   const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
@@ -69,8 +71,11 @@ export default function ClientPortalPage() {
     const sb = getSupabase()
     sb.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { setError('Not authorized'); setLoading(false); return }
-      const { data: profile } = await sb.from('user_profiles').select('role').eq('id', user.id).single()
+      const { data: profile } = await sb.from('user_profiles').select('role, client_slug').eq('id', user.id).single()
       if (profile?.role !== 'portal' && profile?.role !== 'owner') {
+        setError('Access denied'); setLoading(false); return
+      }
+      if (profile?.role === 'portal' && profile?.client_slug && profile.client_slug !== slug) {
         setError('Access denied'); setLoading(false); return
       }
       try {
@@ -136,8 +141,6 @@ export default function ClientPortalPage() {
   const activePlacements = placements.filter((p: any) => !p.lost_at)
   const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-  const confirmRate = funnel.inquiries > 0 ? Math.round((funnel.confirmed / funnel.inquiries) * 100) : 0
-
   const pad = isMobile ? '16px' : '32px 40px'
 
   return (
@@ -178,38 +181,106 @@ export default function ClientPortalPage() {
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
           <StatTile label="Visits This Month" value={monthVisits} color={accent} icon={<MapPin size={18} />} sub={`${visits.length} in 90 days`} />
           <StatTile label="Active Placements" value={activePlacements.length} color={t.status.success} icon={<Package size={18} />} sub={`${placements.length} total tracked`} />
-          <StatTile label="Inquiries Sent" value={funnel.inquiries} color={t.status.info} icon={<Send size={18} />} sub={confirmRate > 0 ? `${confirmRate}% confirmed` : 'to distributors'} />
+          <StatTile label="Inquiries Sent" value={funnel.inquiries} color={t.status.info} icon={<Send size={18} />} sub="to distributors" />
           <StatTile label="Events / Tastings" value={events.length} color={t.status.warning} icon={<TrendingUp size={18} />} sub="in last 90 days" />
         </div>
 
-        <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '18px 16px' : '22px 24px' }}>
-          <SectionLabel>Distributor Activity — Last 90 Days</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px', marginBottom: funnel.pending > 0 ? '14px' : 0 }}>
-            {[
-              { label: 'Inquiries Sent', value: funnel.inquiries, color: t.status.info, icon: <Send size={14} /> },
-              { label: 'Confirmed', value: funnel.confirmed, color: t.status.success, icon: <CheckCircle size={14} /> },
-              { label: 'Pending', value: funnel.pending, color: t.status.warning, icon: <Clock size={14} /> },
-              { label: 'Confirm Rate', value: confirmRate > 0 ? `${confirmRate}%` : '—', color: t.text.secondary, icon: <TrendingUp size={14} /> },
-            ].map(s => (
-              <div key={s.label} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px', border: `1px solid ${t.border.subtle}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <span style={{ color: s.color, opacity: 0.8 }}>{s.icon}</span>
-                  <span style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</span>
+        {distOrders.length > 0 && (
+          <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '18px 16px' : '22px 24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+              <div>
+                <SectionLabel>Distributor Inquiries — Last 90 Days</SectionLabel>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '-6px' }}>
+                  <span style={{ fontSize: '36px', fontWeight: '800', color: t.status.info, letterSpacing: '-0.03em', lineHeight: 1 }}>{funnel.inquiries}</span>
+                  <span style={{ fontSize: '13px', color: t.text.muted }}>
+                    {funnel.inquiries === 1 ? 'inquiry sent' : 'inquiries sent'} to distributors on your behalf
+                  </span>
                 </div>
-                <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '6px', lineHeight: 1.5 }}>
+                  Each inquiry represents an account that expressed interest. Fulfillment is between the distributor and supplier — we send the inquiry so there&apos;s a record of the interest we generated.
+                </div>
               </div>
-            ))}
-          </div>
-          {funnel.pending > 0 && (
-            <div style={{ padding: '10px 14px', backgroundColor: t.status.warningBg, border: `1px solid rgba(234,179,8,0.2)`, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={14} color={t.status.warning} />
-              <span style={{ fontSize: '12px', color: t.status.warning, fontWeight: '600' }}>
-                {funnel.pending} {funnel.pending === 1 ? 'inquiry' : 'inquiries'} awaiting distributor confirmation
-              </span>
-              <span style={{ fontSize: '12px', color: t.text.muted }}>— our team is following up</span>
             </div>
-          )}
-        </div>
+
+            <button
+              onClick={() => setShowInquiries(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '8px 14px', color: t.text.secondary, fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginBottom: showInquiries ? '16px' : 0 }}
+            >
+              {showInquiries ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {showInquiries ? 'Hide' : 'View'} full inquiry log ({distOrders.length})
+            </button>
+
+            {showInquiries && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '1fr 1fr auto', gap: '0', borderBottom: `1px solid ${t.border.default}`, paddingBottom: '6px', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Account</div>
+                    {!isMobile && <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Distributor Rep</div>}
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Date Sent</div>
+                  </div>
+                  {distOrders.map((o: any, i: number) => (
+                    <div key={o.id} style={{
+                      display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '1fr 1fr auto',
+                      gap: '0', padding: '9px 0',
+                      borderBottom: i < distOrders.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
+                      alignItems: 'center',
+                    }}>
+                      <div style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
+                        {o.deliver_to_name || '—'}
+                      </div>
+                      {!isMobile && (
+                        <div style={{ fontSize: '12px', color: t.text.muted, paddingRight: '12px' }}>
+                          {o.distributor_rep_name || '—'}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '12px', color: t.text.muted, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {formatShortDateMT(o.created_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => {
+                      const rows = distOrders.map((o: any) => `
+                        <tr>
+                          <td>${(o.deliver_to_name || '—').replace(/</g, '&lt;')}</td>
+                          <td>${(o.distributor_rep_name || '—').replace(/</g, '&lt;')}</td>
+                          <td>${formatShortDateMT(o.created_at)}</td>
+                        </tr>`).join('')
+                      const html = `<!DOCTYPE html><html><head><title>Distributor Inquiries — ${(client?.name || '').replace(/</g, '&lt;')}</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:48px 56px;color:#111;max-width:760px;margin:0 auto}
+  h1{font-size:22px;font-weight:800;margin:0 0 4px}
+  .meta{color:#666;font-size:13px;margin-bottom:8px}
+  .note{font-size:12px;color:#888;margin-bottom:28px;line-height:1.5;border-left:3px solid #ddd;padding-left:12px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:8px 12px;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;color:#666;letter-spacing:.06em}
+  td{padding:10px 12px;border-bottom:1px solid #eee;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  @media print{body{padding:24px}}
+</style></head><body>
+  <h1>Distributor Inquiries — ${(client?.name || '').replace(/</g, '&lt;')}</h1>
+  <div class="meta">Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} · Barley Bros Field Report</div>
+  <div class="note">Each inquiry below represents an account where interest was expressed and Barley Bros sent a formal request to the distributor. Fulfillment is between the distributor and supplier.</div>
+  <table>
+    <thead><tr><th>Account</th><th>Distributor Rep</th><th>Date Sent</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body></html>`
+                      const w = window.open('', '_blank')
+                      if (w) { w.document.write(html); w.document.close(); w.print() }
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: accent, backgroundColor: accent + '18', border: `1px solid ${accent}44`, cursor: 'pointer' }}
+                  >
+                    <FileDown size={13} /> Save as PDF
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {visitTrend.some((w: any) => w.visits > 0) && (
           <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>
@@ -231,55 +302,6 @@ export default function ClientPortalPage() {
           </div>
         )}
 
-        {distOrders.length > 0 && (
-          <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>
-            <SectionLabel>Distributor Inquiry Pipeline</SectionLabel>
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-              {[
-                { label: 'Sent', value: funnel.inquiries, color: t.status.info },
-                { label: 'Confirmed', value: funnel.confirmed, color: t.status.success },
-                { label: 'Pending', value: funnel.pending, color: t.status.warning },
-                { label: 'Rate', value: `${confirmRate}%`, color: t.text.secondary },
-              ].map(s => (
-                <div key={s.label} style={{ flex: '1 1 80px', backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '10px 14px', border: `1px solid ${t.border.subtle}` }}>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              {distOrders.slice(0, 10).map((o: any, i: number) => {
-                const isPending = o.status === 'sent'
-                const isConfirmed = o.status === 'fulfilled'
-                return (
-                  <div key={o.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0',
-                    borderBottom: i < distOrders.slice(0, 10).length - 1 ? `1px solid ${t.border.subtle}` : 'none'
-                  }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: isConfirmed ? t.status.success : isPending ? t.status.warning : t.text.muted, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {o.deliver_to_name}
-                      </div>
-                      <div style={{ fontSize: '11px', color: t.text.muted }}>
-                        {o.distributor_rep_name ? `via ${o.distributor_rep_name}` : 'Distributor inquiry'} · {formatShortDateMT(o.created_at)}
-                      </div>
-                    </div>
-                    <span style={{
-                      fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px',
-                      backgroundColor: isConfirmed ? t.status.successBg : isPending ? t.status.warningBg : t.bg.elevated,
-                      color: isConfirmed ? t.status.success : isPending ? t.status.warning : t.text.muted,
-                      border: `1px solid ${isConfirmed ? t.status.success + '44' : isPending ? t.status.warning + '44' : t.border.subtle}`,
-                      textTransform: 'uppercase' as const, letterSpacing: '0.04em', flexShrink: 0,
-                    }}>
-                      {isConfirmed ? 'Confirmed' : isPending ? 'Pending' : o.status}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
         {activePlacements.length > 0 && (
           <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>

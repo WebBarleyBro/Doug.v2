@@ -135,12 +135,17 @@ export async function updateAccount(id: string, updates: Partial<Account>) {
   const sb = getSupabase()
   const { error } = await sb.from('accounts').update(updates).eq('id', id)
   if (error) throw error
+  invalidate('accounts:all')
+  invalidate('overdue-accounts')
 }
 
 export async function deleteAccount(id: string): Promise<void> {
   const sb = getSupabase()
   const { error } = await sb.from('accounts').delete().eq('id', id)
   if (error) throw error
+  invalidate('accounts:all')
+  invalidate('overdue-accounts')
+  invalidatePrefix('dashboard-stats')
 }
 
 export async function updateAccountClients(accountId: string, clientSlugs: string[]): Promise<void> {
@@ -926,25 +931,30 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
     ])
 
-    // Use getOrders() — same function that powers the orders page (proven to return commission_amount)
-    const [allOrders, clients] = await Promise.all([getOrders(), getClients()])
+    // Only count sent/fulfilled orders for commission — drafts and cancelled don't earn commission
+    const [sentOrders, fulfilledOrders, clients] = await Promise.all([
+      getOrders({ status: 'sent' }),
+      getOrders({ status: 'fulfilled' }),
+      getClients(),
+    ])
+    const billedOrders = [...sentOrders, ...fulfilledOrders]
 
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
     function resolveComm(o: any): number {
       const stored = Number(o.commission_amount) || 0
       if (stored > 0) return stored
-      // fallback: compute from line items
       const lineTotal = (o.po_line_items || []).reduce((s: number, li: any) => {
-        const t = Number(li.total || 0) || Number(li.unit_price || li.price || 0) * (Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1)
+        const t = Number(li.total || 0) || Number(li.unit_price || li.price || 0) * ((Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0)) || 1)
         return s + t
       }, 0)
       const base = Number(o.total_amount) || lineTotal
       return base * (rateMap[o.client_slug] || 0)
     }
 
-    const thisMonth = new Date().toISOString().slice(0, 7) // "2026-04"
-    const commissionThisMonth = allOrders
+    const mtNow = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+    const thisMonth = mtNow.slice(0, 7) // "2026-04"
+    const commissionThisMonth = billedOrders
       .filter(o => (o.created_at || '').slice(0, 7) === thisMonth)
       .reduce((s, o) => s + resolveComm(o), 0)
 
@@ -954,7 +964,7 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       activePlacements: activePlacements.count || 0,
       openTasks: openTasks.count || 0,
       commissionThisMonth,
-      commissionYTD: allOrders
+      commissionYTD: billedOrders
         .filter(o => (o.created_at || '').startsWith(thisMonth.slice(0, 4)))
         .reduce((s, o) => s + resolveComm(o), 0),
     }
@@ -974,7 +984,8 @@ export function getVisitStreak(userId: string) {
     // Build set of unique MT calendar days user visited
     const visitedDays = new Set((myVisits || []).map((v: any) => {
       const d = v.visited_at
-      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') ? new Date(d + 'Z') : new Date(d)
+      // Handle Supabase timestamps without timezone info (treat as UTC)
+      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') && !d.includes('-', 10) ? new Date(d + 'Z') : new Date(d)
       return date.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
     }))
 
@@ -1005,8 +1016,8 @@ export function getVisitStreak(userId: string) {
     const dayCount: Record<number, number> = {}
     ;(myVisits || []).forEach((v: any) => {
       const d = v.visited_at
-      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') ? new Date(d + 'Z') : new Date(d)
-      const dow = date.getDay()
+      const date = d.length > 10 && !d.endsWith('Z') && !d.includes('+') && !d.includes('-', 10) ? new Date(d + 'Z') : new Date(d)
+      const dow = new Date(date.toLocaleDateString('en-CA', { timeZone: 'America/Denver' }) + 'T12:00:00Z').getUTCDay()
       dayCount[dow] = (dayCount[dow] || 0) + 1
     })
     const bestDow = Object.entries(dayCount).sort(([, a], [, b]) => b - a)[0]
@@ -1025,9 +1036,8 @@ export function getTodaySchedule(userId: string) {
   return cached(`today-schedule:${userId}`, 30_000, async () => {
     const sb = getSupabase()
     const today = todayMT()
-    // Parse as local time (browser = MT) so midnight/23:59 are MT boundaries, not UTC
-    const todayStart = new Date(today + 'T00:00:00').toISOString()
-    const todayEnd = new Date(today + 'T23:59:59').toISOString()
+    const todayStart = nDaysAgoMT(0) // MT midnight of today
+    const todayEnd = new Date(new Date(todayStart).getTime() + 86399000).toISOString()
 
     const [events, milestones, tasks] = await Promise.all([
       sb.from('events')
@@ -1239,7 +1249,7 @@ export async function getPortalData(clientSlug: string) {
     sb.from('campaigns')
       .select('*, campaign_milestones(*)')
       .eq('client_slug', clientSlug)
-      .in('status', ['active', 'draft'])
+      .in('status', ['active', 'paused', 'draft'])
       .order('created_at', { ascending: false }),
   ])
 

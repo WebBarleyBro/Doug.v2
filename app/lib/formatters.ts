@@ -1,5 +1,17 @@
 const TZ = 'America/Denver'
 
+// Given an MT date string "YYYY-MM-DD", return the UTC ISO string of MT midnight.
+// MT is always UTC-6 (MDT) or UTC-7 (MST); this handles DST automatically.
+function mtMidnightUTC(mtDateStr: string): string {
+  for (const h of [6, 7]) {
+    const candidate = new Date(`${mtDateStr}T${String(h).padStart(2, '0')}:00:00.000Z`)
+    if (candidate.toLocaleDateString('en-CA', { timeZone: TZ }) === mtDateStr) {
+      return candidate.toISOString()
+    }
+  }
+  return `${mtDateStr}T07:00:00.000Z` // MST fallback
+}
+
 // Supabase returns timestamps without 'Z' but they ARE UTC. Without Z, JS parses
 // them as local time — which breaks all date math. This fixes that.
 function parseDB(dateStr: string): Date {
@@ -89,27 +101,34 @@ export function formatNumber(n: number): string {
 }
 
 export function startOfMonthMT(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+  const [y, m] = today.split('-')
+  return mtMidnightUTC(`${y}-${m}-01`)
 }
 
 export function endOfMonthMT(): string {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).toISOString()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+  const [y, m] = today.split('-').map(Number)
+  const lastDay = new Date(y, m, 0).getDate()
+  const lastDayStr = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  return new Date(new Date(mtMidnightUTC(lastDayStr)).getTime() + 86399000).toISOString()
 }
 
 export function startOfWeekMT(): string {
-  const d = new Date()
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-  return new Date(d.setDate(diff)).toISOString()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+  const noonUTC = new Date(`${today}T12:00:00Z`)
+  const dowStr = noonUTC.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'long' })
+  const dowMap: Record<string, number> = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 }
+  noonUTC.setUTCDate(noonUTC.getUTCDate() - (dowMap[dowStr] ?? 0))
+  const monDate = noonUTC.toLocaleDateString('en-CA', { timeZone: TZ })
+  return mtMidnightUTC(monDate)
 }
 
 export function nDaysAgoMT(n: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+  const d = new Date(`${today}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - n)
+  return mtMidnightUTC(d.toLocaleDateString('en-CA', { timeZone: TZ }))
 }
 
 export function isFutureDate(dateStr: string): boolean {
