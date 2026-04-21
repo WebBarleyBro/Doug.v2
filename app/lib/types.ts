@@ -49,6 +49,11 @@ export interface Account {
   visit_frequency_days: number
   last_visited?: string
   notes?: string
+  website?: string
+  instagram?: string
+  best_days?: string[]
+  best_time?: string
+  priority?: string
   created_at: string
   // joined
   account_clients?: AccountClient[]

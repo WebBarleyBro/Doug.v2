@@ -1,7 +1,7 @@
 'use client'
 import { getSupabase } from './supabase'
 import { cached, invalidate, invalidatePrefix } from './cache'
-import { startOfMonthMT, endOfMonthMT, nDaysAgoMT, todayMT } from './formatters'
+import { startOfMonthMT, endOfMonthMT, nDaysAgoMT, todayMT, daysAgoMT } from './formatters'
 import type {
   Account, Client, Visit, Placement, PurchaseOrder, POLineItem,
   Contact, Task, Event, Campaign, CampaignMilestone, Product,
@@ -93,6 +93,12 @@ export async function createAccount(account: {
   account_type: string
   visit_frequency_days?: number
   client_slugs?: string[]
+  notes?: string
+  website?: string
+  instagram?: string
+  best_days?: string[]
+  best_time?: string
+  priority?: string
 }): Promise<Account> {
   const sb = getSupabase()
   const { data, error } = await sb
@@ -103,6 +109,12 @@ export async function createAccount(account: {
       phone: account.phone,
       account_type: account.account_type,
       visit_frequency_days: account.visit_frequency_days || 21,
+      notes: account.notes || null,
+      website: account.website || null,
+      instagram: account.instagram || null,
+      best_days: account.best_days?.length ? account.best_days : [],
+      best_time: account.best_time || 'anytime',
+      priority: account.priority || 'B',
     })
     .select()
     .single()
@@ -150,13 +162,11 @@ export function getOverdueAccounts(): Promise<Account[]> {
       .order('last_visited', { ascending: true, nullsFirst: true })
       .limit(100)
     if (error) throw error
-    const today = new Date()
     return (data || []).filter((a: any) => {
-      if (!a.last_visited) return false
-      const lastVisit = new Date(a.last_visited)
-      const daysSince = Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24))
+      if (!a.last_visited) return true  // never visited = overdue
+      const days = daysAgoMT(a.last_visited)
       const freq = a.visit_frequency_days || 21
-      return daysSince >= freq
+      return days !== null && days >= freq
     }).slice(0, 20)
   })
 }
@@ -717,11 +727,16 @@ export async function getProducts(clientSlug: string): Promise<Product[]> {
     .order('name')
   if (error) throw error
   // Normalize price across possible column names
-  return (data || []).map((p: any) => ({
-    ...p,
-    price: Number(p.price ?? p.price_per_case ?? p.case_price ?? p.price_per_bottle ?? p.bottle_price ?? p.unit_price ?? 0) || undefined,
-    bottle_price: Number(p.bottle_price ?? p.price_per_bottle ?? p.unit_price ?? 0) || undefined,
-  }))
+  return (data || []).map((p: any) => {
+    // unit_price = case price; bottle_price = per-bottle price (different columns)
+    const casePrice = Number(p.price ?? p.price_per_case ?? p.case_price ?? p.unit_price ?? 0) || undefined
+    const btlPrice = Number(p.bottle_price ?? p.price_per_bottle ?? 0) || undefined
+    return {
+      ...p,
+      price: casePrice,
+      bottle_price: btlPrice ?? (casePrice && p.case_count ? casePrice / p.case_count : undefined),
+    }
+  })
 }
 
 export async function createProduct(product: Omit<Product, 'id'>): Promise<Product> {
@@ -904,8 +919,9 @@ export function getTodaySchedule(userId: string) {
   return cached(`today-schedule:${userId}`, 30_000, async () => {
     const sb = getSupabase()
     const today = todayMT()
-    const todayStart = today + 'T00:00:00.000Z'
-    const todayEnd = today + 'T23:59:59.999Z'
+    // Parse as local time (browser = MT) so midnight/23:59 are MT boundaries, not UTC
+    const todayStart = new Date(today + 'T00:00:00').toISOString()
+    const todayEnd = new Date(today + 'T23:59:59').toISOString()
 
     const [events, milestones, tasks] = await Promise.all([
       sb.from('events')

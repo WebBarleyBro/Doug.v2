@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   MapPin, Phone, Plus, ChevronLeft, Edit2, Trash2,
-  Package, ShoppingCart, Users, Activity, X,
+  Package, ShoppingCart, Users, Activity, X, Globe, Instagram,
 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
 import VisitLogModal from '../../components/VisitLogModal'
@@ -88,6 +88,12 @@ export default function AccountDetailPage() {
     account_type: 'on_premise',
     visit_frequency_days: 21,
     client_slugs: [] as string[],
+    priority: 'B',
+    best_days: [] as string[],
+    best_time: 'anytime',
+    website: '',
+    instagram: '',
+    notes: '',
   })
   const [editSaving, setEditSaving] = useState(false)
   const [editErr, setEditErr] = useState('')
@@ -225,6 +231,12 @@ export default function AccountDetailPage() {
       account_type: account.account_type || 'on_premise',
       visit_frequency_days: account.visit_frequency_days || 21,
       client_slugs: currentSlugs,
+      priority: account.priority || 'B',
+      best_days: account.best_days || [],
+      best_time: account.best_time || 'anytime',
+      website: account.website || '',
+      instagram: account.instagram || '',
+      notes: account.notes || '',
     })
     setEditErr('')
     setShowEdit(true)
@@ -240,6 +252,12 @@ export default function AccountDetailPage() {
         phone: editForm.phone || undefined,
         account_type: editForm.account_type as any,
         visit_frequency_days: editForm.visit_frequency_days,
+        priority: editForm.priority,
+        best_days: editForm.best_days,
+        best_time: editForm.best_time,
+        website: editForm.website || undefined,
+        instagram: editForm.instagram || undefined,
+        notes: editForm.notes || undefined,
       })
       await updateAccountClients(id, editForm.client_slugs)
       invalidate('accounts:all')
@@ -324,13 +342,31 @@ export default function AccountDetailPage() {
         <div style={{ ...card, marginBottom: '20px', borderLeft: `3px solid ${overdueClr}` }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
                   {account.name}
                 </h1>
                 <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: t.status.neutralBg, color: t.text.muted, textTransform: 'capitalize' }}>
                   {account.account_type?.replace('_', '-')}
                 </span>
+                {account.priority && account.priority !== 'B' && (
+                  <span style={{
+                    fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px',
+                    backgroundColor: account.priority === 'A' ? `${t.status.danger}22` : `${t.text.muted}22`,
+                    color: account.priority === 'A' ? t.status.danger : t.text.muted,
+                    border: `1px solid ${account.priority === 'A' ? t.status.danger + '44' : t.text.muted + '44'}`,
+                  }}>
+                    Priority {account.priority}
+                  </span>
+                )}
+                {account.priority === 'B' && (
+                  <span style={{
+                    fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px',
+                    backgroundColor: t.goldDim, color: t.gold, border: `1px solid ${t.border.gold}`,
+                  }}>
+                    Priority B
+                  </span>
+                )}
               </div>
               {account.address && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
@@ -345,6 +381,32 @@ export default function AccountDetailPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                   <Phone size={13} color={t.text.muted} />
                   <a href={`tel:${account.phone}`} style={{ fontSize: '13px', color: t.text.muted, textDecoration: 'none' }}>{account.phone}</a>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                {account.website && (
+                  <a href={account.website.startsWith('http') ? account.website : `https://${account.website}`} target="_blank" rel="noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: t.text.muted, textDecoration: 'none' }}>
+                    <Globe size={12} /> {account.website.replace(/^https?:\/\//, '')}
+                  </a>
+                )}
+                {account.instagram && (
+                  <a href={`https://instagram.com/${account.instagram.replace('@', '')}`} target="_blank" rel="noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: t.text.muted, textDecoration: 'none' }}>
+                    <Instagram size={12} /> @{account.instagram.replace('@', '')}
+                  </a>
+                )}
+              </div>
+              {(account.best_days?.length > 0 || (account.best_time && account.best_time !== 'anytime')) && (
+                <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '4px' }}>
+                  Best time to visit:
+                  {account.best_days?.length > 0 && ` ${account.best_days.join(', ')}`}
+                  {account.best_time && account.best_time !== 'anytime' && ` · ${account.best_time}`}
+                </div>
+              )}
+              {account.notes && (
+                <div style={{ fontSize: '12px', color: t.text.secondary, fontStyle: 'italic', marginBottom: '4px', lineHeight: 1.5 }}>
+                  {account.notes}
                 </div>
               )}
               <div style={{ fontSize: '12px', color: overdueClr, marginTop: '6px', fontWeight: '600' }}>
@@ -672,6 +734,82 @@ export default function AccountDetailPage() {
                     )
                   })}
                 </div>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label style={labelStyle}>Priority</label>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                  {(['A', 'B', 'C'] as const).map(p => {
+                    const pColor = p === 'A' ? t.status.danger : p === 'B' ? t.gold : t.text.muted
+                    const selected = editForm.priority === p
+                    return (
+                      <button key={p} type="button" onClick={() => setEditForm(f => ({ ...f, priority: p }))} style={{
+                        padding: '5px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                        border: `1px solid ${selected ? pColor : t.border.default}`,
+                        backgroundColor: selected ? `${pColor}22` : 'transparent',
+                        color: selected ? pColor : t.text.secondary,
+                      }}>{p}</button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Best days */}
+              <div>
+                <label style={labelStyle}>Best Days to Visit</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '6px' }}>
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                    const sel = editForm.best_days.includes(day)
+                    return (
+                      <button key={day} type="button" onClick={() => setEditForm(f => ({
+                        ...f,
+                        best_days: sel ? f.best_days.filter(d => d !== day) : [...f.best_days, day],
+                      }))} style={{
+                        padding: '4px 10px', borderRadius: '7px', fontSize: '12px', cursor: 'pointer',
+                        border: `1px solid ${sel ? t.gold : t.border.default}`,
+                        backgroundColor: sel ? t.goldDim : 'transparent',
+                        color: sel ? t.gold : t.text.secondary,
+                      }}>{day}</button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Best time */}
+              <div>
+                <label style={labelStyle}>Best Time</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '6px' }}>
+                  {['morning', 'afternoon', 'evening', 'anytime'].map(opt => {
+                    const sel = editForm.best_time === opt
+                    return (
+                      <button key={opt} type="button" onClick={() => setEditForm(f => ({ ...f, best_time: opt }))} style={{
+                        padding: '4px 12px', borderRadius: '7px', fontSize: '12px', cursor: 'pointer', textTransform: 'capitalize',
+                        border: `1px solid ${sel ? t.gold : t.border.default}`,
+                        backgroundColor: sel ? t.goldDim : 'transparent',
+                        color: sel ? t.gold : t.text.secondary,
+                      }}>{opt}</button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Website + Instagram */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Website</label>
+                  <input type="text" value={editForm.website} onChange={e => setEditForm(f => ({ ...f, website: e.target.value }))} placeholder="example.com" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Instagram</label>
+                  <input type="text" value={editForm.instagram} onChange={e => setEditForm(f => ({ ...f, instagram: e.target.value }))} placeholder="@handle" style={inputStyle} />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={labelStyle}>Notes</label>
+                <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any useful notes about this account..." rows={3} style={{ ...inputStyle, resize: 'vertical' as const }} />
               </div>
             </div>
 

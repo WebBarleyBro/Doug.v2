@@ -1,8 +1,17 @@
 const TZ = 'America/Denver'
 
+// Supabase returns timestamps without 'Z' but they ARE UTC. Without Z, JS parses
+// them as local time — which breaks all date math. This fixes that.
+function parseDB(dateStr: string): Date {
+  if (dateStr.length > 10 && !dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+    return new Date(dateStr + 'Z')
+  }
+  return new Date(dateStr)
+}
+
 export function formatDateMT(dateStr: string | null | undefined, opts: Intl.DateTimeFormatOptions = {}): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return parseDB(dateStr).toLocaleDateString('en-US', {
     timeZone: TZ,
     month: 'short',
     day: 'numeric',
@@ -13,7 +22,7 @@ export function formatDateMT(dateStr: string | null | undefined, opts: Intl.Date
 
 export function formatShortDateMT(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return parseDB(dateStr).toLocaleDateString('en-US', {
     timeZone: TZ,
     month: 'short',
     day: 'numeric',
@@ -22,7 +31,7 @@ export function formatShortDateMT(dateStr: string | null | undefined): string {
 
 export function formatMonthYear(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return parseDB(dateStr).toLocaleDateString('en-US', {
     timeZone: TZ,
     month: 'long',
     year: 'numeric',
@@ -31,9 +40,14 @@ export function formatMonthYear(dateStr: string | null | undefined): string {
 
 export function daysAgoMT(dateStr: string | null | undefined): number | null {
   if (!dateStr) return null
+  const date = parseDB(dateStr)
   const now = new Date()
-  const date = new Date(dateStr)
-  return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+  // Compare calendar days in MT — prevents "today" from showing as -1
+  const nowDay = now.toLocaleDateString('en-CA', { timeZone: TZ })
+  const visitDay = date.toLocaleDateString('en-CA', { timeZone: TZ })
+  const nowMidnight = new Date(nowDay + 'T00:00:00Z')
+  const visitMidnight = new Date(visitDay + 'T00:00:00Z')
+  return Math.round((nowMidnight.getTime() - visitMidnight.getTime()) / (1000 * 60 * 60 * 24))
 }
 
 export function todayMT(): string {

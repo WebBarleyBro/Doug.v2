@@ -125,7 +125,9 @@ export default function AccountsPage() {
     .sort((a, b) => {
       if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '')
       if (sortBy === 'recent') {
-        return new Date(b.last_visited || 0).getTime() - new Date(a.last_visited || 0).getTime()
+        const bTime = b.last_visited ? new Date(b.last_visited.length > 10 && !b.last_visited.endsWith('Z') ? b.last_visited + 'Z' : b.last_visited).getTime() : 0
+        const aTime = a.last_visited ? new Date(a.last_visited.length > 10 && !a.last_visited.endsWith('Z') ? a.last_visited + 'Z' : a.last_visited).getTime() : 0
+        return bTime - aTime
       }
       // overdue first
       const daysA = daysAgoMT(a.last_visited) ?? 99999

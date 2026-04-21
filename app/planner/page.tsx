@@ -144,8 +144,8 @@ export default function PlannerPage() {
     const sb = getSupabase()
     sb.from('events')
       .select('id, title, start_time, accounts(id, name, address)')
-      .gte('start_time', date + 'T00:00:00')
-      .lte('start_time', date + 'T23:59:59')
+      .gte('start_time', new Date(date + 'T00:00:00').toISOString())
+      .lte('start_time', new Date(date + 'T23:59:59').toISOString())
       .order('start_time')
       .then(({ data }) => {
         setTodayEvents(data || [])
@@ -368,7 +368,10 @@ export default function PlannerPage() {
           <VisitLogModal
             isOpen={visitModal.open}
             onClose={() => setVisitModal({ open: false })}
-            onSuccess={() => setVisitModal({ open: false })}
+            onSuccess={() => {
+              setVisitModal({ open: false })
+              getOverdueAccounts().then(accs => setSuggestions(accs.slice(0, 10))).catch(() => {})
+            }}
             userId={profile.id}
             defaultAccountId={visitModal.accountId}
             isMobile={isMobile}

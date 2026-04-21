@@ -81,15 +81,16 @@ export default function CalendarPage() {
   const monthName = new Date(viewYear, viewMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   // Build campaign entries for the month
-  const campaignEntries: { dateStr: string; title: string; color: string; isCampaign: boolean; isMilestone: boolean }[] = []
+  const campaignEntries: { dateStr: string; title: string; color: string; isCampaign: boolean; isMilestone: boolean; clientSlug: string }[] = []
   campaigns.forEach((camp: any) => {
     const color = camp.clients?.color || CAMPAIGN_COLOR
+    const clientSlug = camp.client_slug || ''
     // Campaign start/end as entries
     if (camp.start_date) {
       const d = camp.start_date.slice(0, 10)
       const [y, m] = d.split('-').map(Number)
       if (y === viewYear && m - 1 === viewMonth) {
-        campaignEntries.push({ dateStr: d, title: `📣 ${camp.name}`, color, isCampaign: true, isMilestone: false })
+        campaignEntries.push({ dateStr: d, title: `📣 ${camp.name}`, color, isCampaign: true, isMilestone: false, clientSlug })
       }
     }
     // Milestones
@@ -99,7 +100,7 @@ export default function CalendarPage() {
           const d = ms.due_date.slice(0, 10)
           const [y, m] = d.split('-').map(Number)
           if (y === viewYear && m - 1 === viewMonth) {
-            campaignEntries.push({ dateStr: d, title: ms.title, color: MILESTONE_COLOR, isCampaign: false, isMilestone: true })
+            campaignEntries.push({ dateStr: d, title: ms.title, color: MILESTONE_COLOR, isCampaign: false, isMilestone: true, clientSlug })
           }
         }
       })
@@ -126,10 +127,10 @@ export default function CalendarPage() {
     }
 
     const camps = filterCategory === 'All' || filterCategory === 'Campaign'
-      ? campaignEntries.filter(ce => ce.dateStr === dateStr && !ce.isMilestone)
+      ? campaignEntries.filter(ce => ce.dateStr === dateStr && !ce.isMilestone && (filterClient === 'all' || ce.clientSlug === filterClient || ce.clientSlug === ''))
       : []
     const milestones = filterCategory === 'All' || filterCategory === 'Milestone'
-      ? campaignEntries.filter(ce => ce.dateStr === dateStr && ce.isMilestone)
+      ? campaignEntries.filter(ce => ce.dateStr === dateStr && ce.isMilestone && (filterClient === 'all' || ce.clientSlug === filterClient || ce.clientSlug === ''))
       : []
 
     return { evs, camps, milestones }
@@ -370,9 +371,9 @@ export default function CalendarPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                  <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={inputStyle} /></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
+                  <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
                 </div>
                 <div><label style={labelStyle}>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'none' }} /></div>
               </div>
