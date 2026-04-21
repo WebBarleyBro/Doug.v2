@@ -24,10 +24,11 @@ const BEST_TIME_OPTIONS = ['morning', 'afternoon', 'evening', 'anytime']
 const BEST_TIME_LABELS: Record<string, string> = {
   morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime',
 }
+const PRIORITY_COLORS: Record<string, string> = { A: '#ef4444', B: '#d4a843', C: '#22c55e' }
 const PRIORITY_LABELS: Record<string, string> = {
-  A: 'A — High priority, visit often',
-  B: 'B — Regular cadence',
-  C: 'C — Low priority / occasional',
+  A: 'High priority — visit often',
+  B: 'Normal cadence',
+  C: 'Low priority — occasional',
 }
 
 interface ContactDraft {
@@ -216,7 +217,7 @@ export default function AddAccountModal({
     transition: 'all 120ms ease',
   })
 
-  const priorityColors: Record<string, string> = { A: t.status.danger, B: t.gold, C: t.text.muted }
+  const priorityColors: Record<string, string> = PRIORITY_COLORS
 
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '20px' }}>
@@ -312,15 +313,18 @@ export default function AddAccountModal({
                         type="button"
                         onClick={() => setForm(f => ({ ...f, priority: p }))}
                         style={{
-                          flex: 1, padding: '7px 0', borderRadius: '8px', fontSize: '13px',
-                          fontWeight: '700', cursor: 'pointer',
+                          flex: 1, padding: '8px 0', borderRadius: '8px', cursor: 'pointer',
                           border: `1px solid ${form.priority === p ? priorityColors[p] : t.border.default}`,
                           backgroundColor: form.priority === p ? priorityColors[p] + '22' : 'transparent',
-                          color: form.priority === p ? priorityColors[p] : t.text.muted,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}
                         title={PRIORITY_LABELS[p]}
                       >
-                        {p}
+                        <span style={{
+                          width: 10, height: 10, borderRadius: '50%',
+                          backgroundColor: priorityColors[p],
+                          boxShadow: form.priority === p ? `0 0 6px ${priorityColors[p]}` : 'none',
+                        }} />
                       </button>
                     ))}
                   </div>

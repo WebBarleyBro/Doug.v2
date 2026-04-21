@@ -403,12 +403,30 @@ export default function OrdersPage() {
   function buildEmailBody(recipientEmail: string): { subject: string; text: string; html: string } {
     const client = selectedClient
     const lineItems = form.line_items.filter(li => li.product_name)
-    const total = lineItems.reduce((s, li) => s + li.quantity * li.price, 0)
     const isOI = orderType === 'distributor'
 
-    const itemLines = lineItems.map(li =>
-      `  • ${li.product_name} — Qty: ${li.quantity}${li.price > 0 ? ` @ $${li.price.toFixed(2)} = $${(li.quantity * li.price).toFixed(2)}` : ''}`
-    ).join('\n')
+    const resolveLineTotal = (li: any) => {
+      const prod = clientProducts.find((p: any) => p.name === li.product_name)
+      const cases = li.cases || 0
+      const bottles = li.bottles || 0
+      const casePrice = prod?.price ?? li.price ?? 0
+      const bottlePrice = prod?.bottle_price ?? 0
+      return cases * casePrice + bottles * bottlePrice
+    }
+    const total = lineItems.reduce((s, li) => s + resolveLineTotal(li), 0)
+
+    const itemLines = lineItems.map(li => {
+      const prod = clientProducts.find((p: any) => p.name === li.product_name)
+      const cases = (li as any).cases || 0
+      const bottles = (li as any).bottles || 0
+      const casePrice = prod?.price ?? li.price ?? 0
+      const bottlePrice = prod?.bottle_price ?? 0
+      const parts = [
+        cases > 0 ? `${cases} case${cases !== 1 ? 's' : ''} @ $${casePrice.toFixed(2)}` : '',
+        bottles > 0 ? `${bottles} btl @ $${bottlePrice.toFixed(2)}` : '',
+      ].filter(Boolean).join(' + ')
+      return `  • ${li.product_name}${parts ? ` — ${parts} = $${resolveLineTotal(li).toFixed(2)}` : ''}`
+    }).join('\n')
 
     const subject = isOI
       ? `Order Inquiry ${form.po_number} – ${form.deliver_to_name}`
@@ -431,9 +449,19 @@ export default function OrdersPage() {
       'Sent by Barley Bros | doug-v2-three.vercel.app',
     ].filter(l => l !== null).join('\n')
 
-    const htmlRows = lineItems.map(li =>
-      `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${li.quantity}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right">$${li.price.toFixed(2)}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(li.quantity * li.price).toFixed(2)}</td></tr>`
-    ).join('')
+    const htmlRows = lineItems.map(li => {
+      const prod = clientProducts.find((p: any) => p.name === li.product_name)
+      const cases = (li as any).cases || 0
+      const bottles = (li as any).bottles || 0
+      const casePrice = prod?.price ?? li.price ?? 0
+      const bottlePrice = prod?.bottle_price ?? 0
+      const qtyLabel = [
+        cases > 0 ? `${cases} case${cases !== 1 ? 's' : ''}` : '',
+        bottles > 0 ? `${bottles} btl` : '',
+      ].filter(Boolean).join(' + ') || String(li.quantity)
+      const lineTotal = resolveLineTotal(li)
+      return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qtyLabel}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right">$${casePrice.toFixed(2)}/cs${bottlePrice > 0 ? ` · $${bottlePrice.toFixed(2)}/btl` : ''}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td></tr>`
+    }).join('')
 
     const html = `
 <div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto">

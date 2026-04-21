@@ -162,7 +162,7 @@ export function accountHealth(
   }) ?? false
 
   if (days === null) {
-    return { status: 'dormant', color: '#666', label: 'Dormant', reason: 'Never visited' }
+    return { status: 'dormant', color: '#666', label: 'Never visited', reason: 'No visits logged yet' }
   }
   if (days <= freq && (hasActivePlacement || placements === undefined)) {
     return { status: 'active', color: '#22c55e', label: 'Active', reason: `Visited ${days === 0 ? 'today' : `${days}d ago`}${hasActivePlacement ? ', active placement' : ''}` }

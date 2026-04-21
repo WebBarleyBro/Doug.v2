@@ -1,12 +1,11 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { X, Search, Check, Plus, AlertCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
-import { t, inputStyle, labelStyle, btnPrimary, btnSecondary, modalOverlay, mobileSheetContent } from '../lib/theme'
-import { logVisit, getAccounts, getClients, getProducts, getContacts } from '../lib/data'
+import { X, Search, Check, Plus, AlertCircle } from 'lucide-react'
+import { t, inputStyle, labelStyle, btnPrimary, modalOverlay, mobileSheetContent } from '../lib/theme'
+import { logVisit, getAccounts, getClients, getProducts } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
-import { VISIT_STATUSES, PLACEMENT_TYPES } from '../lib/constants'
-import type { Account, Client, Product, Contact, VisitStatus } from '../lib/types'
+import type { Account, Client, Product, VisitStatus } from '../lib/types'
 import AddAccountModal from './AddAccountModal'
 
 interface Props {
@@ -23,10 +22,8 @@ interface Props {
 interface TastingEntry {
   clientSlug: string
   products: string[]
-  feedback: string
   notes: string
 }
-
 
 interface FormState {
   account_id: string
@@ -59,9 +56,7 @@ export default function VisitLogModal({
 }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm(todayMT()))
   const [clients, setClients] = useState<Client[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
   const [products, setProducts] = useState<Record<string, Product[]>>({})
-  const [contacts, setContacts] = useState<Contact[]>([])
   const [accountSearch, setAccountSearch] = useState('')
   const [accountResults, setAccountResults] = useState<Account[]>([])
   const [showAccountSearch, setShowAccountSearch] = useState(!defaultAccountId)
@@ -69,23 +64,13 @@ export default function VisitLogModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
-  const [competitiveSightings, setCompetitiveSightings] = useState<{ brand_name: string; product_name: string; placement_type: string }[]>([])
-  const [showCompetitive, setShowCompetitive] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // Load clients on mount
   useEffect(() => {
     if (!isOpen) return
     getClients().then(setClients).catch(() => {})
   }, [isOpen])
 
-  // Load contacts when account selected
-  useEffect(() => {
-    if (!form.account_id) return
-    getContacts({ accountId: form.account_id }).then(setContacts).catch(() => {})
-  }, [form.account_id])
-
-  // Load products for selected clients
   useEffect(() => {
     form.client_slugs.forEach(async slug => {
       if (!products[slug]) {
@@ -97,17 +82,15 @@ export default function VisitLogModal({
     })
   }, [form.client_slugs])
 
-  // Search accounts
   useEffect(() => {
     if (!accountSearch || accountSearch.length < 2) { setAccountResults([]); return }
     getAccounts({ search: accountSearch, limit: 8 })
-      .then(res => setAccountResults(res.filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i)))
+      .then(res => setAccountResults(res.filter((a: Account, i: number, arr: Account[]) => arr.findIndex((x: Account) => x.id === a.id) === i)))
       .catch(() => {})
   }, [accountSearch])
 
-  // Set defaults
   useEffect(() => {
-    if (!isOpen) { setSaved(false); setError(''); setCompetitiveSightings([]); setShowCompetitive(false); return }
+    if (!isOpen) { setSaved(false); setError(''); return }
     const d = todayMT()
     setForm({
       ...emptyForm(d),
@@ -122,15 +105,16 @@ export default function VisitLogModal({
   }, [isOpen, defaultAccountId, defaultClientSlugs])
 
   function selectAccount(acc: Account) {
-    setForm(f => ({ ...f, account_id: acc.id, account_name: acc.name }))
+    const slugs = acc.account_clients?.map(ac => ac.client_slug) || []
+    setForm(f => ({
+      ...f,
+      account_id: acc.id,
+      account_name: acc.name,
+      client_slugs: slugs.length > 0 && f.client_slugs.length === 0 ? slugs : f.client_slugs,
+    }))
     setShowAccountSearch(false)
     setAccountSearch('')
     setAccountResults([])
-    // Auto-select clients for this account
-    const slugs = acc.account_clients?.map(ac => ac.client_slug) || []
-    if (slugs.length > 0 && form.client_slugs.length === 0) {
-      setForm(f => ({ ...f, account_id: acc.id, account_name: acc.name, client_slugs: slugs }))
-    }
   }
 
   function toggleClient(slug: string) {
@@ -138,9 +122,8 @@ export default function VisitLogModal({
       const slugs = f.client_slugs.includes(slug)
         ? f.client_slugs.filter(s => s !== slug)
         : [...f.client_slugs, slug]
-      // Sync tastings entries
       const tastings = slugs.map(s =>
-        f.tastings.find(t => t.clientSlug === s) || { clientSlug: s, products: [], feedback: '', notes: '' }
+        f.tastings.find(t => t.clientSlug === s) || { clientSlug: s, products: [], notes: '' }
       )
       return { ...f, client_slugs: slugs, tastings }
     })
@@ -160,29 +143,33 @@ export default function VisitLogModal({
     }))
   }
 
-  function updateTasting(clientSlug: string, field: keyof TastingEntry, value: string) {
+  function updateTasting(clientSlug: string, value: string) {
     setForm(f => ({
       ...f,
-      tastings: f.tastings.map(t => t.clientSlug !== clientSlug ? t : { ...t, [field]: value }),
+      tastings: f.tastings.map(t => t.clientSlug !== clientSlug ? t : { ...t, notes: value }),
     }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-
     if (!form.account_id) { setError('Please select an account.'); return }
     if (!form.visited_at) { setError('Please enter a visit date.'); return }
     if (isFutureDate(form.visited_at)) { setError('Visit date cannot be in the future.'); return }
 
-    const tastingParts = form.tastings
+    // Build per-client notes that include tasting details for that client only
+    const clientNotesWithTasting: Record<string, string> = { ...form.client_notes }
+    form.tastings
       .filter(t => t.products.length > 0 || t.notes)
-      .map(t => {
-        const client = clients.find(c => c.slug === t.clientSlug)
-        return `[${client?.name || t.clientSlug}] Products: ${t.products.join(', ')}${t.notes ? ` | Notes: ${t.notes}` : ''}`
+      .forEach(t => {
+        const parts = [
+          t.products.length > 0 ? `Tasted: ${t.products.join(', ')}` : '',
+          t.notes || '',
+        ].filter(Boolean).join(' | ')
+        const existing = clientNotesWithTasting[t.clientSlug] || ''
+        clientNotesWithTasting[t.clientSlug] = [existing, parts].filter(Boolean).join('\n')
       })
 
-    // Build follow-up note
     const followupNote = form.followup_days
       ? `Follow up in ${form.followup_days} days`
       : form.create_checkin ? 'General check-in reminder' : undefined
@@ -201,9 +188,7 @@ export default function VisitLogModal({
         visited_at: saveDateMT(form.visited_at),
         status: form.status,
         notes: form.notes || undefined,
-        client_notes: Object.keys(form.client_notes).length > 0 ? form.client_notes : undefined,
-        tasting_notes: tastingParts.length ? tastingParts.join('\n') : undefined,
-        competitive_sightings: competitiveSightings.filter(s => s.brand_name.trim()),
+        client_notes: Object.keys(clientNotesWithTasting).length > 0 ? clientNotesWithTasting : undefined,
         create_followup: !!(form.followup_days || form.create_checkin),
         followup_note: followupNote,
       })
@@ -230,23 +215,19 @@ export default function VisitLogModal({
 
   const content = (
     <div style={{ padding: isMobile ? '0 16px 24px' : '0' }}>
-      {/* Handle bar (mobile) */}
       {isMobile && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 8px' }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: t.border.hover }} />
         </div>
       )}
 
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: isMobile ? '0 0 16px' : '28px 28px 0',
         ...(isMobile ? {} : { paddingBottom: '20px', borderBottom: `1px solid ${t.border.default}` }),
       }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.01em' }}>
-            Log a Visit
-          </h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.01em' }}>Log a Visit</h2>
           {saved && <p style={{ fontSize: '12px', color: t.status.success }}>Visit logged!</p>}
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px' }}>
@@ -254,18 +235,12 @@ export default function VisitLogModal({
         </button>
       </div>
 
-      {/* Success state */}
       {saved && (
-        <div style={{
-          padding: isMobile ? '32px 0' : '40px 28px',
-          textAlign: 'center',
-        }}>
+        <div style={{ padding: isMobile ? '32px 0' : '40px 28px', textAlign: 'center' }}>
           <div style={{
             width: 64, height: 64, borderRadius: '50%',
-            backgroundColor: t.status.successBg,
-            border: `2px solid ${t.status.success}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
+            backgroundColor: t.status.successBg, border: `2px solid ${t.status.success}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
           }}>
             <Check size={32} color={t.status.success} />
           </div>
@@ -276,18 +251,16 @@ export default function VisitLogModal({
         </div>
       )}
 
-      {/* Form */}
       {!saved && (
         <form onSubmit={handleSubmit} style={{ padding: isMobile ? '0' : '20px 28px 28px' }}>
-          {/* ── Account ── */}
+
+          {/* Account */}
           <Section label="Account">
             {!showAccountSearch && form.account_name ? (
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px',
-                backgroundColor: t.bg.input,
-                border: `1px solid ${t.border.default}`,
-                borderRadius: '8px',
+                padding: '10px 14px', backgroundColor: t.bg.input,
+                border: `1px solid ${t.border.default}`, borderRadius: '8px',
               }}>
                 <span style={{ color: t.text.primary, fontSize: '15px' }}>{form.account_name}</span>
                 <button type="button" onClick={() => { setShowAccountSearch(true); setForm(f => ({ ...f, account_id: '', account_name: '' })) }}
@@ -312,11 +285,8 @@ export default function VisitLogModal({
                 {accountResults.length > 0 && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-                    backgroundColor: t.bg.elevated,
-                    border: `1px solid ${t.border.hover}`,
-                    borderRadius: '8px',
-                    marginTop: '4px',
-                    overflow: 'hidden',
+                    backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`,
+                    borderRadius: '8px', marginTop: '4px', overflow: 'hidden',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                   }}>
                     {accountResults.map(acc => (
@@ -343,7 +313,7 @@ export default function VisitLogModal({
             )}
           </Section>
 
-          {/* ── Date ── */}
+          {/* Date */}
           <Section label="Visit Date">
             <input
               type="date"
@@ -354,7 +324,7 @@ export default function VisitLogModal({
             />
           </Section>
 
-          {/* ── Clients / Brands ── */}
+          {/* Brands */}
           {clients.length > 0 && (
             <Section label="Brands (select all that apply)">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -362,15 +332,12 @@ export default function VisitLogModal({
                   const selected = form.client_slugs.includes(c.slug)
                   return (
                     <button key={c.slug} type="button" onClick={() => toggleClient(c.slug)} style={{
-                      padding: '7px 14px',
-                      borderRadius: '20px',
+                      padding: '7px 14px', borderRadius: '20px',
                       border: `1px solid ${selected ? c.color : t.border.default}`,
                       backgroundColor: selected ? (c.color + '20') : 'transparent',
                       color: selected ? c.color : t.text.secondary,
-                      fontSize: '13px',
-                      fontWeight: selected ? '600' : '400',
-                      cursor: 'pointer',
-                      transition: 'all 150ms ease',
+                      fontSize: '13px', fontWeight: selected ? '600' : '400',
+                      cursor: 'pointer', transition: 'all 150ms ease',
                     }}>
                       {c.name}
                     </button>
@@ -380,22 +347,18 @@ export default function VisitLogModal({
             </Section>
           )}
 
-          {/* ── Visit Status ── */}
+          {/* Outcome */}
           <Section label="Outcome">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
               {statusOptions.map(s => (
                 <button key={s.value} type="button" onClick={() => setForm(f => ({ ...f, status: s.value }))}
                   style={{
-                    padding: '9px 12px',
-                    borderRadius: '8px',
+                    padding: '9px 12px', borderRadius: '8px',
                     border: `1px solid ${form.status === s.value ? s.color : t.border.default}`,
                     backgroundColor: form.status === s.value ? (s.color + '15') : 'transparent',
                     color: form.status === s.value ? s.color : t.text.secondary,
-                    fontSize: '12.5px',
-                    fontWeight: form.status === s.value ? '600' : '400',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 120ms ease',
+                    fontSize: '12.5px', fontWeight: form.status === s.value ? '600' : '400',
+                    cursor: 'pointer', textAlign: 'left', transition: 'all 120ms ease',
                   }}>
                   {s.value}
                 </button>
@@ -403,7 +366,7 @@ export default function VisitLogModal({
             </div>
           </Section>
 
-          {/* ── Notes ── */}
+          {/* Notes — per-brand when multiple brands selected */}
           {form.client_slugs.length > 1 ? (
             <Section label="Notes (per brand)">
               <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '10px' }}>
@@ -439,7 +402,7 @@ export default function VisitLogModal({
             </Section>
           )}
 
-          {/* ── Tasting per client ── */}
+          {/* Tasting details per brand */}
           {form.client_slugs.length > 0 && (
             <Section label="Tasting Details (optional)">
               {form.tastings.map(tasting => {
@@ -447,11 +410,8 @@ export default function VisitLogModal({
                 const prods = products[tasting.clientSlug] || []
                 return (
                   <div key={tasting.clientSlug} style={{
-                    backgroundColor: t.bg.input,
-                    border: `1px solid ${t.border.default}`,
-                    borderRadius: '10px',
-                    padding: '12px',
-                    marginBottom: '10px',
+                    backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
+                    borderRadius: '10px', padding: '12px', marginBottom: '10px',
                   }}>
                     <div style={{ fontSize: '12px', fontWeight: '600', color: client?.color || t.gold, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {client?.name}
@@ -477,7 +437,7 @@ export default function VisitLogModal({
                     )}
                     <textarea
                       value={tasting.notes}
-                      onChange={e => updateTasting(tasting.clientSlug, 'notes', e.target.value)}
+                      onChange={e => updateTasting(tasting.clientSlug, e.target.value)}
                       placeholder="Tasting notes, consumer reactions..."
                       rows={2}
                       style={{ ...inputStyle, fontSize: '13px', resize: 'none', marginTop: prods.length > 0 ? '8px' : 0 }}
@@ -488,61 +448,15 @@ export default function VisitLogModal({
             </Section>
           )}
 
-          {/* ── Competitive Sightings ── */}
-          <Section label="What Else Did You See? (optional)">
-            <button type="button" onClick={() => {
-              setShowCompetitive(o => !o)
-              if (!showCompetitive && competitiveSightings.length === 0) {
-                setCompetitiveSightings([{ brand_name: '', product_name: '', placement_type: 'shelf' }])
-              }
-            }} style={{
-              display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
-              color: showCompetitive ? t.gold : t.text.muted,
-              background: 'none', border: `1px solid ${showCompetitive ? t.border.gold : t.border.default}`,
-              borderRadius: '8px', padding: '8px 14px', cursor: 'pointer',
-              backgroundColor: showCompetitive ? t.goldDim : 'transparent',
-            }}>
-              {showCompetitive ? <ChevronUp size={14} /> : <Plus size={14} />}
-              {showCompetitive ? 'Hide competitive intel' : 'Add competitive sighting'}
-            </button>
-            {showCompetitive && (
-              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {competitiveSightings.map((s, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '6px', alignItems: 'center' }}>
-                    <input type="text" value={s.brand_name} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, brand_name: e.target.value } : x))}
-                      placeholder="Brand name" style={{ ...inputStyle, fontSize: '12px', padding: '7px 10px' }} />
-                    <input type="text" value={s.product_name} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, product_name: e.target.value } : x))}
-                      placeholder="Product (optional)" style={{ ...inputStyle, fontSize: '12px', padding: '7px 10px' }} />
-                    <select value={s.placement_type} onChange={e => setCompetitiveSightings(prev => prev.map((x, j) => j === i ? { ...x, placement_type: e.target.value } : x))}
-                      style={{ ...inputStyle, fontSize: '12px', padding: '7px 8px', minWidth: 80 }}>
-                      {PLACEMENT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
-                    </select>
-                    <button type="button" onClick={() => setCompetitiveSightings(prev => prev.filter((_, j) => j !== i))}
-                      style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}>
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-                <button type="button" onClick={() => setCompetitiveSightings(prev => [...prev, { brand_name: '', product_name: '', placement_type: 'shelf' }])}
-                  style={{ fontSize: '12px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Plus size={12} /> Add another sighting
-                </button>
-              </div>
-            )}
-          </Section>
-
-          {/* ── Follow-up ── */}
+          {/* Follow-up */}
           <Section label="Follow-Up">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* Scheduled follow-up */}
               <div>
                 <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px' }}>Schedule a follow-up in:</div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {[3, 7, 14, 30].map(days => (
-                    <button
-                      key={days}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, followup_days: f.followup_days === days ? null : days, create_checkin: f.followup_days === days ? f.create_checkin : false }))}
+                    <button key={days} type="button"
+                      onClick={() => setForm(f => ({ ...f, followup_days: f.followup_days === days ? null : days, create_checkin: false }))}
                       style={{
                         padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', cursor: 'pointer',
                         border: `1px solid ${form.followup_days === days ? t.gold : t.border.default}`,
@@ -550,18 +464,14 @@ export default function VisitLogModal({
                         color: form.followup_days === days ? t.gold : t.text.secondary,
                         fontWeight: form.followup_days === days ? '700' : '400',
                         transition: 'all 120ms ease',
-                      }}
-                    >
+                      }}>
                       {days}d
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Neutral check-in reminder */}
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, create_checkin: !f.create_checkin, followup_days: !f.create_checkin ? null : f.followup_days }))}
+              <button type="button"
+                onClick={() => setForm(f => ({ ...f, create_checkin: !f.create_checkin, followup_days: null }))}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '10px 14px', width: '100%', textAlign: 'left',
@@ -569,8 +479,7 @@ export default function VisitLogModal({
                   borderRadius: '8px',
                   backgroundColor: form.create_checkin ? t.bg.elevated : 'transparent',
                   color: form.create_checkin ? t.text.secondary : t.text.muted,
-                  cursor: 'pointer', fontSize: '13px',
-                  transition: 'all 150ms ease',
+                  cursor: 'pointer', fontSize: '13px', transition: 'all 150ms ease',
                 }}>
                 <div style={{
                   width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
@@ -586,38 +495,23 @@ export default function VisitLogModal({
             </div>
           </Section>
 
-          {/* Error */}
           {error && (
             <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '10px 14px',
-              backgroundColor: t.status.dangerBg,
-              border: `1px solid rgba(224,82,82,0.2)`,
-              borderRadius: '8px',
-              color: t.status.danger,
-              fontSize: '13px',
-              marginBottom: '16px',
+              display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
+              backgroundColor: t.status.dangerBg, border: `1px solid rgba(224,82,82,0.2)`,
+              borderRadius: '8px', color: t.status.danger, fontSize: '13px', marginBottom: '16px',
             }}>
               <AlertCircle size={15} />
               {error}
             </div>
           )}
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={saving || !form.account_id}
+          <button type="submit" disabled={saving || !form.account_id}
             style={{
-              ...btnPrimary,
-              width: '100%',
-              justifyContent: 'center',
-              padding: '13px',
-              fontSize: '15px',
+              ...btnPrimary, width: '100%', justifyContent: 'center', padding: '13px', fontSize: '15px',
               opacity: saving || !form.account_id ? 0.6 : 1,
-              cursor: saving || !form.account_id ? 'not-allowed' : 'pointer',
-              marginTop: '8px',
-            }}
-          >
+              cursor: saving || !form.account_id ? 'not-allowed' : 'pointer', marginTop: '8px',
+            }}>
             {saving ? 'Saving...' : 'Log Visit'}
           </button>
         </form>
@@ -627,29 +521,16 @@ export default function VisitLogModal({
 
   const modalWrapper = isMobile ? (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
-      <div onClick={onClose} style={{
-        position: 'absolute', inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      }} />
-      <div className="slide-up" style={{
-        ...mobileSheetContent,
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        maxHeight: '95vh',
-        overflowY: 'auto',
-      }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
+      <div className="slide-up" style={{ ...mobileSheetContent, position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '95vh', overflowY: 'auto' }}>
         {content}
       </div>
     </div>
   ) : (
     <div style={modalOverlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="fade-in" style={{
-        backgroundColor: t.bg.elevated,
-        border: `1px solid ${t.border.hover}`,
-        borderRadius: '16px',
-        width: '100%',
-        maxWidth: '540px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
+        backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`,
+        borderRadius: '16px', width: '100%', maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto',
       }}>
         {content}
       </div>
@@ -662,10 +543,7 @@ export default function VisitLogModal({
       {showAddAccountModal && (
         <AddAccountModal
           onClose={() => setShowAddAccountModal(false)}
-          onAdded={acc => {
-            selectAccount(acc as Account)
-            setShowAddAccountModal(false)
-          }}
+          onAdded={acc => { selectAccount(acc as Account); setShowAddAccountModal(false) }}
           isMobile={isMobile}
         />
       )}

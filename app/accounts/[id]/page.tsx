@@ -119,22 +119,25 @@ export default function AccountDetailPage() {
     })
   }, [])
 
-  // Set up Google Places autocomplete on edit address field when modal opens
+  // Set up Google Places autocomplete on edit name field when modal opens
   useEffect(() => {
     if (!showEdit) { editAcRef.current = null; return }
     let alive = true
     function initAC() {
       if (!alive || !editAddressRef.current || editAcRef.current) return
       editAcRef.current = new window.google.maps.places.Autocomplete(editAddressRef.current, {
-        types: ['address'],
+        types: ['establishment'],
         componentRestrictions: { country: 'us' },
-        fields: ['formatted_address'],
+        fields: ['name', 'formatted_address', 'formatted_phone_number'],
       })
       editAcRef.current.addListener('place_changed', () => {
         const place = editAcRef.current.getPlace()
-        if (place?.formatted_address) {
-          setEditForm(f => ({ ...f, address: place.formatted_address }))
-        }
+        setEditForm(f => ({
+          ...f,
+          name: place.name || f.name,
+          address: place.formatted_address || f.address,
+          phone: place.formatted_phone_number || f.phone,
+        }))
       })
     }
     if (window.google?.maps?.places) {
@@ -344,24 +347,19 @@ export default function AccountDetailPage() {
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: health.color, display: 'inline-block', boxShadow: `0 0 4px ${health.color}88` }} />
                   {health.label} · {health.reason}
                 </span>
-                {account.priority && account.priority !== 'B' && (
-                  <span style={{
-                    fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px',
-                    backgroundColor: account.priority === 'A' ? `${t.status.danger}22` : `${t.text.muted}22`,
-                    color: account.priority === 'A' ? t.status.danger : t.text.muted,
-                    border: `1px solid ${account.priority === 'A' ? t.status.danger + '44' : t.text.muted + '44'}`,
-                  }}>
-                    Priority {account.priority}
-                  </span>
-                )}
-                {account.priority === 'B' && (
-                  <span style={{
-                    fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px',
-                    backgroundColor: t.goldDim, color: t.gold, border: `1px solid ${t.border.gold}`,
-                  }}>
-                    Priority B
-                  </span>
-                )}
+                {account.priority && (() => {
+                  const colors: Record<string, string> = { A: '#ef4444', B: t.gold, C: '#22c55e' }
+                  const labels: Record<string, string> = { A: 'High priority', B: 'Normal', C: 'Low priority' }
+                  const color = colors[account.priority]
+                  if (!color) return null
+                  return (
+                    <span title={labels[account.priority]} style={{
+                      width: '8px', height: '8px', borderRadius: '50%',
+                      backgroundColor: color, display: 'inline-block', flexShrink: 0,
+                      boxShadow: `0 0 4px ${color}88`,
+                    }} />
+                  )
+                })()}
               </div>
               {account.address && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
@@ -478,12 +476,26 @@ export default function AccountDetailPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {visits.length === 0 ? (
               <EmptyState icon={<MapPin size={32} />} title="No visits logged" />
-            ) : visits.map(v => (
-              <VisitCard key={v.id} visit={v}
-                onDelete={() => deleteVisit(v.id).then(reloadAll)}
-                onSave={(updates) => updateVisit(v.id, updates as any).then(reloadAll)}
-              />
-            ))}
+            ) : (() => {
+              // Group rows by visited_at — same timestamp = one physical visit
+              const groups: Record<string, any[]> = {}
+              visits.forEach((v: any) => {
+                const key = v.visited_at
+                if (!groups[key]) groups[key] = []
+                groups[key].push(v)
+              })
+              return Object.entries(groups)
+                .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+                .map(([, rows]) => {
+                  const primary = rows[0]
+                  return (
+                    <VisitCard key={primary.id} visit={primary} allRows={rows} clients={clients}
+                      onDelete={() => Promise.all(rows.map(r => deleteVisit(r.id))).then(reloadAll)}
+                      onSave={(updates) => Promise.all(rows.map(r => updateVisit(r.id, updates as any))).then(reloadAll)}
+                    />
+                  )
+                })
+            })()}
           </div>
         )}
 
@@ -672,17 +684,24 @@ export default function AccountDetailPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={labelStyle}>Account Name</label>
-                <input type="text" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} placeholder="Business name" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Address (Google Places)</label>
+                <label style={labelStyle}>Account Name — type to search Google</label>
                 <input
                   ref={editAddressRef}
                   type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Business name"
+                  style={inputStyle}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Address</label>
+                <input
+                  type="text"
                   value={editForm.address}
                   onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
-                  placeholder="Street address — type to search"
+                  placeholder="Auto-fills from Google, or type manually"
                   style={inputStyle}
                   autoComplete="off"
                 />
@@ -918,8 +937,10 @@ function TimelineItem({ item }: { item: any }) {
   )
 }
 
-function VisitCard({ visit, onDelete, onSave }: {
+function VisitCard({ visit, allRows, clients, onDelete, onSave }: {
   visit: any
+  allRows?: any[]
+  clients?: any[]
   onDelete: () => void
   onSave: (updates: { visited_at?: string; status?: string; notes?: string }) => void
 }) {
@@ -978,11 +999,35 @@ function VisitCard({ visit, onDelete, onSave }: {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                 <span style={badge.visitStatus(visit.status)}>{visit.status}</span>
-                {visit.client_slug && <span style={{ fontSize: '11px', color: t.text.muted }}>{visit.client_slug}</span>}
               </div>
-              {visit.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{visit.notes}</p>}
+              {/* Per-brand notes */}
+              {allRows && allRows.length > 1 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '4px' }}>
+                  {allRows.filter(r => r.notes).map(r => {
+                    const client = clients?.find((c: any) => c.slug === r.client_slug)
+                    return (
+                      <div key={r.id}>
+                        {client && <div style={{ fontSize: '10px', fontWeight: '700', color: client.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>{client.name}</div>}
+                        <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{r.notes}</p>
+                      </div>
+                    )
+                  })}
+                  {!allRows.some(r => r.notes) && visit.notes && (
+                    <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{visit.notes}</p>
+                  )}
+                </div>
+              ) : (
+                visit.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{visit.notes}</p>
+              )}
               <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>
                 {formatShortDateMT(visit.visited_at)}{visit.user_profiles?.name ? ` · ${visit.user_profiles.name}` : ''}
+                {allRows && allRows.length > 1 && clients && (
+                  <span style={{ marginLeft: '6px' }}>
+                    {allRows.map(r => clients.find((c: any) => c.slug === r.client_slug)).filter(Boolean).map((c: any) => (
+                      <span key={c.slug} style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: c.color, marginLeft: '4px' }} title={c.name} />
+                    ))}
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
