@@ -14,7 +14,7 @@ import { StatsSkeleton, CardSkeleton } from './components/LoadingSkeleton'
 import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
-  getOrders, getClients, getVisitStreak,
+  getVisitStreak, getClientSuggestions,
 } from './lib/data'
 import { getSupabase } from './lib/supabase'
 import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
@@ -32,6 +32,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [overdue, setOverdue] = useState<any[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [streak, setStreak] = useState<{ streak: number; teamWeekVisits: number; bestDay: string | null } | null>(null)
+  const [suggestions, setSuggestions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
   const [followUpAccountId, setFollowUpAccountId] = useState<string | undefined>(undefined)
@@ -52,29 +53,19 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         getTasks({ userId: profile.id, completed: false }).catch(e => { console.error('tasks err', e); return [] }),
       ])
       setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(t ?? [])
+      if (isOwner) {
+        getClientSuggestions('new').then(setSuggestions).catch(() => {})
+      }
       // Fetch active placement account IDs for urgency scoring
-      getSupabase().from('placements').select('account_id').eq('status', 'active').then(({ data }) => {
+      getSupabase().from('placements').select('account_id').is('lost_at', null).then(({ data }) => {
         setActivePlacementAccountIds(new Set((data || []).map((p: any) => p.account_id).filter(Boolean)))
       }).catch(() => {})
       // Visit streak
       getVisitStreak(profile.id).then(setStreak).catch(() => {})
+      // Commission comes from getDashboardStats to avoid duplicate fetches
+      if (s?.commissionThisMonth !== undefined) setCommission(s.commissionThisMonth)
     } catch (e) { console.error('dashboard load err', e) }
     finally { setLoading(false) }
-
-    // Commission in a separate try so it never blocks the rest
-    try {
-      const [orders, clients] = await Promise.all([getOrders(), getClients()])
-      const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
-      const thisMonth = new Date().toISOString().slice(0, 7)
-      const monthComm = orders
-        .filter((o: any) => (o.created_at || '').slice(0, 7) === thisMonth)
-        .reduce((sum: number, o: any) => {
-          const stored = Number(o.commission_amount) || 0
-          if (stored > 0) return sum + stored
-          return sum + Number(o.total_amount || 0) * (rateMap[o.client_slug] || 0)
-        }, 0)
-      setCommission(monthComm)
-    } catch (e) { console.error('commission err', e) }
   }, [profile.id, isOwner])
 
   useEffect(() => { load() }, [load])
@@ -218,6 +209,40 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         </div>
       </div>
 
+      {isOwner && suggestions.length > 0 && (
+        <div style={{ marginBottom: '20px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${t.goldBorder}` }}>
+            <AlertCircle size={14} color={t.gold} />
+            <span style={{ fontSize: '12px', fontWeight: '700', color: t.gold }}>
+              {suggestions.length} new {suggestions.length === 1 ? 'account suggestion' : 'account suggestions'} from clients
+            </span>
+          </div>
+          {suggestions.slice(0, 5).map((s: any, i: number) => (
+            <div key={s.id} style={{
+              display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
+              borderBottom: i < Math.min(suggestions.length, 5) - 1 ? `1px solid ${t.border.subtle}` : 'none',
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
+                <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '8px' }}>
+                  {s.suggestion_type === 'account' ? 'Account' : 'Contact'} · {s.client_slug}
+                </span>
+                {s.reason && (
+                  <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '6px' }}>· {s.reason.replace(/_/g, ' ')}</span>
+                )}
+              </div>
+              <Link href={`/clients/${s.client_slug}?tab=portal`} style={{
+                fontSize: '11px', fontWeight: '700', color: t.gold, textDecoration: 'none',
+                padding: '4px 10px', border: `1px solid ${t.goldBorder}`, borderRadius: '6px',
+                display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+              }}>
+                Review <ChevronRight size={11} />
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Stats */}
       {loading ? <StatsSkeleton /> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
@@ -311,13 +336,15 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
         {/* Column 2: Follow-Ups Due */}
         <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: t.bg.elevated }}>
+          <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${t.border.subtle}`, backgroundColor: t.bg.elevated }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Clock size={14} color={t.status.warning} />
               <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Follow-Up Queue</span>
               {followups.length > 0 && <span style={{ fontSize: '10px', backgroundColor: 'rgba(234,179,8,0.15)', color: t.status.warning, borderRadius: '10px', padding: '2px 7px', fontWeight: '700' }}>{followups.length}</span>}
             </div>
-            <Link href="/accounts" style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>View all <ChevronRight size={11} /></Link>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>
+              Visits you marked "Will Order Soon" or "Needs Follow Up" — sorted by urgency
+            </div>
           </div>
           <div style={{ padding: '12px' }}>
             {loading ? <CardSkeleton count={3} /> : followups.length === 0 ? (
@@ -335,37 +362,44 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                   })
                   .sort((a, b) => b._urgency - a._urgency)
                   .slice(0, 8)
-                  .map(v => (
-                  <div key={v.id} style={{
-                    backgroundColor: t.bg.elevated, border: `1px solid ${t.border.subtle}`, borderRadius: '8px',
-                    padding: '10px 12px',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Link href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {v.accounts?.name}
+                  .map(v => {
+                    const urgencyColor = v._urgency >= 60 ? t.status.danger : v._urgency >= 40 ? t.status.warning : t.text.muted
+                    const urgencyLabel = v._urgency >= 60 ? 'High' : v._urgency >= 40 ? 'Medium' : 'Low'
+                    return (
+                      <div key={v.id} style={{
+                        backgroundColor: t.bg.elevated,
+                        border: `1px solid ${t.border.subtle}`,
+                        borderLeft: `3px solid ${urgencyColor}`,
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Link href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
+                              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {v.accounts?.name}
+                              </div>
+                            </Link>
+                            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
+                              {relativeTimeStr(v.visited_at)}
+                            </div>
                           </div>
-                        </Link>
-                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
-                          {relativeTimeStr(v.visited_at)}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            <span style={{ fontSize: '10px', fontWeight: '700', color: urgencyColor, backgroundColor: urgencyColor + '18', padding: '2px 7px', borderRadius: '6px' }}>
+                              {urgencyLabel}
+                            </span>
+                            <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                          </div>
                         </div>
+                        <button
+                          onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
+                          style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', width: '100%' }}
+                        >
+                          Log Follow-Up
+                        </button>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        <span style={{ fontSize: '10px', fontWeight: '700', color: v._urgency >= 60 ? t.status.danger : v._urgency >= 40 ? t.status.warning : t.text.muted, backgroundColor: v._urgency >= 60 ? 'rgba(224,82,82,0.12)' : v._urgency >= 40 ? 'rgba(234,179,8,0.12)' : t.bg.card, padding: '2px 6px', borderRadius: '6px' }}>
-                          {v._urgency}
-                        </span>
-                        <span style={badge.visitStatus(v.status)}>{v.status}</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
-                      style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', width: '100%' }}
-                    >
-                      Log Follow-Up
-                    </button>
-                  </div>
-                ))}
+                    )
+                  })}
               </div>
             )}
           </div>
@@ -448,6 +482,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
   const [schedule, setSchedule] = useState<any>(null)
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
 
@@ -460,23 +495,12 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
         getOverdueAccounts(),
       ])
       setStats(s); setSchedule(sched); setFollowups(fu); setOverdue(od)
+      if (profile.role === 'owner') {
+        getClientSuggestions('new').then(setSuggestions).catch(() => {})
+      }
+      if (s?.commissionThisMonth !== undefined) setCommission(s.commissionThisMonth)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-
-    // Commission in a separate try so it never blocks the rest
-    try {
-      const [orders, clients] = await Promise.all([getOrders(), getClients()])
-      const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
-      const thisMonth = new Date().toISOString().slice(0, 7)
-      const monthComm = orders
-        .filter((o: any) => (o.created_at || '').slice(0, 7) === thisMonth)
-        .reduce((sum: number, o: any) => {
-          const stored = Number(o.commission_amount) || 0
-          if (stored > 0) return sum + stored
-          return sum + Number(o.total_amount || 0) * (rateMap[o.client_slug] || 0)
-        }, 0)
-      setCommission(monthComm)
-    } catch (e) { console.error('mobile commission err', e) }
   }, [profile.id, profile.role])
 
   useEffect(() => { load() }, [load])
@@ -525,6 +549,29 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
       >
         <Plus size={22} strokeWidth={2.5} /> Log a Visit
       </button>
+
+      {profile.role === 'owner' && suggestions.length > 0 && (
+        <div style={{ marginBottom: '16px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={13} color={t.gold} />
+            <span style={{ fontSize: '12px', fontWeight: '700', color: t.gold, flex: 1 }}>
+              {suggestions.length} new {suggestions.length === 1 ? 'suggestion' : 'suggestions'}
+            </span>
+          </div>
+          {suggestions.slice(0, 3).map((s: any, i: number) => (
+            <Link key={s.id} href={`/clients/${s.client_slug}?tab=portal`} style={{
+              display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', textDecoration: 'none',
+              borderTop: `1px solid ${t.border.subtle}`,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                <div style={{ fontSize: '11px', color: t.text.muted }}>{s.client_slug} · {s.reason?.replace(/_/g, ' ')}</div>
+              </div>
+              <ChevronRight size={13} color={t.text.muted} />
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* Quick stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>

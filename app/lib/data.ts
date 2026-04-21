@@ -35,6 +35,8 @@ export async function updateClient(id: string, updates: Partial<Client>) {
   const sb = getSupabase()
   const { error } = await sb.from('clients').update(updates).eq('id', id)
   if (error) throw error
+  invalidate('clients')
+  invalidatePrefix('dashboard-stats')
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────
@@ -265,7 +267,9 @@ export async function logVisit(visit: {
   // Invalidate stale caches
   invalidate('overdue-accounts')
   invalidate('accounts:all')
+  invalidate('followup-visits')
   invalidatePrefix('dashboard-stats')
+  invalidatePrefix('today-schedule')
   for (const slug of slugsToInsert) {
     if (slug) invalidate(`visits:${slug}`)
   }
@@ -299,16 +303,23 @@ export async function logVisit(visit: {
   }
 }
 
-export async function updateVisit(id: string, updates: Partial<Visit>) {
+export async function updateVisit(id: string, updates: Partial<Visit> & { client_slug?: string }) {
   const sb = getSupabase()
   const { error } = await sb.from('visits').update(updates).eq('id', id)
   if (error) throw error
+  invalidate('followup-visits')
+  invalidatePrefix('dashboard-stats')
+  if (updates.client_slug) invalidate(`visits:${updates.client_slug}`)
 }
 
-export async function deleteVisit(id: string) {
+export async function deleteVisit(id: string, clientSlug?: string) {
   const sb = getSupabase()
   const { error } = await sb.from('visits').delete().eq('id', id)
   if (error) throw error
+  invalidate('followup-visits')
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  if (clientSlug) invalidate(`visits:${clientSlug}`)
 }
 
 export function getFollowUpVisits(): Promise<Visit[]> {
@@ -368,13 +379,19 @@ export async function createPlacement(placement: Partial<Placement>): Promise<Pl
     .select()
     .single()
   if (error) throw error
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  if (placement.client_slug) invalidate(`placements:${placement.client_slug}`)
   return data
 }
 
-export async function updatePlacement(id: string, updates: Partial<Placement>) {
+export async function updatePlacement(id: string, updates: Partial<Placement> & { client_slug?: string }) {
   const sb = getSupabase()
   const { error } = await sb.from('placements').update(updates).eq('id', id)
   if (error) throw error
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  if (updates.client_slug) invalidate(`placements:${updates.client_slug}`)
 }
 
 export async function advancePlacementStatus(id: string, current: PlacementStatus) {
@@ -397,12 +414,15 @@ export async function revertPlacementStatus(id: string, current: PlacementStatus
   await updatePlacement(id, { status: prev[current] })
 }
 
-export async function markPlacementLost(id: string, reason: string) {
+export async function markPlacementLost(id: string, reason: string, clientSlug?: string) {
   const sb = getSupabase()
   await sb.from('placements').update({
     lost_at: new Date().toISOString(),
     lost_reason: reason,
   }).eq('id', id)
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  if (clientSlug) invalidate(`placements:${clientSlug}`)
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────
@@ -506,16 +526,20 @@ export async function createOrder(order: {
   return po
 }
 
-export async function updateOrder(id: string, updates: Partial<PurchaseOrder>) {
+export async function updateOrder(id: string, updates: Partial<PurchaseOrder> & { client_slug?: string }) {
   const sb = getSupabase()
   const { error } = await sb.from('purchase_orders').update(updates).eq('id', id)
   if (error) throw error
+  invalidatePrefix('dashboard-stats')
+  if (updates.client_slug) invalidate(`orders:${updates.client_slug}`)
 }
 
-export async function deleteOrder(id: string) {
+export async function deleteOrder(id: string, clientSlug?: string) {
   const sb = getSupabase()
   await sb.from('po_line_items').delete().eq('po_id', id)
   await sb.from('purchase_orders').delete().eq('id', id)
+  invalidatePrefix('dashboard-stats')
+  if (clientSlug) invalidate(`orders:${clientSlug}`)
 }
 
 // ─── Contacts ─────────────────────────────────────────────────────────────
@@ -1059,10 +1083,9 @@ export async function getCommissionTrend(months = 12) {
 
 export async function getRepActivity(since: string) {
   const sb = getSupabase()
-  const [profiles, visits, placements] = await Promise.all([
+  const [profiles, visits] = await Promise.all([
     sb.from('user_profiles').select('id, name').in('role', ['owner', 'rep']),
     sb.from('visits').select('user_id').gte('visited_at', since),
-    sb.from('placements').select('id').gte('created_at', since),
   ])
   return {
     profiles: profiles.data || [],
@@ -1182,42 +1205,123 @@ export async function getWeeklyReportData(clientSlug: string, weekStart: string,
 
 export async function getPortalData(clientSlug: string) {
   const sb = getSupabase()
-  const monthStart = startOfMonthMT()
+  const ninetyDaysAgo = nDaysAgoMT(90)
 
-  const [client, visits, placements, orders, events, registrations] = await Promise.all([
+  const [clientRes, visitsRes, placementsRes, ordersRes, eventsRes, suggestionsRes, campaignsRes] = await Promise.all([
     getClient(clientSlug),
     sb.from('visits')
-      .select('*, accounts(name, address)')
+      .select('id, visited_at, status, notes, account_id, accounts(id, name, address, account_type)')
       .eq('client_slug', clientSlug)
+      .gte('visited_at', ninetyDaysAgo)
       .order('visited_at', { ascending: false })
-      .limit(50),
+      .limit(150),
     sb.from('placements')
-      .select('*, accounts(name, address)')
+      .select('id, product_name, placement_type, status, price_point, created_at, updated_at, accounts(id, name, address)')
       .eq('client_slug', clientSlug)
       .is('lost_at', null)
       .order('created_at', { ascending: false }),
     sb.from('purchase_orders')
-      .select('*')
+      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, distributor_email, distributor_rep_name, deliver_to_address')
       .eq('client_slug', clientSlug)
-      .gte('created_at', monthStart)
+      .gte('created_at', ninetyDaysAgo)
       .order('created_at', { ascending: false }),
     sb.from('events')
-      .select('*, accounts(name)')
+      .select('id, title, event_type, start_time, accounts(name)')
       .eq('client_slug', clientSlug)
-      .gte('start_time', monthStart),
-    sb.from('state_registrations')
+      .gte('start_time', ninetyDaysAgo)
+      .order('start_time', { ascending: false }),
+    sb.from('client_suggestions')
       .select('*')
-      .eq('client_id', clientSlug),
+      .eq('client_slug', clientSlug)
+      .order('submitted_at', { ascending: false })
+      .limit(20),
+    sb.from('campaigns')
+      .select('*, campaign_milestones(*)')
+      .eq('client_slug', clientSlug)
+      .in('status', ['active', 'draft'])
+      .order('created_at', { ascending: false }),
   ])
+
+  const client = clientRes
+  const visits = visitsRes.data || []
+  const placements = placementsRes.data || []
+  const orders = ordersRes.data || []
+  const events = eventsRes.data || []
+  const suggestions = (suggestionsRes.data || []) as any[]
+  const campaigns = (campaignsRes.data || []) as any[]
+
+  const distOrders = orders.filter((o: any) => o.order_type === 'distributor')
+  const confirmedDist = distOrders.filter((o: any) => o.status === 'fulfilled')
+  const pendingDist = distOrders.filter((o: any) => o.status === 'sent')
+
+  const followUpVisits = visits.filter((v: any) => v.status === 'Will Order Soon' || v.status === 'Needs Follow Up')
+  const funnel = {
+    visits: visits.length,
+    followUps: followUpVisits.length,
+    inquiries: distOrders.length,
+    confirmed: confirmedDist.length,
+    pending: pendingDist.length,
+  }
+
+  const TZ = 'America/Denver'
+  const visitTrend: { week: string; visits: number }[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i * 7)
+    const weekStartStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay()).toLocaleDateString('en-CA', { timeZone: TZ })
+    const weekEndStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay() + 6).toLocaleDateString('en-CA', { timeZone: TZ })
+    const count = visits.filter((v: any) => {
+      const vd = v.visited_at.length > 10 && !v.visited_at.endsWith('Z') ? v.visited_at + 'Z' : v.visited_at
+      const ds = new Date(vd).toLocaleDateString('en-CA', { timeZone: TZ })
+      return ds >= weekStartStr && ds <= weekEndStr
+    }).length
+    const label = new Date(weekStartStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    visitTrend.push({ week: label, visits: count })
+  }
 
   return {
     client,
-    visits: visits.data || [],
-    placements: placements.data || [],
-    orders: orders.data || [],
-    events: events.data || [],
-    registrations: registrations.data || [],
+    visits,
+    placements,
+    orders,
+    events,
+    distOrders,
+    suggestions,
+    campaigns,
+    funnel,
+    visitTrend,
   }
+}
+
+export async function submitClientSuggestion(suggestion: {
+  client_slug: string
+  suggestion_type: 'account' | 'contact'
+  name: string
+  address?: string
+  notes?: string
+  reason: string
+  reason_detail?: string
+  submitted_by_name?: string
+  submitted_by_email?: string
+}) {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('client_suggestions').insert(suggestion).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function getClientSuggestions(status?: string) {
+  const sb = getSupabase()
+  let q = sb.from('client_suggestions').select('*').order('submitted_at', { ascending: false })
+  if (status) q = q.eq('status', status)
+  const { data, error } = await q.limit(50)
+  if (error) throw error
+  return data || []
+}
+
+export async function acknowledgeClientSuggestion(id: string) {
+  const sb = getSupabase()
+  await sb.from('client_suggestions').update({ status: 'acknowledged' }).eq('id', id)
 }
 
 // ─── Planner Stops ───────────────────────────────────────────────────────
@@ -1338,6 +1442,7 @@ export function getPlacementsForClient(clientSlug: string) {
       .from('placements')
       .select('*, accounts(id, name)')
       .eq('client_slug', clientSlug)
+      .is('lost_at', null)
       .order('created_at', { ascending: false })
     if (error) throw error
     return data || []
@@ -1427,6 +1532,77 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>) {
     .from('campaigns')
     .update(updates as any)
     .eq('id', id)
+  if (error) throw error
+}
+
+// ─── Campaign Expenses ────────────────────────────────────────────────────
+
+export async function getCampaignExpenses(campaignId: string) {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('campaign_expenses')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createCampaignExpense(expense: {
+  campaign_id: string
+  client_slug: string
+  description: string
+  category: string
+  amount: number
+  vendor?: string
+  expense_date?: string
+  notes?: string
+  added_by?: string
+}) {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('campaign_expenses').insert(expense).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCampaignExpense(id: string) {
+  const sb = getSupabase()
+  const { error } = await sb.from('campaign_expenses').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── Campaign Assets ──────────────────────────────────────────────────────
+
+export async function getCampaignAssets(campaignId: string) {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('campaign_assets')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createCampaignAsset(asset: {
+  campaign_id: string
+  client_slug: string
+  name: string
+  file_url: string
+  file_type?: string
+  file_size?: number
+  description?: string
+  uploaded_by?: string
+}) {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('campaign_assets').insert(asset).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCampaignAsset(id: string) {
+  const sb = getSupabase()
+  const { error } = await sb.from('campaign_assets').delete().eq('id', id)
   if (error) throw error
 }
 

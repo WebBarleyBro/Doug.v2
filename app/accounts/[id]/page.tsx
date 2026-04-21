@@ -14,31 +14,16 @@ import {
   getAccount, getVisits, getPlacements, getOrders, getContacts,
   deleteVisit, updateVisit, createContact, updateContact, deleteContact,
   createPlacement, getProducts, getClients, updateAccount, updateAccountClients,
-  deleteAccount, getCompetitiveSightings,
+  deleteAccount,
 } from '../../lib/data'
 import { invalidate } from '../../lib/cache'
 import { clientLogoUrl } from '../../lib/constants'
 import { getSupabase } from '../../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, btnIcon, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, daysAgoMT, formatCurrency, accountHealth } from '../../lib/formatters'
+import { formatShortDateMT, daysAgoMT, formatCurrency, accountHealth, resolveTotal } from '../../lib/formatters'
 import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client } from '../../lib/types'
-
-function resolveTotal(o: any): number {
-  const items: any[] = o.po_line_items || []
-  if (items.length > 0) {
-    const fromItems = items.reduce((sum: number, li: any) => {
-      const lineTotal = Number(li.total || 0)
-      if (lineTotal > 0) return sum + lineTotal
-      const price = Number(li.unit_price || li.price || 0)
-      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
-      return sum + price * qty
-    }, 0)
-    if (fromItems > 0) return fromItems
-  }
-  return Number(o.total_amount || (o as any).total || 0)
-}
 
 declare global { interface Window { google: any } }
 
@@ -62,7 +47,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   other:       t.text.muted,
 }
 
-const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts', 'competitive'] as const
+const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts'] as const
 type Tab = typeof TABS[number]
 
 export default function AccountDetailPage() {
@@ -73,7 +58,7 @@ export default function AccountDetailPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
-  const [competitive, setCompetitive] = useState<any[]>([])
+  const [competitive, setCompetitive] = useState<any[]>([]) // kept for data compatibility
   const [clients, setClients] = useState<Client[]>([])
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tab, setTab] = useState<Tab>('activity')
@@ -182,10 +167,6 @@ export default function AccountDetailPage() {
       if (t === 'contacts') {
         const cs = await getContacts({ accountId: id })
         setContacts(cs)
-      }
-      if (t === 'competitive') {
-        const cs = await getCompetitiveSightings(id)
-        setCompetitive(cs)
       }
     } catch (e) { console.error(e) }
   }, [id])
@@ -653,52 +634,6 @@ export default function AccountDetailPage() {
           </div>
         )}
 
-        {tab === 'competitive' && (
-          <div>
-            {competitive.length === 0 ? (
-              <EmptyState
-                icon={<Activity size={32} />}
-                title="No competitive intel logged yet"
-                subtitle="Add what you see on the shelf when you log visits."
-              />
-            ) : (
-              (() => {
-                const grouped: Record<string, any[]> = {}
-                competitive.forEach((s: any) => {
-                  if (!grouped[s.brand_name]) grouped[s.brand_name] = []
-                  grouped[s.brand_name].push(s)
-                })
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {Object.entries(grouped).map(([brand, sightings]) => (
-                      <div key={brand} style={{ ...card }}>
-                        <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, marginBottom: '10px', paddingBottom: '8px', borderBottom: `1px solid ${t.border.subtle}` }}>
-                          {brand}
-                          <span style={{ fontSize: '11px', color: t.text.muted, fontWeight: '400', marginLeft: '8px' }}>
-                            {sightings.length} sighting{sightings.length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {sightings.map((s: any) => (
-                            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                              <div>
-                                {s.product_name && <div style={{ fontSize: '13px', color: t.text.primary }}>{s.product_name}</div>}
-                                {s.placement_type && <div style={{ fontSize: '11px', color: t.text.muted, textTransform: 'capitalize' }}>{s.placement_type.replace('_', ' ')}</div>}
-                              </div>
-                              <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>
-                                {formatShortDateMT(s.sighted_at)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })()
-            )}
-          </div>
-        )}
 
         <ConfirmModal
           isOpen={!!deleteContactTarget}

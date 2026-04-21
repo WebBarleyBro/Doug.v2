@@ -127,15 +127,17 @@ export interface AccountHealth {
   reason: string
 }
 
+const ACTIVE_PLACEMENT_STATUSES = new Set(['committed', 'ordered', 'on_shelf', 'reordering'])
+
 export function accountHealth(
   account: { last_visited?: string | null; visit_frequency_days?: number | null },
-  placements?: Array<{ status?: string; updated_at?: string }>
+  placements?: Array<{ status?: string; updated_at?: string; lost_at?: string | null }>
 ): AccountHealth {
   const days = daysAgoMT(account.last_visited)
   const freq = account.visit_frequency_days || 30
-  const hasActivePlacement = placements?.some(p => p.status === 'active') ?? false
+  const hasActivePlacement = placements?.some(p => !p.lost_at && ACTIVE_PLACEMENT_STATUSES.has(p.status || '')) ?? false
   const stalePlacement = placements?.some(p => {
-    if (p.status !== 'active') return false
+    if (!ACTIVE_PLACEMENT_STATUSES.has(p.status || '') || p.lost_at) return false
     const d = daysAgoMT(p.updated_at)
     return d !== null && d > 60
   }) ?? false
@@ -163,4 +165,19 @@ export function generatePONumber(): string {
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   const rand = Math.floor(Math.random() * 9000) + 1000
   return `PO-${ymd}-${rand}`
+}
+
+export function resolveTotal(o: { po_line_items?: any[]; total_amount?: any; total?: any }): number {
+  const items: any[] = o.po_line_items || []
+  if (items.length > 0) {
+    const fromItems = items.reduce((sum: number, li: any) => {
+      const lineTotal = Number(li.total || 0)
+      if (lineTotal > 0) return sum + lineTotal
+      const price = Number(li.unit_price || li.price || 0)
+      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
+      return sum + price * qty
+    }, 0)
+    if (fromItems > 0) return fromItems
+  }
+  return Number(o.total_amount || (o as any).total || 0)
 }

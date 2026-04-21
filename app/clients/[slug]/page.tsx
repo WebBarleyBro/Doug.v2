@@ -4,12 +4,12 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
-import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts } from '../../lib/data'
+import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone } from '../../lib/data'
 import ConfirmModal from '../../components/ConfirmModal'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
 import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear } from '../../lib/formatters'
+import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear, resolveTotal } from '../../lib/formatters'
 import { PLACEMENT_STATUS_LABELS, EVENT_TYPE_LABELS, clientLogoUrl } from '../../lib/constants'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import type { Client } from '../../lib/types'
@@ -34,21 +34,6 @@ const TAB_GROUP: Record<string, string> = {
   tastings: 'core', report: 'core',
   products: 'products',
   events: 'events', campaigns: 'campaigns', contacts: 'contacts', compliance: 'compliance',
-}
-
-function resolveTotal(o: any): number {
-  const items: any[] = o.po_line_items || []
-  if (items.length > 0) {
-    const fromItems = items.reduce((sum: number, li: any) => {
-      const lineTotal = Number(li.total || 0)
-      if (lineTotal > 0) return sum + lineTotal
-      const price = Number(li.unit_price || li.price || 0)
-      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
-      return sum + price * qty
-    }, 0)
-    if (fromItems > 0) return fromItems
-  }
-  return Number(o.total_amount || (o as any).total || 0)
 }
 
 export default function ClientDetailPage() {
@@ -81,6 +66,18 @@ export default function ClientDetailPage() {
   const [userRole, setUserRole] = useState<string>('owner')
   const [isMobile, setIsMobile] = useState(false)
   const loaded = useRef(new Set<string>())
+
+  // Campaign sub-state
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
+  const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
+  const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
+  const [uploadingAsset, setUploadingAsset] = useState(false)
+  const [showAddExpense, setShowAddExpense] = useState<string | null>(null)
+  const [addExpenseForm, setAddExpenseForm] = useState({ description: '', category: 'other', amount: '', vendor: '', expense_date: '', notes: '' })
+  const [expenseSaving, setExpenseSaving] = useState(false)
+  const [showNewCampaign, setShowNewCampaign] = useState(false)
+  const [newCampaignForm, setNewCampaignForm] = useState({ title: '', campaign_type: '', start_date: '', end_date: '', budget: '', status: 'draft' as string })
+  const [campaignSaving, setCampaignSaving] = useState(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -166,7 +163,8 @@ export default function ClientDetailPage() {
   }
 
   const totalRevenue = orders.reduce((s, o) => s + resolveTotal(o), 0)
-  const activePlacements = placements.filter(p => p.status !== 'lost' && p.status !== 'removed')
+  const ACTIVE_STATUSES = ['committed', 'ordered', 'on_shelf', 'reordering']
+  const activePlacements = placements.filter(p => !p.lost_at && ACTIVE_STATUSES.includes(p.status))
   const avgRating = tastings.length ? (tastings.reduce((s, tg) => s + (tg.rating || 0), 0) / tastings.length).toFixed(1) : null
   const wouldBuyPct = tastings.length ? Math.round(tastings.filter(tg => tg.would_buy === true).length / tastings.length * 100) : null
 
@@ -194,8 +192,8 @@ export default function ClientDetailPage() {
     <LayoutShell>
       <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-          <button onClick={() => router.push('/clients')} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px', display: 'flex' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', marginBottom: '24px' }}>
+          <button onClick={() => router.push('/clients')} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px', display: 'flex', marginTop: '4px' }}>
             <ArrowLeft size={18} />
           </button>
           {(() => {
@@ -212,6 +210,25 @@ export default function ClientDetailPage() {
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>{client.name}</h1>
             <p style={{ fontSize: '13px', color: t.text.muted }}>{client.category || 'Spirits Brand'}{client.state ? ` · ${client.state}` : ''}{client.territory ? ` · ${client.territory}` : ''}</p>
+            {(() => {
+              const accent = client.color || t.gold
+              return (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                  <a href={`/portal/${slug}`} target="_blank" rel="noreferrer" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', backgroundColor: accent + '18', border: `1px solid ${accent}55`,
+                    borderRadius: '8px', color: accent, fontSize: '13px', fontWeight: '700',
+                    textDecoration: 'none', cursor: 'pointer',
+                  }}>
+                    <ExternalLink size={13} /> View Client Portal
+                  </a>
+                  <button onClick={() => { navigator.clipboard.writeText(window.location.origin + '/portal/' + slug); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', backgroundColor: 'transparent', border: `1px solid ${t.border.default}`, borderRadius: '8px', color: t.text.secondary, fontSize: '13px', cursor: 'pointer' }}>
+                    {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied!' : 'Copy Portal Link'}
+                  </button>
+                </div>
+              )
+            })()}
           </div>
           <button onClick={() => setShowSettings(true)} title="Brand Settings" style={{
             background: 'none', border: `1px solid ${t.border.default}`, color: t.text.muted,
@@ -501,18 +518,361 @@ export default function ClientDetailPage() {
 
         {/* Campaigns Tab */}
         {tab === 'campaigns' && !tabLoading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ fontSize: '13px', color: t.text.muted }}>Track campaigns, expenses, and client assets.</p>
+              <button onClick={() => { setNewCampaignForm({ title: '', campaign_type: '', start_date: '', end_date: '', budget: '', status: 'draft' }); setShowNewCampaign(true) }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: '12px' }}>
+                <Plus size={13} /> New Campaign
+              </button>
+            </div>
+
             {campaigns.length === 0 ? (
-              <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No campaigns for this brand</div>
-            ) : campaigns.map(c => (
-              <div key={c.id} style={{ ...card, padding: '14px 18px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{c.name}</div>
-                <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>
-                  {c.campaign_type?.replace('_', ' ')}{c.start_date ? ` · ${formatShortDateMT(c.start_date)}` : ''}
-                  {c.budget ? ` · $${c.budget.toLocaleString()}` : ''}
+              <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No campaigns yet — create one to track expenses and assets.</div>
+            ) : campaigns.map(camp => {
+              const isExpanded = expandedCampaign === camp.id
+              const milestones: any[] = camp.campaign_milestones || []
+              const completedMs = milestones.filter((m: any) => m.completed).length
+              const expenses: any[] = campaignExpenses[camp.id] || []
+              const assets: any[] = campaignAssets[camp.id] || []
+              const totalExpenses = expenses.reduce((s: number, exp: any) => s + Number(exp.amount || 0), 0)
+
+              const statusColors: Record<string, string> = {
+                active: t.status.success,
+                completed: t.status.info,
+                paused: t.status.warning,
+                draft: t.text.muted,
+              }
+              const statusBgs: Record<string, string> = {
+                active: t.status.successBg,
+                completed: t.status.infoBg,
+                paused: t.status.warningBg,
+                draft: t.status.neutralBg,
+              }
+              const statusColor = statusColors[camp.status] || t.text.muted
+              const statusBg = statusBgs[camp.status] || t.status.neutralBg
+
+              return (
+                <div key={camp.id} style={{ ...card, padding: 0, overflow: 'hidden' }}>
+                  {/* Campaign header — click to expand */}
+                  <button
+                    onClick={async () => {
+                      if (isExpanded) {
+                        setExpandedCampaign(null)
+                      } else {
+                        setExpandedCampaign(camp.id)
+                        if (!campaignExpenses[camp.id]) {
+                          const [exps, asts] = await Promise.all([
+                            getCampaignExpenses(camp.id).catch(() => []),
+                            getCampaignAssets(camp.id).catch(() => []),
+                          ])
+                          setCampaignExpenses(prev => ({ ...prev, [camp.id]: exps }))
+                          setCampaignAssets(prev => ({ ...prev, [camp.id]: asts }))
+                        }
+                      }
+                    }}
+                    style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', textAlign: 'left' }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{camp.title || camp.name}</span>
+                        <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', backgroundColor: statusBg, color: statusColor, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{camp.status}</span>
+                        {camp.campaign_type && <span style={{ fontSize: '11px', color: t.text.muted }}>{camp.campaign_type.replace(/_/g, ' ')}</span>}
+                      </div>
+                      <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '3px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        {camp.start_date && <span>{formatShortDateMT(camp.start_date)}{camp.end_date ? ` – ${formatShortDateMT(camp.end_date)}` : ''}</span>}
+                        {camp.budget && <span>Budget: {formatCurrency(camp.budget)}</span>}
+                        {milestones.length > 0 && <span>{completedMs}/{milestones.length} milestones</span>}
+                        {expenses.length > 0 && <span style={{ color: t.gold }}>Expenses: {formatCurrency(totalExpenses)}</span>}
+                      </div>
+                    </div>
+                    <span style={{ color: t.text.muted, flexShrink: 0, fontSize: '16px' }}>{isExpanded ? '▲' : '▼'}</span>
+                  </button>
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div style={{ borderTop: `1px solid ${t.border.default}`, padding: '18px' }}>
+
+                      {/* Milestones */}
+                      {milestones.length > 0 && (
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Milestones ({completedMs}/{milestones.length})</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {milestones.map((m: any) => (
+                              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={m.completed}
+                                  onChange={async (e) => {
+                                    await toggleMilestone(m.id, e.target.checked)
+                                    setCampaigns(prev => prev.map(cmp => cmp.id === camp.id ? {
+                                      ...cmp,
+                                      campaign_milestones: cmp.campaign_milestones.map((ms: any) =>
+                                        ms.id === m.id ? { ...ms, completed: e.target.checked } : ms
+                                      )
+                                    } : cmp))
+                                  }}
+                                  style={{ cursor: 'pointer', accentColor: t.gold }}
+                                />
+                                <span style={{ fontSize: '13px', color: m.completed ? t.text.muted : t.text.primary, textDecoration: m.completed ? 'line-through' : 'none' }}>{m.title}</span>
+                                {m.due_date && <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: 'auto' }}>{formatShortDateMT(m.due_date)}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expenses section */}
+                      <div style={{ marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Expenses {expenses.length > 0 && <span style={{ color: t.gold }}>— Total: {formatCurrency(totalExpenses)}</span>}
+                          </div>
+                          <button
+                            onClick={() => { setShowAddExpense(camp.id); setAddExpenseForm({ description: '', category: 'other', amount: '', vendor: '', expense_date: '', notes: '' }) }}
+                            style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}
+                          >
+                            + Add Expense
+                          </button>
+                        </div>
+
+                        {expenses.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: t.text.muted, padding: '8px 0' }}>No expenses logged yet.</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {expenses.map((exp: any) => (
+                              <div key={exp.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}` }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ fontSize: '13px', color: t.text.primary }}>{exp.description}</span>
+                                  <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '8px' }}>{exp.category}</span>
+                                  {exp.vendor && <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '6px' }}>· {exp.vendor}</span>}
+                                </div>
+                                <span style={{ fontSize: '13px', fontWeight: '700', color: t.gold, flexShrink: 0 }}>{formatCurrency(Number(exp.amount))}</span>
+                                <button
+                                  onClick={async () => {
+                                    await deleteCampaignExpense(exp.id)
+                                    setCampaignExpenses(prev => ({ ...prev, [camp.id]: prev[camp.id].filter((e: any) => e.id !== exp.id) }))
+                                  }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.status.danger, padding: '2px', display: 'flex', flexShrink: 0 }}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add expense inline form */}
+                        {showAddExpense === camp.id && (
+                          <div style={{ marginTop: '10px', padding: '14px', backgroundColor: t.bg.elevated, borderRadius: '8px', border: `1px solid ${t.border.hover}`, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={labelStyle}>Description *</label>
+                                <input value={addExpenseForm.description} onChange={e => setAddExpenseForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Shelf talkers" style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Category</label>
+                                <select value={addExpenseForm.category} onChange={e => setAddExpenseForm(f => ({ ...f, category: e.target.value }))} style={{ ...selectStyle, fontSize: '13px', padding: '8px 10px' }}>
+                                  {['printing', 'events', 'materials', 'digital', 'shipping', 'other'].map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Amount ($) *</label>
+                                <input type="number" min="0" step="0.01" value={addExpenseForm.amount} onChange={e => setAddExpenseForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Vendor</label>
+                                <input value={addExpenseForm.vendor} onChange={e => setAddExpenseForm(f => ({ ...f, vendor: e.target.value }))} placeholder="Optional vendor" style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Date</label>
+                                <input type="date" value={addExpenseForm.expense_date} onChange={e => setAddExpenseForm(f => ({ ...f, expense_date: e.target.value }))} style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Notes</label>
+                                <input value={addExpenseForm.notes} onChange={e => setAddExpenseForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional" style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button onClick={() => setShowAddExpense(null)} style={{ ...btnSecondary, padding: '6px 12px', fontSize: '12px', minHeight: 'unset' }}>Cancel</button>
+                              <button
+                                disabled={!addExpenseForm.description.trim() || !addExpenseForm.amount || expenseSaving}
+                                onClick={async () => {
+                                  if (!addExpenseForm.description.trim() || !addExpenseForm.amount) return
+                                  setExpenseSaving(true)
+                                  try {
+                                    const created = await createCampaignExpense({
+                                      campaign_id: camp.id,
+                                      client_slug: slug,
+                                      description: addExpenseForm.description.trim(),
+                                      category: addExpenseForm.category,
+                                      amount: parseFloat(addExpenseForm.amount) || 0,
+                                      vendor: addExpenseForm.vendor || undefined,
+                                      expense_date: addExpenseForm.expense_date || undefined,
+                                      notes: addExpenseForm.notes || undefined,
+                                      added_by: 'internal',
+                                    })
+                                    setCampaignExpenses(prev => ({ ...prev, [camp.id]: [created, ...(prev[camp.id] || [])] }))
+                                    setShowAddExpense(null)
+                                  } catch (err) { console.error(err) }
+                                  setExpenseSaving(false)
+                                }}
+                                style={{ ...btnPrimary, padding: '6px 12px', fontSize: '12px', minHeight: 'unset', opacity: (!addExpenseForm.description.trim() || !addExpenseForm.amount || expenseSaving) ? 0.5 : 1 }}
+                              >
+                                {expenseSaving ? 'Saving…' : 'Add Expense'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Assets section */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Assets ({assets.length})</div>
+                          <label style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: uploadingAsset ? 'wait' : 'pointer' }}>
+                            {uploadingAsset ? 'Uploading…' : '+ Upload File'}
+                            <input
+                              type="file"
+                              style={{ display: 'none' }}
+                              disabled={uploadingAsset}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                setUploadingAsset(true)
+                                try {
+                                  const sb = getSupabase()
+                                  const path = `${slug}/${camp.id}/${Date.now()}-${file.name}`
+                                  const { error: upErr } = await sb.storage.from('campaign-assets').upload(path, file, { cacheControl: '3600', upsert: false })
+                                  if (upErr) throw upErr
+                                  const { data: urlData } = sb.storage.from('campaign-assets').getPublicUrl(path)
+                                  const fileUrl = urlData.publicUrl
+                                  const created = await createCampaignAsset({
+                                    campaign_id: camp.id,
+                                    client_slug: slug,
+                                    name: file.name,
+                                    file_url: fileUrl,
+                                    file_type: file.type,
+                                    file_size: file.size,
+                                    uploaded_by: 'internal',
+                                  })
+                                  setCampaignAssets(prev => ({ ...prev, [camp.id]: [created, ...(prev[camp.id] || [])] }))
+                                } catch (err) { console.error('Upload failed:', err) }
+                                setUploadingAsset(false)
+                                e.target.value = ''
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        {assets.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: t.text.muted, padding: '8px 0' }}>No assets uploaded yet.</div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {assets.map((asset: any) => (
+                              <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}` }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <a href={asset.file_url} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: t.gold, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                                    {asset.name}
+                                  </a>
+                                  <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>
+                                    {asset.uploaded_by === 'client' ? 'Uploaded by client' : 'Internal'}{asset.file_size ? ` · ${Math.round(asset.file_size / 1024)}KB` : ''}
+                                  </div>
+                                </div>
+                                <a href={asset.file_url} target="_blank" rel="noreferrer" style={{ color: t.text.muted, display: 'flex', flexShrink: 0 }}>
+                                  <ExternalLink size={13} />
+                                </a>
+                                <button
+                                  onClick={async () => {
+                                    await deleteCampaignAsset(asset.id)
+                                    setCampaignAssets(prev => ({ ...prev, [camp.id]: prev[camp.id].filter((a: any) => a.id !== asset.id) }))
+                                  }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.status.danger, padding: '2px', display: 'flex', flexShrink: 0 }}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
+
+            {/* New Campaign Modal */}
+            {showNewCampaign && (
+              <>
+                <div onClick={() => setShowNewCampaign(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)', zIndex: 400 }} />
+                <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '480px', maxWidth: '95vw', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '12px', zIndex: 500, padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>New Campaign</div>
+                    <button onClick={() => setShowNewCampaign(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '4px', display: 'flex' }}><X size={18} /></button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Campaign Title *</label>
+                      <input value={newCampaignForm.title} onChange={e => setNewCampaignForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Summer Shelf Talker Push" style={{ ...inputStyle, marginTop: '4px' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={labelStyle}>Type</label>
+                        <input value={newCampaignForm.campaign_type} onChange={e => setNewCampaignForm(f => ({ ...f, campaign_type: e.target.value }))} placeholder="e.g. print, event, digital" style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Status</label>
+                        <select value={newCampaignForm.status} onChange={e => setNewCampaignForm(f => ({ ...f, status: e.target.value }))} style={{ ...selectStyle, marginTop: '4px' }}>
+                          {['draft', 'active', 'paused', 'completed'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Start Date</label>
+                        <input type="date" value={newCampaignForm.start_date} onChange={e => setNewCampaignForm(f => ({ ...f, start_date: e.target.value }))} style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>End Date</label>
+                        <input type="date" value={newCampaignForm.end_date} onChange={e => setNewCampaignForm(f => ({ ...f, end_date: e.target.value }))} style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Budget ($)</label>
+                        <input type="number" min="0" step="100" value={newCampaignForm.budget} onChange={e => setNewCampaignForm(f => ({ ...f, budget: e.target.value }))} placeholder="0.00" style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setShowNewCampaign(false)} style={btnSecondary}>Cancel</button>
+                    <button
+                      disabled={!newCampaignForm.title.trim() || campaignSaving}
+                      onClick={async () => {
+                        if (!newCampaignForm.title.trim()) return
+                        setCampaignSaving(true)
+                        try {
+                          const created = await createCampaign({
+                            client_slug: slug,
+                            title: newCampaignForm.title.trim(),
+                            campaign_type: newCampaignForm.campaign_type || undefined,
+                            start_date: newCampaignForm.start_date || undefined,
+                            end_date: newCampaignForm.end_date || undefined,
+                            budget: newCampaignForm.budget ? parseFloat(newCampaignForm.budget) : undefined,
+                            status: newCampaignForm.status as any,
+                          })
+                          setCampaigns(prev => [{ ...created, campaign_milestones: [] }, ...prev])
+                          setShowNewCampaign(false)
+                        } catch (err) { console.error(err) }
+                        setCampaignSaving(false)
+                      }}
+                      style={{ ...btnPrimary, opacity: (!newCampaignForm.title.trim() || campaignSaving) ? 0.5 : 1 }}
+                    >
+                      {campaignSaving ? 'Creating…' : 'Create Campaign'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -715,6 +1075,16 @@ export default function ClientDetailPage() {
                 {/* Divider */}
                 <div style={{ borderTop: `1px solid ${t.border.subtle}` }} />
 
+                {/* Brand Color */}
+                <BrandColorPicker
+                  currentColor={editForm.color ?? client.color ?? t.gold}
+                  logoUrl={clientLogoUrl(client)}
+                  onChange={color => setEditForm(f => ({ ...f, color }))}
+                />
+
+                {/* Divider */}
+                <div style={{ borderTop: `1px solid ${t.border.subtle}` }} />
+
                 {/* Edit Brand Info */}
                 <div>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Edit Brand Info</div>
@@ -805,5 +1175,93 @@ export default function ClientDetailPage() {
         danger
       />
     </LayoutShell>
+  )
+}
+
+// ─── Brand Color Picker ───────────────────────────────────────────────────
+
+async function extractDominantColor(imageUrl: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = 60
+        canvas.height = 60
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(null); return }
+        ctx.drawImage(img, 0, 0, 60, 60)
+        const { data } = ctx.getImageData(0, 0, 60, 60)
+        const counts: Record<string, number> = {}
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3]
+          if (a < 100) continue
+          if (r > 215 && g > 215 && b > 215) continue // near-white
+          if (r < 35 && g < 35 && b < 35) continue   // near-black
+          const max = Math.max(r, g, b), min = Math.min(r, g, b)
+          if (max === 0 || (max - min) / max < 0.18) continue // too gray
+          const bucket = `${Math.round(r / 28) * 28},${Math.round(g / 28) * 28},${Math.round(b / 28) * 28}`
+          counts[bucket] = (counts[bucket] || 0) + 1
+        }
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+        if (!top) { resolve(null); return }
+        const [rr, gg, bb] = top[0].split(',').map(Number)
+        resolve(`#${rr.toString(16).padStart(2, '0')}${gg.toString(16).padStart(2, '0')}${bb.toString(16).padStart(2, '0')}`)
+      } catch { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = imageUrl
+  })
+}
+
+function BrandColorPicker({ currentColor, logoUrl, onChange }: { currentColor: string; logoUrl: string | null; onChange: (c: string) => void }) {
+  const [extracting, setExtracting] = useState(false)
+  const [extracted, setExtracted] = useState<string | null>(null)
+  const [noLogo, setNoLogo] = useState(false)
+
+  async function handleExtract() {
+    if (!logoUrl) { setNoLogo(true); return }
+    setExtracting(true)
+    const color = await extractDominantColor(logoUrl)
+    setExtracting(false)
+    if (color) {
+      setExtracted(color)
+      onChange(color)
+    } else {
+      setNoLogo(true)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>Brand Color</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ position: 'relative' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: currentColor, border: `2px solid ${currentColor}66`, cursor: 'pointer', overflow: 'hidden' }}>
+            <input
+              type="color"
+              value={currentColor.startsWith('#') ? currentColor : '#d4a843'}
+              onChange={e => { setExtracted(null); onChange(e.target.value) }}
+              style={{ opacity: 0, position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'pointer', border: 'none', padding: 0 }}
+            />
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '12px', color: t.text.secondary, fontFamily: 'monospace', marginBottom: '4px' }}>{currentColor}</div>
+          {extracted && <div style={{ fontSize: '11px', color: t.status.success }}>Extracted from logo</div>}
+          {noLogo && <div style={{ fontSize: '11px', color: t.status.warning }}>Couldn't extract — pick manually</div>}
+        </div>
+        {logoUrl && (
+          <button
+            onClick={handleExtract}
+            disabled={extracting}
+            style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', opacity: extracting ? 0.6 : 1, whiteSpace: 'nowrap' }}
+          >
+            {extracting ? 'Extracting…' : 'Extract from Logo'}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }

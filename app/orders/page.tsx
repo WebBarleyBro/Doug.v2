@@ -17,24 +17,9 @@ import { invalidate, invalidatePrefix } from '../lib/cache'
 import AddAccountModal from '../components/AddAccountModal'
 import type { Product } from '../lib/types'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
-import { formatCurrency, formatShortDateMT, startOfMonthMT } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client, Contact } from '../lib/types'
-
-function resolveTotal(o: any): number {
-  const items: any[] = o.po_line_items || []
-  if (items.length > 0) {
-    const fromItems = items.reduce((sum, li) => {
-      const lineTotal = Number(li.total || 0)
-      if (lineTotal > 0) return sum + lineTotal
-      const price = Number(li.unit_price || li.price || 0)
-      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
-      return sum + price * qty
-    }, 0)
-    if (fromItems > 0) return fromItems
-  }
-  return Number(o.total_amount || o.total || 0)
-}
 
 // ─── Account Search Dropdown ──────────────────────────────────────────────
 
