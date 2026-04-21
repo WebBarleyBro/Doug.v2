@@ -183,7 +183,7 @@ export async function getVisits(filters?: {
   const sb = getSupabase()
   let q = sb
     .from('visits')
-    .select('*, accounts(id, name, address, account_type), user_profiles(id, name)')
+    .select('*, accounts(id, name, address, account_type)')
     .order('visited_at', { ascending: false })
 
   if (filters?.accountId) q = q.eq('account_id', filters.accountId)
@@ -194,7 +194,19 @@ export async function getVisits(filters?: {
 
   const { data, error } = await q
   if (error) throw error
-  return data || []
+  const visits = data || []
+
+  // Enrich with user names via separate query (no FK between visits.user_id and user_profiles yet)
+  if (visits.length > 0) {
+    const userIds = [...new Set(visits.map((v: any) => v.user_id).filter(Boolean))]
+    if (userIds.length > 0) {
+      const { data: profiles } = await sb.from('user_profiles').select('id, name').in('id', userIds)
+      const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]))
+      visits.forEach((v: any) => { v.user_profiles = profileMap[v.user_id] || null })
+    }
+  }
+
+  return visits
 }
 
 export async function logVisit(visit: {
@@ -305,13 +317,22 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     const since = nDaysAgoMT(90)
     const { data, error } = await sb
       .from('visits')
-      .select('*, accounts(id, name, address, account_type), user_profiles(id, name)')
+      .select('*, accounts(id, name, address, account_type)')
       .in('status', ['Will Order Soon', 'Needs Follow Up'])
       .gte('visited_at', since)
       .order('visited_at', { ascending: true })
       .limit(50)
     if (error) throw error
-    return data || []
+    const visits = data || []
+    if (visits.length > 0) {
+      const userIds = [...new Set(visits.map((v: any) => v.user_id).filter(Boolean))]
+      if (userIds.length > 0) {
+        const { data: profiles } = await sb.from('user_profiles').select('id, name').in('id', userIds)
+        const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]))
+        visits.forEach((v: any) => { v.user_profiles = profileMap[v.user_id] || null })
+      }
+    }
+    return visits
   })
 }
 
@@ -1049,13 +1070,13 @@ export async function getWeeklyReportData(clientSlug: string, weekStart: string,
   const [bySlug, byAccount, placements, orders, events, followups] = await Promise.all([
     // Visits logged for this client directly
     sb.from('visits')
-      .select('*, accounts(id, name, address), user_profiles(name)')
+      .select('*, accounts(id, name, address)')
       .eq('client_slug', clientSlug)
       .gte('visited_at', weekStart).lte('visited_at', weekEnd),
     // Visits by account (fallback for null client_slug)
     accountIds.length > 0
       ? sb.from('visits')
-          .select('*, accounts(id, name, address), user_profiles(name)')
+          .select('*, accounts(id, name, address)')
           .in('account_id', accountIds)
           .is('client_slug', null)
           .gte('visited_at', weekStart).lte('visited_at', weekEnd)
