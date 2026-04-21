@@ -31,7 +31,7 @@ export default function PlacementsPage() {
   const [clientFilter, setClientFilter] = useState('all')
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [lostModal, setLostModal] = useState<{ id: string; open: boolean }>({ id: '', open: false })
+  const [lostModal, setLostModal] = useState<{ id: string; clientSlug: string; open: boolean }>({ id: '', clientSlug: '', open: false })
   const [lostReason, setLostReason] = useState('')
   const [form, setForm] = useState({
     account_id: '',
@@ -191,7 +191,7 @@ export default function PlacementsPage() {
                             → {PLACEMENT_STATUS_LABELS[{ committed: 'ordered', ordered: 'on_shelf', on_shelf: 'reordering' }[p.status as string] as PlacementStatus]}
                           </button>
                         )}
-                        <button onClick={() => { setLostModal({ id: p.id, open: true }); setLostReason('') }} style={{
+                        <button onClick={() => { setLostModal({ id: p.id, clientSlug: p.client_slug || '', open: true }); setLostReason('') }} style={{
                           padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
                           border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
                         }}>
@@ -278,8 +278,8 @@ export default function PlacementsPage() {
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                 <button onClick={() => setLostModal({ id: '', open: false })} style={btnSecondary}>Cancel</button>
                 <button onClick={async () => {
-                  await markPlacementLost(lostModal.id, lostReason)
-                  setLostModal({ id: '', open: false })
+                  await markPlacementLost(lostModal.id, lostReason, lostModal.clientSlug)
+                  setLostModal({ id: '', clientSlug: '', open: false })
                   load()
                 }} style={{ ...btnPrimary, backgroundColor: t.status.danger }}>Confirm Lost</button>
               </div>

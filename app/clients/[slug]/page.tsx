@@ -381,7 +381,7 @@ export default function ClientDetailPage() {
                     <div className="mono" style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{o.po_number}</div>
                     <div style={{ fontSize: '12px', color: t.text.muted }}>
                       {o.accounts?.id ? <Link href={`/accounts/${o.accounts.id}`} style={{ color: t.text.muted, textDecoration: 'none' }}>{o.accounts.name}</Link> : o.accounts?.name}
-                      {' · '}{formatShortDateMT(o.order_date || o.created_at)}
+                      {' · '}{formatShortDateMT(o.created_at)}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>

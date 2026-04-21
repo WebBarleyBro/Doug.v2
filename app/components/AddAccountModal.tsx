@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, CheckCircle, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
 import { t, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
-import { createAccount, createContact, getClients } from '../lib/data'
+import { createAccount, createContact, getClients, getAccounts } from '../lib/data'
 import { invalidate } from '../lib/cache'
 import VisitLogModal from './VisitLogModal'
 import type { Client } from '../lib/types'
@@ -74,6 +74,7 @@ export default function AddAccountModal({
   const [showContacts, setShowContacts] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [duplicateWarning, setDuplicateWarning] = useState('')
   const [savedAccount, setSavedAccount] = useState<any>(null)
   const [showVisit, setShowVisit] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -119,6 +120,20 @@ export default function AddAccountModal({
 
     return () => { alive = false; clearInterval(interval) }
   }, [])
+
+  // Duplicate name detection
+  useEffect(() => {
+    const name = form.name.trim()
+    if (name.length < 3) { setDuplicateWarning(''); return }
+    const timer = setTimeout(async () => {
+      try {
+        const accounts = await getAccounts({ search: name })
+        const match = accounts.find(a => a.name.toLowerCase() === name.toLowerCase())
+        setDuplicateWarning(match ? `"${match.name}" already exists${match.address ? ` at ${match.address}` : ''}.` : '')
+      } catch { setDuplicateWarning('') }
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [form.name])
 
   function toggleDay(day: string) {
     setForm(f => ({
@@ -240,10 +255,15 @@ export default function AddAccountModal({
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. The Bindery, Whole Foods..."
-                style={inputStyle}
+                style={{ ...inputStyle, borderColor: duplicateWarning ? '#f59e0b' : undefined }}
                 autoFocus
                 autoComplete="off"
               />
+              {duplicateWarning && (
+                <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  ⚠ {duplicateWarning} Save anyway if this is a different location.
+                </div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Address</label>

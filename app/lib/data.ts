@@ -529,6 +529,8 @@ export async function createOrder(order: {
     )
   }
 
+  invalidatePrefix('dashboard-stats')
+  invalidate(`orders:${order.client_slug}`)
   return po
 }
 
@@ -688,20 +690,20 @@ export async function createTask(task: {
 
 export async function completeTask(id: string) {
   const sb = getSupabase()
-  await sb.from('tasks').update({
-    completed: true,
-    completed_at: new Date().toISOString(),
-  }).eq('id', id)
+  await sb.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', id)
+  invalidate('tasks:all')
 }
 
 export async function unCompleteTask(id: string) {
   const sb = getSupabase()
   await sb.from('tasks').update({ completed: false, completed_at: null }).eq('id', id)
+  invalidate('tasks:all')
 }
 
 export async function deleteTask(id: string) {
   const sb = getSupabase()
   await sb.from('tasks').delete().eq('id', id)
+  invalidate('tasks:all')
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────
@@ -1106,7 +1108,7 @@ export async function getRepActivity(since: string) {
 
 export async function getPlacementFunnel(range: DateRange) {
   const sb = getSupabase()
-  const [totalVisits, placements, onShelf] = await Promise.all([
+  const [totalVisits, placements, onShelf, uniqueAccs] = await Promise.all([
     sb.from('visits').select('id', { count: 'exact', head: true })
       .gte('visited_at', range.start.toISOString())
       .lte('visited_at', range.end.toISOString()),
@@ -1116,11 +1118,16 @@ export async function getPlacementFunnel(range: DateRange) {
     sb.from('placements').select('id', { count: 'exact', head: true })
       .eq('status', 'on_shelf')
       .is('lost_at', null),
+    sb.from('visits').select('account_id')
+      .gte('visited_at', range.start.toISOString())
+      .lte('visited_at', range.end.toISOString()),
   ])
+  const uniqueAccounts = new Set((uniqueAccs.data || []).map((r: any) => r.account_id)).size
   return {
     totalVisits: totalVisits.count || 0,
     placementsCreated: placements.count || 0,
     activeOnShelf: onShelf.count || 0,
+    uniqueAccounts,
   }
 }
 

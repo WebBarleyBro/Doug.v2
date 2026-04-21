@@ -58,7 +58,6 @@ export default function AccountDetailPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
-  const [competitive, setCompetitive] = useState<any[]>([]) // kept for data compatibility
   const [clients, setClients] = useState<Client[]>([])
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tab, setTab] = useState<Tab>('activity')
@@ -490,7 +489,7 @@ export default function AccountDetailPage() {
                   const primary = rows[0]
                   return (
                     <VisitCard key={primary.id} visit={primary} allRows={rows} clients={clients}
-                      onDelete={() => Promise.all(rows.map(r => deleteVisit(r.id))).then(reloadAll)}
+                      onDelete={() => Promise.all(rows.map(r => deleteVisit(r.id, r.client_slug))).then(reloadAll)}
                       onSave={(updates) => Promise.all(rows.map(r => updateVisit(r.id, updates as any))).then(reloadAll)}
                     />
                   )

@@ -71,6 +71,18 @@ export default function TastingCapturePage() {
     )
   }
 
+  if (!event) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🍸</div>
+          <h2 style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary, marginBottom: '8px' }}>Event not found</h2>
+          <p style={{ fontSize: '14px', color: t.text.muted }}>This tasting link may have expired or been removed.</p>
+        </div>
+      </div>
+    )
+  }
+
   if (submitted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>

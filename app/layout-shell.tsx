@@ -522,7 +522,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       setProfile(p)
       setLoading(false)
     }).catch(() => { window.location.replace('/login') })
-  }, [router])
+  }, [])
 
   if (loading) {
     return (

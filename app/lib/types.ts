@@ -1,6 +1,6 @@
 // Core entity types — all derived from Supabase schema
 
-export type UserRole = 'owner' | 'rep' | 'intern' | 'portal'
+export type UserRole = 'owner' | 'admin' | 'rep' | 'intern' | 'portal'
 
 export interface UserProfile {
   id: string
@@ -128,6 +128,7 @@ export interface Placement {
   lost_at?: string
   lost_reason?: string
   created_at: string
+  updated_at?: string
   // joined
   accounts?: Pick<Account, 'id' | 'name' | 'address'>
 }

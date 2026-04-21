@@ -102,7 +102,7 @@ export default function VisitLogModal({
     })
     if (defaultAccountId) setShowAccountSearch(false)
     else setShowAccountSearch(true)
-  }, [isOpen, defaultAccountId, defaultClientSlugs])
+  }, [isOpen, defaultAccountId, defaultAccountName, defaultClientSlugs])
 
   function selectAccount(acc: Account) {
     const slugs = acc.account_clients?.map(ac => ac.client_slug) || []
@@ -150,7 +150,7 @@ export default function VisitLogModal({
     }))
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     setError('')
     if (!form.account_id) { setError('Please select an account.'); return }
@@ -181,6 +181,7 @@ export default function VisitLogModal({
         const { data: { user } } = await getSupabase().auth.getUser()
         resolvedUserId = user?.id
       }
+      if (!resolvedUserId) { setError('Not signed in.'); return }
       await logVisit({
         account_id: form.account_id,
         user_id: resolvedUserId,
