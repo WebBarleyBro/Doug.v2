@@ -1275,19 +1275,31 @@ export async function getPortalData(clientSlug: string) {
   }
 
   const TZ = 'America/Denver'
-  const visitTrend: { week: string; visits: number }[] = []
+  const visitTrend: { week: string; weekEnd: string; visits: number }[] = []
+  // Compute today's date string in MT
+  const todayMT = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
+  const todayMTDate = new Date(todayMT + 'T12:00:00Z')
+  // Find start of current week (Sunday) in MT
+  const todayDOW = new Date(todayMT + 'T12:00:00Z').getUTCDay()
+  const currentWeekSundayMT = new Date(todayMTDate)
+  currentWeekSundayMT.setUTCDate(currentWeekSundayMT.getUTCDate() - todayDOW)
+
   for (let i = 11; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i * 7)
-    const weekStartStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay()).toLocaleDateString('en-CA', { timeZone: TZ })
-    const weekEndStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay() + 6).toLocaleDateString('en-CA', { timeZone: TZ })
+    const weekSunday = new Date(currentWeekSundayMT)
+    weekSunday.setUTCDate(weekSunday.getUTCDate() - i * 7)
+    const weekSaturday = new Date(weekSunday)
+    weekSaturday.setUTCDate(weekSaturday.getUTCDate() + 6)
+    const weekStartStr = weekSunday.toLocaleDateString('en-CA', { timeZone: TZ })
+    const weekEndStr = weekSaturday.toLocaleDateString('en-CA', { timeZone: TZ })
     const count = visits.filter((v: any) => {
-      const vd = v.visited_at.length > 10 && !v.visited_at.endsWith('Z') ? v.visited_at + 'Z' : v.visited_at
+      const raw = v.visited_at
+      const vd = raw.length > 10 && !raw.endsWith('Z') && !raw.includes('+') && !raw.includes('-', 10) ? raw + 'Z' : raw
       const ds = new Date(vd).toLocaleDateString('en-CA', { timeZone: TZ })
       return ds >= weekStartStr && ds <= weekEndStr
     }).length
-    const label = new Date(weekStartStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    visitTrend.push({ week: label, visits: count })
+    const label = new Date(weekStartStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    const endLabel = new Date(weekEndStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    visitTrend.push({ week: label, weekEnd: endLabel, visits: count })
   }
 
   return {

@@ -284,7 +284,10 @@ export default function ClientPortalPage() {
 
         {visitTrend.some((w: any) => w.visits > 0) && (
           <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>
-            <SectionLabel>Field Visit Cadence — Last 12 Weeks</SectionLabel>
+            <SectionLabel>Account Visits — Last 12 Weeks</SectionLabel>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '14px' }}>
+              Each bar shows how many accounts our team visited that week.
+            </div>
             <ResponsiveContainer width="100%" height={isMobile ? 120 : 150}>
               <BarChart data={visitTrend} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
@@ -295,6 +298,11 @@ export default function ClientPortalPage() {
                   labelStyle={{ color: t.text.muted }}
                   itemStyle={{ color: accent }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  formatter={(value: any, name: any, props: any) => [value, 'visits']}
+                  labelFormatter={(label: any, payload: any) => {
+                    const weekEnd = payload?.[0]?.payload?.weekEnd
+                    return weekEnd ? `Week of ${label}–${weekEnd}` : `Week of ${label}`
+                  }}
                 />
                 <Bar dataKey="visits" name="Visits" fill={accent} radius={[3, 3, 0, 0]} />
               </BarChart>
