@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from '../lib/auth'
 import { t, inputStyle, labelStyle } from '../lib/theme'
@@ -10,6 +10,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [redirectTo, setRedirectTo] = useState('/')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const r = params.get('redirect')
+    if (r && r.startsWith('/')) setRedirectTo(r)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -18,7 +25,7 @@ export default function LoginPage() {
     try {
       const { error: err } = await signIn(email, password)
       if (err) { setError(err.message); return }
-      router.push('/')
+      router.push(redirectTo)
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {

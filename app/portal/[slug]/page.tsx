@@ -53,6 +53,7 @@ export default function ClientPortalPage() {
   const [suggestErr, setSuggestErr] = useState('')
 
   const [showInquiries, setShowInquiries] = useState(false)
+  const [isPreview, setIsPreview] = useState(false)
 
   // Campaign state
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
@@ -69,15 +70,25 @@ export default function ClientPortalPage() {
 
   useEffect(() => {
     const sb = getSupabase()
-    sb.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) { setError('Not authorized'); setLoading(false); return }
+    sb.auth.getSession().then(async ({ data: { session } }) => {
+      const user = session?.user ?? null
+      if (!user) {
+        window.location.replace(`/login?redirect=/portal/${slug}`)
+        return
+      }
       const { data: profile } = await sb.from('user_profiles').select('role, client_slug').eq('id', user.id).single()
-      if (profile?.role !== 'portal' && profile?.role !== 'owner') {
-        setError('Access denied'); setLoading(false); return
+      const staffRoles = ['owner', 'admin', 'rep', 'intern']
+      const isStaff = staffRoles.includes(profile?.role)
+      const isPortal = profile?.role === 'portal'
+      if (!isStaff && !isPortal) {
+        setError(`Access denied — your account (role: ${profile?.role ?? 'no profile'}) is not authorized. Make sure your user_profiles row exists with role = 'owner' or 'rep'.`)
+        setLoading(false); return
       }
-      if (profile?.role === 'portal' && profile?.client_slug && profile.client_slug !== slug) {
-        setError('Access denied'); setLoading(false); return
+      if (isPortal && profile?.client_slug && profile.client_slug !== slug) {
+        setError(`Access denied — portal account is assigned to "${profile.client_slug}", not "${slug}".`)
+        setLoading(false); return
       }
+      if (isStaff) setIsPreview(true)
       try {
         const d = await getPortalData(slug)
         setData(d)
@@ -145,6 +156,12 @@ export default function ClientPortalPage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, color: t.text.primary, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+      {isPreview && (
+        <div style={{ backgroundColor: '#7c3aed', color: '#fff', fontSize: '12px', fontWeight: '600', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <span>Previewing client portal — this is exactly what {client?.name || slug} sees when they log in.</span>
+          <a href={`/clients/${slug}`} style={{ color: '#fff', fontSize: '11px', opacity: 0.85, textDecoration: 'underline', whiteSpace: 'nowrap' }}>← Back to CRM</a>
+        </div>
+      )}
       <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: `0 ${isMobile ? '16px' : '32px'}`, height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {logoUrl ? (

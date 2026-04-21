@@ -89,7 +89,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '28px', gap: '20px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em', marginBottom: '4px' }}>
-            {greeting}, {profile.name?.split(' ')[0] || profile.email?.split('@')[0] || 'there'}
+            {greeting}, {profile.name?.split(' ')[0] || 'there'}
           </h1>
           <p style={{ fontSize: '13px', color: t.text.muted }}>{today}</p>
         </div>
@@ -521,7 +521,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
       <div style={{ marginBottom: '16px' }}>
         <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '2px' }}>{today}</div>
         <div style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
-          Hey {profile.name?.split(' ')[0] || profile.email?.split('@')[0] || 'there'} 👋
+          Hey {profile.name?.split(' ')[0] || 'there'} 👋
         </div>
       </div>
 

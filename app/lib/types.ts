@@ -4,11 +4,11 @@ export type UserRole = 'owner' | 'rep' | 'intern' | 'portal'
 
 export interface UserProfile {
   id: string
-  email: string
   name: string
+  full_name?: string
   role: UserRole
-  avatar_url?: string
   client_slug?: string // for portal users
+  created_at?: string
 }
 
 // ─── Clients (brands) ──────────────────────────────────────────────────────
