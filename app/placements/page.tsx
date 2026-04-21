@@ -276,7 +276,8 @@ export default function PlacementsPage() {
               <label style={labelStyle}>Reason (optional)</label>
               <input type="text" value={lostReason} onChange={e => setLostReason(e.target.value)} placeholder="e.g. Switched brands, ran out of space..." style={{ ...inputStyle, marginBottom: '20px' }} />
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setLostModal({ id: '', open: false })} style={btnSecondary}>Cancel</button>
+                <button onClick={() => setLostModal({ id: '', clientSlug: '', open: false })} style={btnSecondary}>Cancel</button>
+
                 <button onClick={async () => {
                   await markPlacementLost(lostModal.id, lostReason, lostModal.clientSlug)
                   setLostModal({ id: '', clientSlug: '', open: false })
