@@ -35,6 +35,7 @@ interface FormState {
   visited_at: string
   status: VisitStatus
   notes: string
+  client_notes: Record<string, string>
   tastings: TastingEntry[]
   followup_days: number | null
   create_checkin: boolean
@@ -47,6 +48,7 @@ const emptyForm = (defaultDate: string): FormState => ({
   visited_at: defaultDate,
   status: 'General Check-In',
   notes: '',
+  client_notes: {},
   tastings: [],
   followup_days: null,
   create_checkin: false,
@@ -199,6 +201,7 @@ export default function VisitLogModal({
         visited_at: saveDateMT(form.visited_at),
         status: form.status,
         notes: form.notes || undefined,
+        client_notes: Object.keys(form.client_notes).length > 0 ? form.client_notes : undefined,
         tasting_notes: tastingParts.length ? tastingParts.join('\n') : undefined,
         competitive_sightings: competitiveSightings.filter(s => s.brand_name.trim()),
         create_followup: !!(form.followup_days || form.create_checkin),
@@ -401,19 +404,40 @@ export default function VisitLogModal({
           </Section>
 
           {/* ── Notes ── */}
-          <Section label="Notes (optional)">
-            <textarea
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="What happened? Any context for next time..."
-              rows={isMobile ? 3 : 4}
-              style={{
-                ...inputStyle,
-                resize: 'vertical',
-                minHeight: '80px',
-              }}
-            />
-          </Section>
+          {form.client_slugs.length > 1 ? (
+            <Section label="Notes (per brand)">
+              <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '10px' }}>
+                Each brand's client portal only shows notes written for that brand.
+              </div>
+              {form.client_slugs.map(slug => {
+                const client = clients.find(c => c.slug === slug)
+                return (
+                  <div key={slug} style={{ marginBottom: '10px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: client?.color || t.gold, marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {client?.name || slug}
+                    </div>
+                    <textarea
+                      value={form.client_notes[slug] || ''}
+                      onChange={e => setForm(f => ({ ...f, client_notes: { ...f.client_notes, [slug]: e.target.value } }))}
+                      placeholder={`Notes for ${client?.name || slug} only...`}
+                      rows={3}
+                      style={{ ...inputStyle, resize: 'vertical', minHeight: '70px' }}
+                    />
+                  </div>
+                )
+              })}
+            </Section>
+          ) : (
+            <Section label="Notes (optional)">
+              <textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="What happened? Any context for next time..."
+                rows={isMobile ? 3 : 4}
+                style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }}
+              />
+            </Section>
+          )}
 
           {/* ── Tasting per client ── */}
           {form.client_slugs.length > 0 && (

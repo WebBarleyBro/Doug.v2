@@ -218,6 +218,7 @@ export async function logVisit(visit: {
   visited_at: string
   status: VisitStatus
   notes?: string
+  client_notes?: Record<string, string>
   tasting_notes?: string
   feedback?: string
   photo_urls?: string[]
@@ -239,14 +240,14 @@ export async function logVisit(visit: {
 
   const slugsToInsert = slugs.length > 0 ? slugs : [null]
 
-  // Insert one visit row per client slug
+  // Insert one visit row per client slug, using per-client notes when provided
   const visitRows = slugsToInsert.map(slug => ({
     account_id: visit.account_id,
     user_id: visit.user_id,
     client_slug: slug,
     visited_at: visit.visited_at,
     status: visit.status,
-    notes: visit.notes || null,
+    notes: (slug && visit.client_notes?.[slug]) || visit.notes || null,
     tasting_notes: visit.tasting_notes || null,
     feedback: visit.feedback || null,
     photo_urls: visit.photo_urls || [],

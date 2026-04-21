@@ -133,17 +133,10 @@ export default function ClientPortalPage() {
   const monthStart = startOfMonthMT()
 
   const monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
-  const activePlacements = placements.filter((p: any) => p.status === 'active')
+  const activePlacements = placements.filter((p: any) => !p.lost_at)
   const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
   const confirmRate = funnel.inquiries > 0 ? Math.round((funnel.confirmed / funnel.inquiries) * 100) : 0
-  const maxFunnelVal = Math.max(funnel.visits, 1)
-  const funnelSteps = [
-    { label: 'Field Visits', value: funnel.visits, color: accent, icon: <MapPin size={12} /> },
-    { label: 'Hot Leads', value: funnel.followUps, color: t.status.warning, icon: <TrendingUp size={12} /> },
-    { label: 'Inquiries Sent', value: funnel.inquiries, color: t.status.info, icon: <Send size={12} /> },
-    { label: 'Confirmed', value: funnel.confirmed, color: t.status.success, icon: <CheckCircle size={12} /> },
-  ]
 
   const pad = isMobile ? '16px' : '32px 40px'
 
@@ -178,7 +171,7 @@ export default function ClientPortalPage() {
             {month} Field Report
           </div>
           <div style={{ fontSize: '13px', color: t.text.muted }}>
-            Live data from the Barley Bros team · {visits.length} field touchpoints in the last 90 days
+            Live data from the Barley Bros team · {visits.length} account visits in the last 90 days
           </div>
         </div>
 
@@ -190,50 +183,28 @@ export default function ClientPortalPage() {
         </div>
 
         <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '18px 16px' : '22px 24px' }}>
-          <SectionLabel>Conversion Pipeline — Last 90 Days</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center' }}>
-            {funnelSteps.map((step, i) => {
-              const pct = Math.max(8, Math.round((step.value / maxFunnelVal) * 100))
-              const convRate = i > 0 && funnelSteps[i-1].value > 0
-                ? Math.round((step.value / funnelSteps[i-1].value) * 100)
-                : null
-              return (
-                <div key={step.label} style={{ display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', gap: isMobile ? '12px' : '0', flexDirection: isMobile ? 'row' : 'column', flex: 1 }}>
-                  {i > 0 && !isMobile && (
-                    <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '4px', textAlign: 'center', width: '100%' }}>
-                      {convRate !== null ? `${convRate}% →` : '→'}
-                    </div>
-                  )}
-                  <div style={{ flex: isMobile ? 1 : undefined, width: isMobile ? undefined : '100%' }}>
-                    <div style={{
-                      height: isMobile ? '8px' : `${Math.max(28, pct * 0.6)}px`,
-                      width: isMobile ? `${pct}%` : '100%',
-                      backgroundColor: step.color + '22',
-                      border: `1px solid ${step.color}44`,
-                      borderRadius: '4px',
-                      position: 'relative',
-                      overflow: 'hidden',
-                    }}>
-                      <div style={{ position: 'absolute', inset: 0, width: '100%', backgroundColor: step.color, opacity: 0.25 }} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
-                      <span style={{ color: step.color }}>{step.icon}</span>
-                      <span style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>{step.value}</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px', fontWeight: '600' }}>{step.label}</div>
-                    {isMobile && convRate !== null && (
-                      <div style={{ fontSize: '10px', color: t.text.muted, marginLeft: '8px' }}>{convRate}% conversion</div>
-                    )}
-                  </div>
+          <SectionLabel>Distributor Activity — Last 90 Days</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px', marginBottom: funnel.pending > 0 ? '14px' : 0 }}>
+            {[
+              { label: 'Inquiries Sent', value: funnel.inquiries, color: t.status.info, icon: <Send size={14} /> },
+              { label: 'Confirmed', value: funnel.confirmed, color: t.status.success, icon: <CheckCircle size={14} /> },
+              { label: 'Pending', value: funnel.pending, color: t.status.warning, icon: <Clock size={14} /> },
+              { label: 'Confirm Rate', value: confirmRate > 0 ? `${confirmRate}%` : '—', color: t.text.secondary, icon: <TrendingUp size={14} /> },
+            ].map(s => (
+              <div key={s.label} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px', border: `1px solid ${t.border.subtle}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ color: s.color, opacity: 0.8 }}>{s.icon}</span>
+                  <span style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</span>
                 </div>
-              )
-            })}
+                <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>{s.value}</div>
+              </div>
+            ))}
           </div>
           {funnel.pending > 0 && (
-            <div style={{ marginTop: '16px', padding: '10px 14px', backgroundColor: t.status.warningBg, border: `1px solid rgba(234,179,8,0.2)`, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ padding: '10px 14px', backgroundColor: t.status.warningBg, border: `1px solid rgba(234,179,8,0.2)`, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Clock size={14} color={t.status.warning} />
               <span style={{ fontSize: '12px', color: t.status.warning, fontWeight: '600' }}>
-                {funnel.pending} distributor {funnel.pending === 1 ? 'inquiry' : 'inquiries'} pending confirmation
+                {funnel.pending} {funnel.pending === 1 ? 'inquiry' : 'inquiries'} awaiting distributor confirmation
               </span>
               <span style={{ fontSize: '12px', color: t.text.muted }}>— our team is following up</span>
             </div>
