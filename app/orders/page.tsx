@@ -535,6 +535,7 @@ export default function OrdersPage() {
 
       const newOrder = await createOrder({
         client_slug: form.client_slug,
+        client_name: selectedClient?.name || form.client_slug,
         account_id: form.account_id || undefined,
         deliver_to_name: form.deliver_to_name,
         deliver_to_address: form.deliver_to_address,

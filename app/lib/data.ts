@@ -489,6 +489,7 @@ export async function getOrders(filters?: {
 
 export async function createOrder(order: {
   client_slug: string
+  client_name: string
   account_id?: string
   deliver_to_name: string
   deliver_to_address?: string
@@ -509,6 +510,7 @@ export async function createOrder(order: {
     .from('purchase_orders')
     .insert({
       client_slug: order.client_slug,
+      client_name: order.client_name,
       account_id: order.account_id || null,
       deliver_to_name: order.deliver_to_name,
       deliver_to_address: order.deliver_to_address,
