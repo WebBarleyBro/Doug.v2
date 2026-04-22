@@ -1309,7 +1309,12 @@ export async function getPortalData(clientSlug: string) {
   const suggestions = (suggestionsRes.data || []) as any[]
   const campaigns = (campaignsRes.data || []) as any[]
 
-  const distOrders = orders.filter((o: any) => o.order_type === 'distributor')
+  // Treat as distributor inquiry if order_type is 'distributor', OR if it has a distributor email/rep
+  // but no explicit 'direct' type (handles orders where order_type was never set)
+  const isDistributor = (o: any) =>
+    o.order_type === 'distributor' ||
+    (o.order_type !== 'direct' && (o.distributor_email || o.distributor_rep_name))
+  const distOrders = orders.filter(isDistributor)
   const confirmedDist = distOrders.filter((o: any) => o.status === 'fulfilled')
   const pendingDist = distOrders.filter((o: any) => o.status === 'sent')
 

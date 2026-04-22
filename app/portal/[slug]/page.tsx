@@ -262,10 +262,10 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
           <StatTile label="Active Placements" value={activePlacements.length} color={t.status.success} icon={<Package size={18} />} sub={`${placements.length} total tracked`} />
           <StatTile
             label={distOrders.length > 0 ? 'Inquiries Sent' : 'Orders Placed'}
-            value={distOrders.length > 0 ? funnel.inquiries : orders.filter((o: any) => o.status !== 'draft').length}
+            value={distOrders.length > 0 ? distOrders.length : orders.filter((o: any) => o.status !== 'draft').length}
             color={t.status.info}
             icon={<Send size={18} />}
-            sub={distOrders.length > 0 ? 'to distributors' : 'direct purchase orders'}
+            sub={distOrders.length > 0 ? 'to distributors' : 'purchase orders placed'}
           />
           <StatTile label="Events / Tastings" value={events.length} color={t.status.warning} icon={<TrendingUp size={18} />} sub="in last 90 days" />
         </div>
@@ -295,6 +295,7 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
                 const lineItems = orderLineItems[o.id]
                 const STATUS_COLORS: Record<string, string> = { sent: t.status.info, fulfilled: t.status.success, cancelled: t.status.danger }
                 const statusColor = STATUS_COLORS[o.status] || t.text.muted
+                const isDistInquiry = o.order_type === 'distributor' || (o.order_type !== 'direct' && (o.distributor_email || o.distributor_rep_name))
                 return (
                   <div key={o.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', overflow: 'hidden' }}>
                     <button
@@ -321,7 +322,7 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
                             {o.status}
                           </span>
                           <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.page, color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
-                            {o.order_type === 'distributor' ? 'Distributor Inquiry' : 'Direct Order'}
+                            {isDistInquiry ? 'Distributor Inquiry' : 'Purchase Order'}
                           </span>
                         </div>
                         <div style={{ fontSize: '11px', color: t.text.muted }}>
