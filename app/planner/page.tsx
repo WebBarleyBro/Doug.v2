@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, GripVertical, Check, Clock, MapPin, X } from 'lucide-react'
+import { Plus, GripVertical, Check, Clock, MapPin, X, Search, UserPlus } from 'lucide-react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   DragEndEvent,
@@ -12,8 +12,9 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
+import AddAccountModal from '../components/AddAccountModal'
 import EmptyState from '../components/EmptyState'
-import { getOverdueAccounts, getPlannerStops, upsertPlannerStop, updatePlannerStop, deletePlannerStop, savePlannerOrder } from '../lib/data'
+import { getOverdueAccounts, getPlannerStops, upsertPlannerStop, updatePlannerStop, deletePlannerStop, savePlannerOrder, getAccounts } from '../lib/data'
 import type { PlannerStop } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary } from '../lib/theme'
@@ -103,6 +104,10 @@ export default function PlannerPage() {
   const [customStop, setCustomStop] = useState('')
   const [loading, setLoading] = useState(true)
   const [overdueOpen, setOverdueOpen] = useState(false)
+  const [stopSearch, setStopSearch] = useState('')
+  const [stopResults, setStopResults] = useState<any[]>([])
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [stopSearchFocused, setStopSearchFocused] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -224,6 +229,26 @@ export default function PlannerPage() {
     await deletePlannerStop(id)
   }
 
+  useEffect(() => {
+    if (stopSearch.length < 2) { setStopResults([]); return }
+    const timer = setTimeout(() => {
+      getAccounts({ search: stopSearch, limit: 8 }).then(setStopResults).catch(() => {})
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [stopSearch])
+
+  async function addStopFromSearch(acc: any) {
+    setStopSearch('')
+    setStopResults([])
+    setStopSearchFocused(false)
+    await addStop(acc)
+  }
+
+  async function handleAccountAdded(account: any) {
+    setShowAddAccount(false)
+    await addStop(account)
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (over && active.id !== over.id) {
@@ -299,22 +324,88 @@ export default function PlannerPage() {
               </DndContext>
             )}
 
-            {/* Add custom stop */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-              <input
-                type="text"
-                value={customStop}
-                onChange={e => setCustomStop(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addCustomStop()}
-                placeholder="Add a custom stop or task..."
-                style={{
-                  flex: 1, backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
-                  borderRadius: '6px', padding: '9px 12px', color: t.text.primary, fontSize: '13px', outline: 'none',
-                }}
-              />
-              <button onClick={addCustomStop} style={{ ...btnPrimary, padding: '9px 14px' }}>
-                <Plus size={15} />
-              </button>
+            {/* Add stop — search or create */}
+            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* Account search */}
+              <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: t.text.muted, pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      value={stopSearch}
+                      onChange={e => setStopSearch(e.target.value)}
+                      onFocus={() => setStopSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setStopSearchFocused(false), 150)}
+                      placeholder="Search accounts to add..."
+                      style={{
+                        width: '100%', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
+                        borderRadius: '8px', padding: '10px 12px 10px 32px',
+                        color: t.text.primary, fontSize: '13px', outline: 'none',
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowAddAccount(true)}
+                    style={{ ...btnSecondary, padding: '10px 14px', fontSize: '12px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    <UserPlus size={14} /> New Account
+                  </button>
+                </div>
+
+                {/* Search results dropdown */}
+                {stopSearchFocused && stopResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                    backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`,
+                    borderRadius: '10px', marginTop: '4px', overflow: 'hidden',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  }}>
+                    {stopResults
+                      .filter(acc => !stops.some(s => s.account_id === acc.id))
+                      .map((acc: any) => {
+                        const days = daysAgoMT(acc.last_visited)
+                        return (
+                          <button key={acc.id} onMouseDown={() => addStopFromSearch(acc)} style={{
+                            display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
+                            padding: '10px 14px', background: 'none', border: 'none',
+                            borderBottom: `1px solid ${t.border.subtle}`, cursor: 'pointer',
+                            textAlign: 'left',
+                          }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{acc.name}</div>
+                              {acc.address && <div style={{ fontSize: '11px', color: t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.address}</div>}
+                            </div>
+                            <div style={{ fontSize: '11px', color: overdueColor(days), flexShrink: 0, fontFamily: 'var(--font-mono)' }}>
+                              {days === null ? 'never' : `${days}d ago`}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    {stopResults.every(acc => stops.some(s => s.account_id === acc.id)) && (
+                      <div style={{ padding: '10px 14px', fontSize: '12px', color: t.text.muted }}>All matching accounts already on your route</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Custom task input */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={customStop}
+                  onChange={e => setCustomStop(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCustomStop()}
+                  placeholder="Or add a custom task / note..."
+                  style={{
+                    flex: 1, backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}`,
+                    borderRadius: '8px', padding: '9px 12px', color: t.text.secondary, fontSize: '12px', outline: 'none',
+                  }}
+                />
+                <button onClick={addCustomStop} disabled={!customStop.trim()} style={{ ...btnSecondary, padding: '9px 12px', opacity: customStop.trim() ? 1 : 0.4 }}>
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Mobile: overdue accounts collapsed section */}
@@ -434,6 +525,14 @@ export default function PlannerPage() {
             }}
             userId={profile.id}
             defaultAccountId={visitModal.accountId}
+            isMobile={isMobile}
+          />
+        )}
+
+        {showAddAccount && (
+          <AddAccountModal
+            onClose={() => setShowAddAccount(false)}
+            onAdded={handleAccountAdded}
             isMobile={isMobile}
           />
         )}
