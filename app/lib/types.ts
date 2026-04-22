@@ -33,6 +33,8 @@ export interface Client {
   notes?: string
   category?: string
   state?: string
+  instagram?: string
+  website?: string
   created_at: string
 }
 
