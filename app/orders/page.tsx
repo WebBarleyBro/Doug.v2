@@ -1056,41 +1056,7 @@ export default function OrdersPage() {
 
               {/* Products */}
               <div style={{ marginBottom: '20px' }}>
-                {/* Quick-add buttons from products table */}
-                {clientProducts.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                    {clientProducts.map(prod => (
-                      <button
-                        key={prod.id}
-                        type="button"
-                        onClick={() => {
-                          const existingIdx = form.line_items.findIndex(li => li.product_name === prod.name)
-                          if (existingIdx >= 0) {
-                            updateLineItem(existingIdx, 'quantity', form.line_items[existingIdx].quantity + 1)
-                          } else {
-                            const emptyIdx = form.line_items.findIndex(li => !li.product_name)
-                            if (emptyIdx >= 0) {
-                              updateLineItem(emptyIdx, 'product_name', prod.name)
-                              if (prod.price) updateLineItem(emptyIdx, 'price', prod.price)
-                            } else {
-                              setForm(f => ({ ...f, line_items: [...f.line_items, { product_name: prod.name, quantity: 1, price: prod.price || 0 }] }))
-                            }
-                          }
-                        }}
-                        style={{
-                          padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer',
-                          border: `1px solid ${form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.border.default}`,
-                          backgroundColor: form.line_items.some(li => li.product_name === prod.name) ? t.goldDim : 'transparent',
-                          color: form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.text.secondary,
-                        }}
-                      >
-                        {prod.name}{prod.price ? ` — ${formatCurrency(prod.price)}` : ''}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Line item rows — mobile uses card layout, desktop uses grid */}
+                {/* Line item rows */}
                 {form.line_items.map((li, i) => {
                   const prod = clientProducts.find(p => p.name === li.product_name)
                   const cases = (li as any).cases || 0
