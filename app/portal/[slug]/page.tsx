@@ -201,8 +201,9 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
   const isDistInquiry = (o: any) =>
     o.order_type === 'distributor' ||
     (o.order_type !== 'direct' && (o.distributor_email || o.distributor_rep_name))
-  const distOrders = orders.filter(isDistInquiry)
-  const visibleOrders = orders.filter((o: any) => o.status !== 'draft' || isDistInquiry(o))
+  const nonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
+  const distOrders = nonDraftOrders.filter(isDistInquiry)
+  const visibleOrders = nonDraftOrders
   const accent = client?.color || t.gold
   const logoUrl = client ? clientLogoUrl(client) : null
   const monthStart = startOfMonthMT()
@@ -266,11 +267,11 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
           <StatTile label="Visits This Month" value={monthVisits} color={accent} icon={<MapPin size={18} />} sub={`${visits.length} in 90 days`} />
           <StatTile label="Active Placements" value={activePlacements.length} color={t.status.success} icon={<Package size={18} />} sub={`${placements.length} total tracked`} />
           <StatTile
-            label={distOrders.length > 0 ? 'Order Inquiries Sent' : 'Orders Sent'}
+            label={distOrders.length > 0 ? 'Order Inquiries Sent' : 'Orders Placed'}
             value={distOrders.length > 0 ? distOrders.length : visibleOrders.length}
             color={t.status.info}
             icon={<Send size={18} />}
-            sub={distOrders.length > 0 ? 'to distributors on your behalf' : 'direct orders placed'}
+            sub={distOrders.length > 0 ? 'to distributors on your behalf' : 'purchase orders placed'}
           />
           <StatTile label="Events / Tastings" value={events.length} color={t.status.warning} icon={<TrendingUp size={18} />} sub="in last 90 days" />
         </div>
