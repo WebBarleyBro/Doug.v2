@@ -2,48 +2,50 @@
 
 export const t = {
   bg: {
-    page:     '#0c0c0a',
-    card:     '#161614',
-    cardHover:'#1c1c19',
-    elevated: '#202020',
-    input:    '#111110',
-    sidebar:  '#0a0a08',
+    page:         '#0f0e0c',
+    card:         '#171513',
+    cardHover:    '#1d1b18',
+    cardSelected: '#1e1b17',
+    elevated:     '#1d1a16',
+    input:        '#111110',
+    sidebar:      '#0c0b09',
   },
   border: {
-    default: 'rgba(255,255,255,0.08)',
-    subtle:  'rgba(255,255,255,0.04)',
-    hover:   'rgba(255,255,255,0.16)',
+    default: '#2a2620',
+    subtle:  '#1f1c17',
+    hover:   'rgba(255,255,255,0.14)',
     focus:   'rgba(212,168,67,0.6)',
     gold:    'rgba(212,168,67,0.35)',
   },
   text: {
-    primary:     '#eceae4',
-    secondary:   '#9a9790',
-    muted:       '#5a5754',
-    placeholder: '#484542',
+    primary:     '#f2ebdd',
+    secondary:   '#bfb5a1',
+    muted:       '#7a7060',
+    placeholder: '#5a5248',
   },
   gold:       '#d4a843',
   goldHover:  '#e0b84e',
-  goldDim:    'rgba(212,168,67,0.12)',
+  goldDim:    'rgba(212,168,67,0.14)',  // --accent-muted
   goldBorder: 'rgba(212,168,67,0.22)',
+  goldGlow:   'rgba(212,168,67,0.35)',  // --accent-glow
   status: {
-    success:   '#3dba78',
-    successBg: 'rgba(61,186,120,0.1)',
-    warning:   '#e89a2e',
-    warningBg: 'rgba(232,154,46,0.1)',
-    danger:    '#e05252',
-    dangerBg:  'rgba(224,82,82,0.1)',
-    info:      '#a78bfa',
-    infoBg:    'rgba(167,139,250,0.1)',
-    neutral:   '#6b6966',
-    neutralBg: 'rgba(107,105,102,0.15)',
+    success:   '#3dbc76',
+    successBg: 'rgba(61,188,118,0.10)',
+    warning:   '#e99928',
+    warningBg: 'rgba(233,153,40,0.10)',
+    danger:    '#e85540',
+    dangerBg:  'rgba(232,85,64,0.10)',
+    info:      '#6aaee0',
+    infoBg:    'rgba(106,174,224,0.10)',
+    neutral:   '#7a7060',
+    neutralBg: 'rgba(122,112,96,0.15)',
   },
 } as const
 
 export const card: React.CSSProperties = {
   backgroundColor: t.bg.card,
   border: `1px solid ${t.border.default}`,
-  borderRadius: '8px',
+  borderRadius: '10px',
   padding: '20px 24px',
 }
 
@@ -81,7 +83,7 @@ export const labelStyle: React.CSSProperties = {
   color: t.text.muted,
   fontWeight: '600',
   textTransform: 'uppercase',
-  letterSpacing: '0.08em',
+  letterSpacing: '0.07em',
   marginBottom: '6px',
   display: 'block',
 }
@@ -90,12 +92,33 @@ export const sectionHeader: React.CSSProperties = {
   fontSize: '11px',
   color: t.text.muted,
   fontWeight: '600',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
+  letterSpacing: '0.04em',
+}
+
+export const panelTitle: React.CSSProperties = {
+  fontSize: '13px',
+  fontWeight: '600',
+  color: t.text.primary,
+  letterSpacing: '-0.01em',
+}
+
+export const statValue: React.CSSProperties = {
+  fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+  fontSize: '30px',
+  fontWeight: '700',
+  color: t.text.primary,
+  letterSpacing: '-0.02em',
+  lineHeight: '1',
+}
+
+export const statLabel: React.CSSProperties = {
+  fontSize: '12px',
+  color: t.text.muted,
+  fontWeight: '500',
 }
 
 export const pageTitle: React.CSSProperties = {
-  fontSize: '22px',
+  fontSize: '28px',
   fontWeight: '700',
   color: t.text.primary,
   letterSpacing: '-0.02em',
@@ -105,7 +128,7 @@ export const btnPrimary: React.CSSProperties = {
   backgroundColor: t.gold,
   color: '#0c0c0a',
   border: 'none',
-  borderRadius: '6px',
+  borderRadius: '8px',
   padding: '11px 18px',
   minHeight: '44px',
   fontSize: '14px',
@@ -117,14 +140,14 @@ export const btnPrimary: React.CSSProperties = {
   transition: 'all 150ms ease',
   whiteSpace: 'nowrap',
   textDecoration: 'none',
-  boxShadow: '0 0 12px rgba(212,168,67,0.25)',
+  boxShadow: '0 0 16px rgba(212,168,67,0.20)',
   letterSpacing: '0.01em',
 }
 
 export const btnSecondary: React.CSSProperties = {
   backgroundColor: 'transparent',
   border: `1px solid ${t.border.hover}`,
-  borderRadius: '6px',
+  borderRadius: '8px',
   padding: '11px 18px',
   minHeight: '44px',
   color: t.text.secondary,
@@ -139,7 +162,7 @@ export const btnSecondary: React.CSSProperties = {
 
 export const btnDanger: React.CSSProperties = {
   backgroundColor: t.status.dangerBg,
-  border: `1px solid rgba(224,82,82,0.3)`,
+  border: `1px solid rgba(232,85,64,0.3)`,
   borderRadius: '8px',
   padding: '10px 18px',
   color: t.status.danger,
@@ -171,8 +194,7 @@ const badgeBase: React.CSSProperties = {
   fontWeight: '600',
   padding: '3px 9px',
   borderRadius: '20px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
+  letterSpacing: '0.03em',
   display: 'inline-flex',
   alignItems: 'center',
   whiteSpace: 'nowrap',
@@ -181,7 +203,7 @@ const badgeBase: React.CSSProperties = {
 export const badge = {
   visitStatus(status: string): React.CSSProperties {
     const map: Record<string, { color: string; bg: string; border: string }> = {
-      'Will Order Soon': { color: t.status.warning, bg: t.status.warningBg, border: 'rgba(232,154,46,0.2)' },
+      'Will Order Soon': { color: t.status.warning, bg: t.status.warningBg, border: 'rgba(233,153,40,0.2)' },
       'Just Ordered':    { color: t.status.success, bg: t.status.successBg, border: 'transparent' },
       'Needs Follow Up': { color: t.status.info,    bg: t.status.infoBg,    border: 'transparent' },
       'Not Interested':  { color: t.status.danger,  bg: t.status.dangerBg,  border: 'transparent' },
@@ -237,8 +259,8 @@ export const badge = {
 export const modalOverlay: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  backgroundColor: 'rgba(0,0,0,0.75)',
-  backdropFilter: 'blur(4px)',
+  backgroundColor: 'rgba(0,0,0,0.80)',
+  backdropFilter: 'blur(6px)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -299,7 +321,6 @@ export function skeletonBlock(width = '100%', height = '16px', borderRadius = '6
   }
 }
 
-// Overdue color by days since last visit
 export function overdueColor(daysAgo: number | null): string {
   if (daysAgo === null) return t.text.muted
   if (daysAgo <= 14) return t.status.success
@@ -314,5 +335,4 @@ export function overdueColorBg(daysAgo: number | null): string {
   return t.status.dangerBg
 }
 
-// Need React for CSSProperties type — import at usage site
 import type React from 'react'
