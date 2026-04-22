@@ -882,7 +882,7 @@ export default function OrdersPage() {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ to: email.trim(), subject, text, html }),
                         })
-                        if (res.ok) { setResendState('sent'); setResendTo('') }
+                        if (res.ok) { await updateOrder(o.id, { status: 'sent' }); load(); setResendState('sent'); setResendTo('') }
                         else setResendState('open')
                       } catch { setResendState('open') }
                     }
