@@ -784,13 +784,13 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Line items */}
+                {/* Products */}
                 <div>
                   <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Package size={11} /> Line Items
+                    <Package size={11} /> Products
                   </div>
                   {items.length === 0 ? (
-                    <div style={{ fontSize: '13px', color: t.text.muted }}>No line items recorded</div>
+                    <div style={{ fontSize: '13px', color: t.text.muted }}>Product breakdown unavailable for this order</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
                       {items.map((li: any, i: number) => {
@@ -848,7 +848,7 @@ export default function OrdersPage() {
                   {(() => {
                     if (items.length === 0) return (
                       <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: 'rgba(224,82,82,0.08)', border: '1px solid rgba(224,82,82,0.25)', color: '#e05252', fontSize: '13px' }}>
-                        No line items recorded — this order cannot be resent. Create a new order instead.
+                        Product breakdown unavailable — this order cannot be resent. Create a new order instead.
                       </div>
                     )
 
