@@ -93,16 +93,20 @@ export default function VisitLogModal({
     getClients().then(setClients).catch(() => {})
   }, [isOpen])
 
+  function ensureProducts(slug: string) {
+    if (!slug || products[slug]) return
+    getProducts(slug).then(prods => setProducts(prev => ({ ...prev, [slug]: prods }))).catch(() => {})
+  }
+
   useEffect(() => {
-    form.client_slugs.forEach(async slug => {
-      if (!products[slug]) {
-        try {
-          const prods = await getProducts(slug)
-          setProducts(prev => ({ ...prev, [slug]: prods }))
-        } catch {}
-      }
-    })
+    form.client_slugs.forEach(ensureProducts)
   }, [form.client_slugs])
+
+  // Load products for all clients when the placement panel opens
+  useEffect(() => {
+    if (!showPlacements) return
+    clients.forEach(c => ensureProducts(c.slug))
+  }, [showPlacements, clients])
 
   useEffect(() => {
     if (!accountSearch || accountSearch.length < 2) { setAccountResults([]); return }
@@ -535,7 +539,7 @@ export default function VisitLogModal({
                         <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {(form.client_slugs.length > 0 ? clients.filter(c => form.client_slugs.includes(c.slug)) : clients).map(c => (
-                            <button key={c.slug} type="button" onClick={() => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, client_slug: c.slug, product_name: '' }))}
+                            <button key={c.slug} type="button" onClick={() => { setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, client_slug: c.slug, product_name: '' })); ensureProducts(c.slug) }}
                               style={{
                                 padding: '5px 12px', borderRadius: '16px', fontSize: '12px', cursor: 'pointer',
                                 border: `1px solid ${pl.client_slug === c.slug ? c.color : t.border.default}`,
