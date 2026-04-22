@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS intern_assets (
 
 -- RLS: interns can read/update their own projects
 ALTER TABLE intern_projects ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "intern_projects_own" ON intern_projects
+DROP POLICY IF EXISTS "intern_projects_own" ON intern_projects;
+CREATE POLICY "intern_projects_own" ON intern_projects
   FOR ALL USING (
     assigned_to = auth.uid()
     OR EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role IN ('owner','admin'))
@@ -38,7 +39,8 @@ CREATE POLICY IF NOT EXISTS "intern_projects_own" ON intern_projects
 
 -- RLS: interns can insert/read their own assets; staff can read all + update for feedback
 ALTER TABLE intern_assets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "intern_assets_own" ON intern_assets
+DROP POLICY IF EXISTS "intern_assets_own" ON intern_assets;
+CREATE POLICY "intern_assets_own" ON intern_assets
   FOR ALL USING (
     submitted_by = auth.uid()
     OR EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role IN ('owner','admin'))
