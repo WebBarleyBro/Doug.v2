@@ -46,7 +46,8 @@ export default function FinancePage() {
 
   useEffect(() => {
     // Fetch both sent and fulfilled orders for full history
-    Promise.all([getClients(), getOrders(), getCommissionTrend(12)])
+    const twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
+    Promise.all([getClients(), getOrders(), getCommissionTrend(twelveMonthsAgo)])
       .then(([cls, ords, trend]) => {
         setClients(cls)
         // Only count sent/fulfilled for financials
