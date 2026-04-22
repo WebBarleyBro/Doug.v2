@@ -180,7 +180,7 @@ export function getOverdueAccounts(): Promise<Account[]> {
       .limit(100)
     if (error) throw error
     return (data || []).filter((a: any) => {
-      if (!a.last_visited) return true  // never visited = overdue
+      if (!a.last_visited) return false  // never visited — not overdue, just unvisited
       const days = daysAgoMT(a.last_visited)
       const freq = a.visit_frequency_days || 21
       return days !== null && days >= freq
