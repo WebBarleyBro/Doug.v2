@@ -518,6 +518,7 @@ export async function createOrder(order: {
       po_number: order.po_number,
       order_type: order.order_type || 'direct',
       status: 'draft',
+      total: total,
       total_amount: total,
       commission_amount: commission,
       follow_up_status: 'not_started',
