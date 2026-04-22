@@ -271,12 +271,6 @@ export default function OrdersPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Lock body scroll when any modal is open — fixes iOS Safari touch offset bug
-  useEffect(() => {
-    const anyOpen = showCreate || showEmailPreview || !!selectedOrder
-    document.body.style.overflow = anyOpen ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [showCreate, showEmailPreview, selectedOrder])
   const [activeTab, setActiveTab] = useState<'direct' | 'inquiries' | 'followups'>('direct')
   const [showCreate, setShowCreate] = useState(false)
   const [orderType, setOrderType] = useState<'direct' | 'distributor'>('direct')
@@ -289,6 +283,14 @@ export default function OrdersPage() {
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [previewEmail, setPreviewEmail] = useState('')
   const [sendEmailError, setSendEmailError] = useState('')
+
+  // Lock body scroll when any modal is open — fixes iOS Safari touch offset bug
+  useEffect(() => {
+    const anyOpen = showCreate || showEmailPreview || !!selectedOrder
+    document.body.style.overflow = anyOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showCreate, showEmailPreview, selectedOrder])
+
   const [distributorReps, setDistributorReps] = useState<Contact[]>([])
   const [showAddDistributor, setShowAddDistributor] = useState(false)
   const [showAddAccount, setShowAddAccount] = useState(false)
