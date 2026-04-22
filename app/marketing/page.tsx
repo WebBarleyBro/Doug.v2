@@ -13,7 +13,7 @@ import {
   toggleMilestone, createMilestone, getEmailList, getClients,
 } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle, badge } from '../lib/theme'
-import { formatShortDateMT, formatCurrency } from '../lib/formatters'
+import { formatShortDateMT, formatCurrency, saveDateMT } from '../lib/formatters'
 import { PIPELINE_STAGES } from '../lib/constants'
 import type { Campaign, Client } from '../lib/types'
 
@@ -121,8 +121,8 @@ export default function MarketingPage() {
       name: editingCampaign.name,
       status: editingCampaign.status,
       budget: editingCampaign.budget,
-      start_date: editingCampaign.start_date,
-      end_date: editingCampaign.end_date,
+      start_date: editingCampaign.start_date ? saveDateMT(editingCampaign.start_date) : undefined,
+      end_date: editingCampaign.end_date ? saveDateMT(editingCampaign.end_date) : undefined,
       notes: [
         editingCampaign._goal ? `GOAL: ${editingCampaign._goal}` : '',
         editingCampaign._target_reach ? `TARGET_REACH: ${editingCampaign._target_reach}` : '',
@@ -732,11 +732,19 @@ export default function MarketingPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Start Date</label>
-                    <input type="date" value={editingCampaign.start_date || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, start_date: e.target.value }))} style={inputStyle} />
+                    <input type="date"
+                      value={editingCampaign.start_date
+                        ? new Date(editingCampaign.start_date.length === 10 ? editingCampaign.start_date + 'T12:00:00Z' : editingCampaign.start_date + (editingCampaign.start_date.endsWith('Z') || editingCampaign.start_date.includes('+') ? '' : 'Z')).toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+                        : ''}
+                      onChange={e => setEditingCampaign((c: any) => ({ ...c, start_date: e.target.value }))} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>End Date</label>
-                    <input type="date" value={editingCampaign.end_date || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, end_date: e.target.value }))} style={inputStyle} />
+                    <input type="date"
+                      value={editingCampaign.end_date
+                        ? new Date(editingCampaign.end_date.length === 10 ? editingCampaign.end_date + 'T12:00:00Z' : editingCampaign.end_date + (editingCampaign.end_date.endsWith('Z') || editingCampaign.end_date.includes('+') ? '' : 'Z')).toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+                        : ''}
+                      onChange={e => setEditingCampaign((c: any) => ({ ...c, end_date: e.target.value }))} style={inputStyle} />
                   </div>
                 </div>
                 <div>

@@ -846,6 +846,12 @@ export default function OrdersPage() {
                     </button>
                   )}
                   {(() => {
+                    if (items.length === 0) return (
+                      <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: 'rgba(224,82,82,0.08)', border: '1px solid rgba(224,82,82,0.25)', color: '#e05252', fontSize: '13px' }}>
+                        No line items recorded — this order cannot be resent. Create a new order instead.
+                      </div>
+                    )
+
                     // Auto-resolve recipient: distributor email for inquiries, client settings for direct
                     const autoEmail = isInquiry
                       ? (o.distributor_email || '')

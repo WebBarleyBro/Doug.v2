@@ -541,7 +541,8 @@ export async function createOrder(order: {
       order.line_items.map(li => ({
         po_id: po.id,
         product_name: li.product_name,
-        quantity: li.quantity,
+        cases: li.cases ?? (li.bottles ? 0 : li.quantity),
+        bottles: li.bottles ?? 0,
         unit_price: li.price,
         total: resolveLineTotal(li),
       }))

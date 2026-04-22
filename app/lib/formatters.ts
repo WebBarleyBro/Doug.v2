@@ -14,7 +14,12 @@ function mtMidnightUTC(mtDateStr: string): string {
 
 // Supabase returns timestamps without 'Z' but they ARE UTC. Without Z, JS parses
 // them as local time — which breaks all date math. This fixes that.
+// Pure YYYY-MM-DD dates are treated as noon UTC so they never drift off by one
+// day when displayed in Mountain Time (UTC-6/7).
 function parseDB(dateStr: string): Date {
+  if (dateStr.length === 10) {
+    return new Date(dateStr + 'T12:00:00Z')
+  }
   if (dateStr.length > 10 && !dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
     return new Date(dateStr + 'Z')
   }
