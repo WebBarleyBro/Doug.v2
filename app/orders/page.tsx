@@ -1054,10 +1054,8 @@ export default function OrdersPage() {
                 </>
               )}
 
-              {/* Line items */}
+              {/* Products */}
               <div style={{ marginBottom: '20px' }}>
-                <label style={{ ...labelStyle, marginBottom: '8px', display: 'block' }}>Line Items</label>
-
                 {/* Quick-add buttons from products table */}
                 {clientProducts.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
