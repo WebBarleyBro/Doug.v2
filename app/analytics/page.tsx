@@ -13,7 +13,8 @@ import {
 } from '../lib/data'
 import { t, card } from '../lib/theme'
 import { formatCurrency, nDaysAgoMT } from '../lib/formatters'
-import type { Client } from '../lib/types'
+import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
+import type { Client, PlacementStatus } from '../lib/types'
 
 const DATE_RANGES = [
   { label: '7D',   days: 7 },
@@ -61,7 +62,8 @@ export default function AnalyticsPage() {
   const [visitData, setVisitData] = useState<any[]>([])
   const [commissionData, setCommissionData] = useState<any[]>([])
   const [funnel, setFunnel] = useState<any>(null)
-  const [placementsByType, setPlacementsByType] = useState<any[]>([])
+  const [placementsByStatus, setPlacementsByStatus] = useState<any[]>([])
+  const [placementsByBrand, setPlacementsByBrand] = useState<Record<string, number>>({})
   const [visitsByStatus, setVisitsByStatus] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -111,10 +113,16 @@ export default function AnalyticsPage() {
       })
       setCommissionData(Object.values(monthMap))
 
-      // Placements by type
-      const typeMap: Record<string, number> = {}
-      placements.forEach((p: any) => { typeMap[p.placement_type] = (typeMap[p.placement_type] || 0) + 1 })
-      setPlacementsByType(Object.entries(typeMap).map(([name, value]) => ({ name, value })))
+      // Placements by status
+      const statusMap2: Record<string, number> = {}
+      const brandMap: Record<string, number> = {}
+      placements.forEach((p: any) => {
+        statusMap2[p.status] = (statusMap2[p.status] || 0) + 1
+        if (p.client_slug) brandMap[p.client_slug] = (brandMap[p.client_slug] || 0) + 1
+      })
+      const STATUS_ORDER: PlacementStatus[] = ['committed', 'ordered', 'on_shelf', 'reordering']
+      setPlacementsByStatus(STATUS_ORDER.filter(s => statusMap2[s]).map(s => ({ name: s, value: statusMap2[s] })))
+      setPlacementsByBrand(brandMap)
 
       // Visits by status
       const statusMap: Record<string, number> = {}
@@ -131,7 +139,12 @@ export default function AnalyticsPage() {
     }).catch(() => setLoading(false))
   }, [rangeDays])
 
-  const typeColors = ['#d4a843', '#4a9eff', '#3dba78', '#a78bfa', '#e89a2e', '#e05252']
+  const statusColors: Record<string, string> = {
+    committed: t.status.warning,
+    ordered: t.status.info,
+    on_shelf: t.status.success,
+    reordering: t.gold,
+  }
 
   return (
     <LayoutShell>
@@ -236,15 +249,15 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* Placements by type */}
-          {placementsByType.length > 0 && (
+          {/* Placements by status */}
+          {placementsByStatus.length > 0 && (
             <div style={{ ...card, padding: '22px 24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
-                Placements by Type
+                Active Placements
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {placementsByType.map((p, i) => (
-                  <div key={p.name} className="hud" style={{
+                {placementsByStatus.map(p => (
+                  <div key={p.name} style={{
                     backgroundColor: t.bg.elevated,
                     border: `1px solid ${t.border.default}`,
                     borderRadius: '8px',
@@ -252,8 +265,8 @@ export default function AnalyticsPage() {
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
                     minWidth: '80px',
                   }}>
-                    <div className="mono" style={{ fontSize: '24px', fontWeight: '700', color: typeColors[i % typeColors.length] }}>{p.value}</div>
-                    <div style={{ fontSize: '10px', color: t.text.muted, textTransform: 'capitalize', textAlign: 'center' }}>{p.name.replace(/_/g, ' ')}</div>
+                    <div className="mono" style={{ fontSize: '24px', fontWeight: '700', color: statusColors[p.name] || t.gold }}>{p.value}</div>
+                    <div style={{ fontSize: '10px', color: t.text.muted, textAlign: 'center' }}>{PLACEMENT_STATUS_LABELS[p.name as PlacementStatus] || p.name}</div>
                   </div>
                 ))}
               </div>
@@ -265,15 +278,21 @@ export default function AnalyticsPage() {
                     By Brand
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {clients.map(c => (
-                      <div key={c.slug} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: '12px', color: t.text.secondary, flex: 1 }}>{c.name}</span>
-                        <span className="mono" style={{ fontSize: '11px', color: t.text.muted }}>
-                          {(c as any).territory || c.category || '—'}
-                        </span>
-                      </div>
-                    ))}
+                    {clients.filter(c => placementsByBrand[c.slug]).map(c => {
+                      const logo = clientLogoUrl(c)
+                      return (
+                        <div key={c.slug} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {logo
+                            ? <img src={logo} alt={c.name} style={{ width: 16, height: 16, objectFit: 'contain', borderRadius: '2px', flexShrink: 0 }} />
+                            : <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, flexShrink: 0, margin: '0 4px' }} />
+                          }
+                          <span style={{ fontSize: '12px', color: t.text.secondary, flex: 1 }}>{c.name}</span>
+                          <span className="mono" style={{ fontSize: '12px', color: t.text.muted, fontWeight: '600' }}>
+                            {placementsByBrand[c.slug] || 0}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}

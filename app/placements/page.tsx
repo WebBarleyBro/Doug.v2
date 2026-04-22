@@ -151,55 +151,76 @@ export default function PlacementsPage() {
             action={<button onClick={() => setShowCreate(true)} style={btnPrimary}><Plus size={14} /> New Placement</button>}
           />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {filtered.map(p => {
               const client = clients.find(c => c.slug === p.client_slug)
+              const logo = client ? clientLogoUrl(client) : null
               return (
-                <div key={p.id} style={{ ...card, padding: isMobile ? '14px' : '16px 20px', borderLeft: `3px solid ${client?.color || t.gold}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        {client && (() => { const logo = clientLogoUrl(client); return logo ? <img src={logo} alt={client.name} style={{ width: '18px', height: '18px', objectFit: 'contain', borderRadius: '3px' }} /> : null })()}
-                        <div style={{ fontSize: '15px', fontWeight: '600', color: t.text.primary }}>{p.product_name}</div>
-                      </div>
-                      <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '8px' }}>
-                        {p.accounts?.name} · {client?.name || p.client_slug} · {PLACEMENT_TYPE_LABELS[p.placement_type as keyof typeof PLACEMENT_TYPE_LABELS] || p.placement_type}
-                        {p.price_point && ` · $${p.price_point}`}
-                      </div>
-                      <div style={{ fontSize: '11px', color: t.text.muted }}>Added {formatShortDateMT(p.created_at)}</div>
+                <div key={p.id} style={{ ...card, padding: isMobile ? '14px' : '18px 20px', borderLeft: `3px solid ${client?.color || t.gold}` }}>
+                  {/* Row 1: account name + status badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>
+                      {p.accounts?.name || '—'}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
-                      <span style={badge.placementStatus(p.status)}>{PLACEMENT_STATUS_LABELS[p.status as PlacementStatus] || p.status}</span>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {/* Move back */}
-                        {p.status !== 'committed' && (
-                          <button onClick={() => revertPlacementStatus(p.id, p.status).then(load)} style={{
-                            padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
-                            border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
-                          }}
-                            title="Move back one step"
-                          >
-                            ← {PLACEMENT_STATUS_LABELS[{ ordered: 'committed', on_shelf: 'ordered', reordering: 'on_shelf' }[p.status as string] as PlacementStatus]}
-                          </button>
-                        )}
-                        {/* Move forward */}
-                        {p.status !== 'reordering' && (
-                          <button onClick={() => advancePlacementStatus(p.id, p.status).then(load)} style={{
-                            padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
-                            border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
-                          }}>
-                            → {PLACEMENT_STATUS_LABELS[{ committed: 'ordered', ordered: 'on_shelf', on_shelf: 'reordering' }[p.status as string] as PlacementStatus]}
-                          </button>
-                        )}
-                        <button onClick={() => { setLostModal({ id: p.id, clientSlug: p.client_slug || '', open: true }); setLostReason('') }} style={{
+                    <span style={badge.placementStatus(p.status)}>{PLACEMENT_STATUS_LABELS[p.status as PlacementStatus] || p.status}</span>
+                  </div>
+
+                  {/* Row 2: brand logo + product name + type badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    {logo
+                      ? <img src={logo} alt={client!.name} style={{ width: 16, height: 16, objectFit: 'contain', borderRadius: '2px', flexShrink: 0 }} />
+                      : client && <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: client.color, flexShrink: 0 }} />
+                    }
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: t.text.secondary }}>{p.product_name}</div>
+                    <span style={{
+                      fontSize: '10px', padding: '2px 7px', borderRadius: '4px',
+                      backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`,
+                      color: t.text.muted, flexShrink: 0,
+                    }}>
+                      {PLACEMENT_TYPE_LABELS[p.placement_type as keyof typeof PLACEMENT_TYPE_LABELS] || p.placement_type}
+                    </span>
+                  </div>
+
+                  {/* Row 3: meta + actions */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '11px', color: t.text.muted }}>
+                      {client?.name || p.client_slug}
+                      {p.price_point ? ` · $${p.price_point}` : ''}
+                      {p.shelf_count != null ? ` · ${p.shelf_count} on shelf` : ''}
+                      {' · '}Added {formatShortDateMT(p.created_at)}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {p.status !== 'committed' && (
+                        <button onClick={() => revertPlacementStatus(p.id, p.status).then(load)} style={{
                           padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
-                          border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
-                        }}>
-                          Mark Lost
+                          border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
+                        }} title="Move back one step">
+                          ← {PLACEMENT_STATUS_LABELS[{ ordered: 'committed', on_shelf: 'ordered', reordering: 'on_shelf' }[p.status as string] as PlacementStatus]}
                         </button>
-                      </div>
+                      )}
+                      {p.status !== 'reordering' && (
+                        <button onClick={() => advancePlacementStatus(p.id, p.status).then(load)} style={{
+                          padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
+                          border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
+                        }}>
+                          → {PLACEMENT_STATUS_LABELS[{ committed: 'ordered', ordered: 'on_shelf', on_shelf: 'reordering' }[p.status as string] as PlacementStatus]}
+                        </button>
+                      )}
+                      <button onClick={() => { setLostModal({ id: p.id, clientSlug: p.client_slug || '', open: true }); setLostReason('') }} style={{
+                        padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
+                        border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
+                      }}>
+                        Mark Lost
+                      </button>
                     </div>
                   </div>
+
+                  {/* Notes if present */}
+                  {p.notes && (
+                    <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px', paddingTop: '6px', borderTop: `1px solid ${t.border.subtle}` }}>
+                      {p.notes}
+                    </div>
+                  )}
                 </div>
               )
             })}
