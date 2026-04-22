@@ -1,13 +1,13 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { MapPin, Plus, Search, Filter, ChevronRight, X } from 'lucide-react'
+import { MapPin, Plus, Search, ChevronRight, X, AlertTriangle, Trash2 } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
 import AddAccountModal from '../components/AddAccountModal'
 import EmptyState from '../components/EmptyState'
 import { CardSkeleton } from '../components/LoadingSkeleton'
-import { getAccounts, getClients } from '../lib/data'
+import { getAccounts, getClients, deleteAccount } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, badge } from '../lib/theme'
 import { daysAgoMT, relativeTimeStr, accountHealth } from '../lib/formatters'
@@ -88,6 +88,8 @@ export default function AccountsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [showDupes, setShowDupes] = useState(true)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -148,6 +150,26 @@ export default function AccountsPage() {
       return overdueB - overdueA
     })
 
+  // Detect duplicates: normalize name and group accounts that match
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim()
+  const dupeMap: Record<string, any[]> = {}
+  for (const a of accounts) {
+    const key = normalize(a.name || '')
+    if (!key) continue
+    dupeMap[key] = dupeMap[key] ? [...dupeMap[key], a] : [a]
+  }
+  const dupeGroups: any[][] = Object.values(dupeMap).filter(g => g.length > 1)
+
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      await deleteAccount(id)
+      await load()
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const pad = isMobile ? '16px' : '32px 40px'
 
   return (
@@ -168,6 +190,64 @@ export default function AccountsPage() {
             </button>
           </div>
         </div>
+
+        {/* Duplicate warning */}
+        {dupeGroups.length > 0 && (
+          <div style={{ marginBottom: '20px', borderRadius: '10px', border: '1px solid rgba(224,82,82,0.3)', backgroundColor: 'rgba(224,82,82,0.06)', overflow: 'hidden' }}>
+            <button
+              onClick={() => setShowDupes(d => !d)}
+              style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <AlertTriangle size={15} color="#e05252" />
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#e05252', flex: 1 }}>
+                {dupeGroups.length} duplicate account{dupeGroups.length !== 1 ? 's' : ''} detected — review and delete the copy
+              </span>
+              <span style={{ fontSize: '11px', color: '#e05252', opacity: 0.7 }}>{showDupes ? 'hide' : 'show'}</span>
+            </button>
+            {showDupes && (
+              <div style={{ borderTop: '1px solid rgba(224,82,82,0.2)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {dupeGroups.map((group, gi) => (
+                  <div key={gi}>
+                    <div style={{ fontSize: '11px', color: '#e05252', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
+                      "{group[0].name}"
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {group.map((a: any) => {
+                        const days = daysAgoMT(a.last_visited)
+                        const slugs = a.account_clients?.map((ac: any) => ac.client_slug) || []
+                        return (
+                          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px', backgroundColor: t.bg.card, border: `1px solid ${t.border.default}` }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{a.name}</div>
+                              {a.address && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.address}</div>}
+                              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
+                                {a.account_type === 'on_premise' ? 'On-Premise' : 'Off-Premise'}
+                                {slugs.length > 0 && ` · ${slugs.length} brand${slugs.length !== 1 ? 's' : ''}`}
+                                {days !== null ? ` · visited ${days}d ago` : ' · never visited'}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                              <Link href={`/accounts/${a.id}`} style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, color: t.text.secondary, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                View
+                              </Link>
+                              <button
+                                onClick={() => handleDelete(a.id)}
+                                disabled={deletingId === a.id}
+                                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', backgroundColor: 'rgba(224,82,82,0.1)', border: '1px solid rgba(224,82,82,0.3)', color: '#e05252', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', opacity: deletingId === a.id ? 0.5 : 1 }}
+                              >
+                                <Trash2 size={12} /> {deletingId === a.id ? '…' : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Search + Filters */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
