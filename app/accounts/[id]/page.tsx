@@ -302,8 +302,15 @@ export default function AccountDetailPage() {
   const health = accountHealth(account, placements)
   const pad = isMobile ? '16px' : '32px 36px'
 
+  const dedupedVisits = Object.values(
+    visits.reduce((acc: Record<string, any>, v: any) => {
+      const key = `${v.visited_at}|${v.user_id}`
+      if (!acc[key]) acc[key] = v
+      return acc
+    }, {})
+  )
   const timeline = [
-    ...visits.map(v => ({ ...v, _type: 'visit', _date: v.visited_at })),
+    ...dedupedVisits.map((v: any) => ({ ...v, _type: 'visit', _date: v.visited_at })),
     ...placements.map(p => ({ ...p, _type: 'placement', _date: p.created_at })),
     ...orders.map(o => ({ ...o, _type: 'order', _date: o.created_at })),
   ].sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime())
