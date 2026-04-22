@@ -466,6 +466,7 @@ export async function getNextOrderNumber(prefix: 'PO' | 'OI'): Promise<string> {
 export async function getOrders(filters?: {
   clientSlug?: string
   accountId?: string
+  accountName?: string
   status?: string
   since?: string
   limit?: number
@@ -477,14 +478,23 @@ export async function getOrders(filters?: {
     .order('created_at', { ascending: false })
 
   if (filters?.clientSlug) q = q.eq('client_slug', filters.clientSlug)
-  if (filters?.accountId) q = q.eq('account_id', filters.accountId)
+  if (filters?.accountId && filters?.accountName) {
+    // Match orders linked by ID OR by name (for older orders created without account_id)
+    q = q.or(`account_id.eq.${filters.accountId},deliver_to_name.ilike.${filters.accountName}`)
+  } else if (filters?.accountId) {
+    q = q.eq('account_id', filters.accountId)
+  } else if (filters?.accountName) {
+    q = q.ilike('deliver_to_name', filters.accountName)
+  }
   if (filters?.status) q = q.eq('status', filters.status)
   if (filters?.since) q = q.gte('created_at', filters.since)
   if (filters?.limit) q = q.limit(filters.limit)
 
   const { data, error } = await q
   if (error) throw error
-  return data || []
+  // Deduplicate in case both conditions match the same row
+  const seen = new Set<string>()
+  return (data || []).filter((o: any) => seen.has(o.id) ? false : (seen.add(o.id), true))
 }
 
 export async function createOrder(order: {

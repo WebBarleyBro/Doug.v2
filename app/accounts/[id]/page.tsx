@@ -64,6 +64,7 @@ export default function AccountDetailPage() {
   const [visitModal, setVisitModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const loadedTabsRef = useRef<Set<string>>(new Set())
+  const accountNameRef = useRef<string>('')
   const [isMobile, setIsMobile] = useState(false)
 
   // Edit account modal
@@ -154,18 +155,6 @@ export default function AccountDetailPage() {
     if (!id || loadedTabsRef.current.has(t)) return
     loadedTabsRef.current.add(t)
     try {
-      if (t === 'activity' || t === 'visits') {
-        const vs = await getVisits({ accountId: id, limit: 50 })
-        setVisits(vs)
-      }
-      if (t === 'activity' || t === 'placements') {
-        const ps = await getPlacements({ accountId: id })
-        setPlacements(ps)
-      }
-      if (t === 'activity' || t === 'orders') {
-        const os = await getOrders({ accountId: id })
-        setOrders(os)
-      }
       if (t === 'contacts') {
         const cs = await getContacts({ accountId: id })
         setContacts(cs)
@@ -178,7 +167,18 @@ export default function AccountDetailPage() {
     try {
       const [acc, cls] = await Promise.all([getAccount(id), getClients()])
       setAccount(acc)
+      accountNameRef.current = acc?.name || ''
       setClients(cls)
+      // Fetch all tab data together so orders get the correct account name
+      const [vs, ps, os] = await Promise.all([
+        getVisits({ accountId: id, limit: 50 }),
+        getPlacements({ accountId: id }),
+        getOrders({ accountId: id, accountName: acc?.name || '' }),
+      ])
+      setVisits(vs)
+      setPlacements(ps)
+      setOrders(os)
+      loadedTabsRef.current = new Set(['activity', 'visits', 'placements', 'orders'])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [id])
@@ -197,17 +197,7 @@ export default function AccountDetailPage() {
   const reloadAll = useCallback(async () => {
     loadedTabsRef.current.clear()
     await load()
-    // Bypass the loadedTabsRef gate — fetch everything fresh
-    const [vs, ps, os] = await Promise.all([
-      getVisits({ accountId: id, limit: 50 }),
-      getPlacements({ accountId: id }),
-      getOrders({ accountId: id }),
-    ])
-    setVisits(vs)
-    setPlacements(ps)
-    setOrders(os)
-    loadedTabsRef.current = new Set(['activity', 'visits', 'placements', 'orders'])
-  }, [id, load])
+  }, [load])
 
   function openEditModal() {
     if (!account) return
