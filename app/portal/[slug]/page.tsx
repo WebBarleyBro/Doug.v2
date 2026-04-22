@@ -6,7 +6,7 @@ import { getPortalData, submitClientSuggestion, getCampaignExpenses, getCampaign
 import { t, card, badge, inputStyle, labelStyle } from '../../lib/theme'
 import { formatShortDateMT, relativeTimeStr, startOfMonthMT, formatCurrency, daysAgoMT } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Plus, Send, Building2, User, ExternalLink, Upload, FileDown } from 'lucide-react'
+import { MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp, CheckCircle, Send, Building2, User, ExternalLink, Upload, FileDown } from 'lucide-react'
 import { clientLogoUrl } from '../../lib/constants'
 
 const SUGGESTION_REASONS = [
@@ -52,7 +52,6 @@ export default function ClientPortalPage() {
   const [submitted, setSubmitted] = useState(false)
   const [suggestErr, setSuggestErr] = useState('')
 
-  const [showInquiries, setShowInquiries] = useState(false)
   const [isPreview, setIsPreview] = useState(false)
 
   // Campaign state
@@ -60,6 +59,8 @@ export default function ClientPortalPage() {
   const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
   const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
   const [uploadingAsset, setUploadingAsset] = useState(false)
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
+  const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -116,6 +117,59 @@ export default function ClientPortalPage() {
       setSuggestForm({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
+  }
+
+  function handlePrintReport() {
+    if (!data) return
+    const { client: cl, visits: vs, placements: pls, orders: ords, events: evts } = data
+    const mStart = startOfMonthMT()
+    const mVisits = vs.filter((v: any) => v.visited_at >= mStart).length
+    const actPlacements = pls.filter((p: any) => !p.lost_at)
+    const nonDraftOrders = ords.filter((o: any) => o.status !== 'draft')
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const clName = (cl?.name || slug).replace(/</g, '&lt;')
+    const orderRows = nonDraftOrders.map((o: any) => {
+      const statusCls = o.status === 'fulfilled' ? 'fulfilled' : o.status === 'sent' ? 'sent' : ''
+      return `<tr><td>${(o.deliver_to_name || '—').replace(/</g, '&lt;')}</td><td>${o.order_type === 'distributor' ? 'Distributor Inquiry' : 'Direct Order'}</td><td><span class="badge ${statusCls}">${o.status}</span></td><td>${o.total_amount > 0 ? '$' + Number(o.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</td><td>${formatShortDateMT(o.created_at)}</td></tr>`
+    }).join('')
+    const placementRows = actPlacements.slice(0, 40).map((p: any) =>
+      `<tr><td>${(p.accounts?.name || '—').replace(/</g, '&lt;')}</td><td>${(p.product_name || '—').replace(/</g, '&lt;')}</td><td>${(p.placement_type || '').replace('_', ' ')}</td><td>${p.status || '—'}</td></tr>`
+    ).join('')
+    const visitStatusCls = (s: string) => ({ 'Will Order Soon': 'will-order-soon', 'Just Ordered': 'just-ordered', 'Needs Follow Up': 'needs-follow-up', 'Not Interested': 'not-interested', 'Menu Feature Won': 'menu-feature-won', 'New Placement': 'new-placement', 'General Check-In': 'general-check-in' }[s] || '')
+    const visitRows = vs.slice(0, 30).map((v: any) =>
+      `<tr><td>${(v.accounts?.name || '—').replace(/</g, '&lt;')}</td><td><span class="badge ${visitStatusCls(v.status)}">${v.status}</span></td><td style="white-space:nowrap">${formatShortDateMT(v.visited_at)}</td><td>${(v.notes || '—').replace(/</g, '&lt;')}</td></tr>`
+    ).join('')
+    const html = `<!DOCTYPE html><html><head><title>Field Report — ${clName}</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:48px 56px;color:#111;max-width:820px;margin:0 auto;font-size:13px}
+h1{font-size:24px;font-weight:800;margin:0 0 4px;letter-spacing:-0.02em}.meta{color:#888;font-size:12px;margin-bottom:24px}
+h2{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#666;margin:28px 0 10px;border-bottom:1px solid #eee;padding-bottom:6px}
+.stats{display:flex;gap:12px;margin-bottom:24px}.stat{background:#f7f7f5;border-radius:8px;padding:12px 16px;flex:1}
+.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:4px}
+.stat-val{font-size:24px;font-weight:800}
+table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:.06em}
+td{padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;vertical-align:top}tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
+.sent{background:#dbeafe;color:#1d4ed8}.fulfilled{background:#dcfce7;color:#166534}
+.will-order-soon{background:#dbeafe;color:#1d4ed8}.needs-follow-up{background:#fef3c7;color:#92400e}
+.just-ordered{background:#dcfce7;color:#166534}.not-interested{background:#fee2e2;color:#991b1b}
+.general-check-in{background:#f3f4f6;color:#374151}.new-placement,.menu-feature-won{background:#dcfce7;color:#166534}
+@media print{body{padding:24px}}
+</style></head><body>
+<h1>${clName} — Field Report</h1>
+<div class="meta">Generated ${dateStr} · Barley Bros · Fort Collins, CO · Last 90 days of activity</div>
+<div class="stats">
+  <div class="stat"><div class="stat-label">Visits This Month</div><div class="stat-val">${mVisits}</div></div>
+  <div class="stat"><div class="stat-label">Active Placements</div><div class="stat-val">${actPlacements.length}</div></div>
+  <div class="stat"><div class="stat-label">Orders (90 days)</div><div class="stat-val">${nonDraftOrders.length}</div></div>
+  <div class="stat"><div class="stat-label">Events / Tastings</div><div class="stat-val">${evts.length}</div></div>
+</div>
+${nonDraftOrders.length > 0 ? `<h2>Orders</h2><table><thead><tr><th>Account</th><th>Type</th><th>Status</th><th>Amount</th><th>Date</th></tr></thead><tbody>${orderRows}</tbody></table>` : ''}
+${actPlacements.length > 0 ? `<h2>Active Placements (${actPlacements.length})</h2><table><thead><tr><th>Account</th><th>Product</th><th>Type</th><th>Status</th></tr></thead><tbody>${placementRows}</tbody></table>` : ''}
+${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${visitRows}</tbody></table>` : ''}
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
   }
 
   if (loading) {
@@ -176,12 +230,20 @@ export default function ClientPortalPage() {
             <div style={{ fontSize: '10px', color: t.text.muted, lineHeight: 1.2 }}>Barley Bros Field Report</div>
           </div>
         </div>
-        <button
-          onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })}
-          style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}
-        >
-          <LogOut size={12} /> {isMobile ? '' : 'Sign out'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handlePrintReport}
+            style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}
+          >
+            <FileDown size={12} /> {isMobile ? '' : 'Download PDF'}
+          </button>
+          <button
+            onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })}
+            style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}
+          >
+            <LogOut size={12} /> {isMobile ? '' : 'Sign out'}
+          </button>
+        </div>
       </header>
 
       <main style={{ maxWidth: '1000px', margin: '0 auto', padding: pad }}>
@@ -198,104 +260,121 @@ export default function ClientPortalPage() {
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '28px' }}>
           <StatTile label="Visits This Month" value={monthVisits} color={accent} icon={<MapPin size={18} />} sub={`${visits.length} in 90 days`} />
           <StatTile label="Active Placements" value={activePlacements.length} color={t.status.success} icon={<Package size={18} />} sub={`${placements.length} total tracked`} />
-          <StatTile label="Inquiries Sent" value={funnel.inquiries} color={t.status.info} icon={<Send size={18} />} sub="to distributors" />
+          <StatTile
+            label={distOrders.length > 0 ? 'Inquiries Sent' : 'Orders Placed'}
+            value={distOrders.length > 0 ? funnel.inquiries : orders.filter((o: any) => o.status !== 'draft').length}
+            color={t.status.info}
+            icon={<Send size={18} />}
+            sub={distOrders.length > 0 ? 'to distributors' : 'direct purchase orders'}
+          />
           <StatTile label="Events / Tastings" value={events.length} color={t.status.warning} icon={<TrendingUp size={18} />} sub="in last 90 days" />
         </div>
 
-        {distOrders.length > 0 && (
+        {orders.filter((o: any) => o.status !== 'draft').length > 0 && (
           <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '18px 16px' : '22px 24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-              <div>
-                <SectionLabel>Distributor Inquiries — Last 90 Days</SectionLabel>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '-6px' }}>
-                  <span style={{ fontSize: '36px', fontWeight: '800', color: t.status.info, letterSpacing: '-0.03em', lineHeight: 1 }}>{funnel.inquiries}</span>
-                  <span style={{ fontSize: '13px', color: t.text.muted }}>
-                    {funnel.inquiries === 1 ? 'inquiry sent' : 'inquiries sent'} to distributors on your behalf
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '6px', lineHeight: 1.5 }}>
-                  Each inquiry represents an account that expressed interest. Fulfillment is between the distributor and supplier — we send the inquiry so there&apos;s a record of the interest we generated.
-                </div>
+            <div style={{ marginBottom: '16px' }}>
+              <SectionLabel>Orders — Last 90 Days</SectionLabel>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '-6px' }}>
+                <span style={{ fontSize: '36px', fontWeight: '800', color: accent, letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {orders.filter((o: any) => o.status !== 'draft').length}
+                </span>
+                <span style={{ fontSize: '13px', color: t.text.muted }}>
+                  orders placed on your behalf in the last 90 days
+                </span>
               </div>
+              {distOrders.length > 0 && (
+                <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '6px', lineHeight: 1.5, borderLeft: `3px solid ${t.border.default}`, paddingLeft: '10px' }}>
+                  Distributor inquiries represent accounts that expressed interest — we send a formal request to the distributor so there&apos;s a record of the interest we generated.
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={() => setShowInquiries(o => !o)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '8px 14px', color: t.text.secondary, fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginBottom: showInquiries ? '16px' : 0 }}
-            >
-              {showInquiries ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              {showInquiries ? 'Hide' : 'View'} full inquiry log ({distOrders.length})
-            </button>
-
-            {showInquiries && (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '1fr 1fr auto', gap: '0', borderBottom: `1px solid ${t.border.default}`, paddingBottom: '6px', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Account</div>
-                    {!isMobile && <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Distributor Rep</div>}
-                    <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Date Sent</div>
-                  </div>
-                  {distOrders.map((o: any, i: number) => (
-                    <div key={o.id} style={{
-                      display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '1fr 1fr auto',
-                      gap: '0', padding: '9px 0',
-                      borderBottom: i < distOrders.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
-                      alignItems: 'center',
-                    }}>
-                      <div style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
-                        {o.deliver_to_name || '—'}
-                      </div>
-                      {!isMobile && (
-                        <div style={{ fontSize: '12px', color: t.text.muted, paddingRight: '12px' }}>
-                          {o.distributor_rep_name || '—'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {orders.filter((o: any) => o.status !== 'draft').map((o: any) => {
+                const isExpanded = expandedOrder === o.id
+                const lineItems = orderLineItems[o.id]
+                const STATUS_COLORS: Record<string, string> = { sent: t.status.info, fulfilled: t.status.success, cancelled: t.status.danger }
+                const statusColor = STATUS_COLORS[o.status] || t.text.muted
+                return (
+                  <div key={o.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', overflow: 'hidden' }}>
+                    <button
+                      onClick={async () => {
+                        if (isExpanded) {
+                          setExpandedOrder(null)
+                        } else {
+                          setExpandedOrder(o.id)
+                          if (orderLineItems[o.id] === undefined) {
+                            const { data: liData } = await getSupabase()
+                              .from('po_line_items').select('product_name, quantity, price, total').eq('po_id', o.id).order('id')
+                            setOrderLineItems(prev => ({ ...prev, [o.id]: liData || [] }))
+                          }
+                        }
+                      }}
+                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', textAlign: 'left' }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {o.deliver_to_name}
+                          </span>
+                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>
+                            {o.status}
+                          </span>
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.page, color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
+                            {o.order_type === 'distributor' ? 'Distributor Inquiry' : 'Direct Order'}
+                          </span>
                         </div>
-                      )}
-                      <div style={{ fontSize: '12px', color: t.text.muted, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {formatShortDateMT(o.created_at)}
+                        <div style={{ fontSize: '11px', color: t.text.muted }}>
+                          PO #{o.po_number} · {formatShortDateMT(o.created_at)}
+                          {o.deliver_to_address && !isMobile ? ` · ${o.deliver_to_address}` : ''}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        {o.total_amount > 0 && (
+                          <span style={{ fontSize: '14px', fontWeight: '700', color: accent }}>{formatCurrency(o.total_amount)}</span>
+                        )}
+                        <span style={{ color: t.text.muted, fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
+                      </div>
+                    </button>
 
-                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => {
-                      const rows = distOrders.map((o: any) => `
-                        <tr>
-                          <td>${(o.deliver_to_name || '—').replace(/</g, '&lt;')}</td>
-                          <td>${(o.distributor_rep_name || '—').replace(/</g, '&lt;')}</td>
-                          <td>${formatShortDateMT(o.created_at)}</td>
-                        </tr>`).join('')
-                      const html = `<!DOCTYPE html><html><head><title>Distributor Inquiries — ${(client?.name || '').replace(/</g, '&lt;')}</title>
-<style>
-  body{font-family:Arial,sans-serif;padding:48px 56px;color:#111;max-width:760px;margin:0 auto}
-  h1{font-size:22px;font-weight:800;margin:0 0 4px}
-  .meta{color:#666;font-size:13px;margin-bottom:8px}
-  .note{font-size:12px;color:#888;margin-bottom:28px;line-height:1.5;border-left:3px solid #ddd;padding-left:12px}
-  table{width:100%;border-collapse:collapse}
-  th{text-align:left;padding:8px 12px;border-bottom:2px solid #ccc;font-size:11px;text-transform:uppercase;color:#666;letter-spacing:.06em}
-  td{padding:10px 12px;border-bottom:1px solid #eee;font-size:13px}
-  tr:last-child td{border-bottom:none}
-  @media print{body{padding:24px}}
-</style></head><body>
-  <h1>Distributor Inquiries — ${(client?.name || '').replace(/</g, '&lt;')}</h1>
-  <div class="meta">Generated ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})} · Barley Bros Field Report</div>
-  <div class="note">Each inquiry below represents an account where interest was expressed and Barley Bros sent a formal request to the distributor. Fulfillment is between the distributor and supplier.</div>
-  <table>
-    <thead><tr><th>Account</th><th>Distributor Rep</th><th>Date Sent</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-</body></html>`
-                      const w = window.open('', '_blank')
-                      if (w) { w.document.write(html); w.document.close(); w.print() }
-                    }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: accent, backgroundColor: accent + '18', border: `1px solid ${accent}44`, cursor: 'pointer' }}
-                  >
-                    <FileDown size={13} /> Save as PDF
-                  </button>
-                </div>
-              </>
-            )}
+                    {isExpanded && (
+                      <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '14px 16px' }}>
+                        {lineItems === undefined ? (
+                          <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>Loading details...</div>
+                        ) : lineItems.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: t.text.muted }}>No line items on file for this order.</div>
+                        ) : (
+                          <div>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto auto' : '1fr auto auto auto', gap: '4px 16px', paddingBottom: '8px', marginBottom: '4px', borderBottom: `1px solid ${t.border.subtle}` }}>
+                              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Product</div>
+                              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>Qty</div>
+                              {!isMobile && <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>Unit Price</div>}
+                              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>Total</div>
+                            </div>
+                            {lineItems.map((li: any, idx: number) => (
+                              <div key={idx} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto auto' : '1fr auto auto auto', gap: '4px 16px', padding: '6px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                                <div style={{ fontSize: '12px', color: t.text.primary }}>{li.product_name}</div>
+                                <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{li.quantity}</div>
+                                {!isMobile && <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{formatCurrency(li.price)}</div>}
+                                <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, textAlign: 'right' }}>{formatCurrency(li.total)}</div>
+                              </div>
+                            ))}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '10px' }}>
+                              <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>Order Total: {formatCurrency(o.total_amount)}</span>
+                            </div>
+                          </div>
+                        )}
+                        {(o.distributor_email || o.distributor_rep_name) && (
+                          <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${t.border.subtle}` }}>
+                            Sent to distributor: {o.distributor_rep_name || ''}{o.distributor_email ? ` · ${o.distributor_email}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -531,30 +610,87 @@ export default function ClientPortalPage() {
         )}
 
         <div style={{ ...card, marginBottom: '20px', padding: isMobile ? '16px' : '22px 24px' }}>
-          <SectionLabel>Recent Field Activity ({visits.slice(0, 25).length} of {visits.length})</SectionLabel>
+          <SectionLabel>Recent Field Activity — Last 90 Days</SectionLabel>
           {visits.length === 0 ? (
             <div style={{ fontSize: '13px', color: t.text.muted }}>No field activity recorded in this period.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {visits.slice(0, 25).map((v: any, i: number) => (
-                <div key={v.id} style={{
-                  padding: '12px 0',
-                  borderBottom: i < Math.min(visits.length, 25) - 1 ? `1px solid ${t.border.subtle}` : 'none',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{v.accounts?.name || 'Unknown account'}</div>
-                      {v.accounts?.address && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts.address}</div>}
-                      {v.notes && <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '4px', lineHeight: 1.5 }}>{v.notes}</div>}
+            <>
+              {(() => {
+                const STATUS_ACCENT: Record<string, string> = {
+                  'Will Order Soon': t.status.info,
+                  'Just Ordered': t.status.success,
+                  'Needs Follow Up': t.status.warning,
+                  'Not Interested': t.status.danger,
+                  'Menu Feature Won': t.status.success,
+                  'New Placement': t.status.success,
+                  'General Check-In': t.text.muted,
+                }
+                const ACTION_GROUP = ['Will Order Soon', 'Needs Follow Up']
+                const POSITIVE_GROUP = ['Just Ordered', 'Menu Feature Won', 'New Placement']
+                const actionVisits = visits.filter((v: any) => ACTION_GROUP.includes(v.status))
+                const positiveVisits = visits.filter((v: any) => POSITIVE_GROUP.includes(v.status))
+                const otherVisits = visits.filter((v: any) => !ACTION_GROUP.includes(v.status) && !POSITIVE_GROUP.includes(v.status))
+
+                const renderVisitCard = (v: any) => {
+                  const accent2 = STATUS_ACCENT[v.status] || t.text.muted
+                  return (
+                    <div key={v.id} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px 12px 16px', boxShadow: `inset 3px 0 0 ${accent2}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '5px' }}>
+                        <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                        <span style={{ fontSize: '11px', color: t.text.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{v.accounts?.name || 'Unknown account'}</div>
+                      {v.accounts?.address && (
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts.address}</div>
+                      )}
+                      {v.notes && (
+                        <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '7px', lineHeight: 1.6, borderLeft: `2px solid ${t.border.default}`, paddingLeft: '10px' }}>
+                          {v.notes}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <span style={badge.visitStatus(v.status)}>{v.status}</span>
-                      <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>{relativeTimeStr(v.visited_at)}</div>
-                    </div>
+                  )
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {actionVisits.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                          Needs Follow-Up ({actionVisits.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {actionVisits.map(renderVisitCard)}
+                        </div>
+                      </div>
+                    )}
+                    {positiveVisits.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.status.success, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                          Wins &amp; Orders ({positiveVisits.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {positiveVisits.map(renderVisitCard)}
+                        </div>
+                      </div>
+                    )}
+                    {otherVisits.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
+                          General Visits ({otherVisits.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {otherVisits.slice(0, 15).map(renderVisitCard)}
+                          {otherVisits.length > 15 && (
+                            <div style={{ fontSize: '12px', color: t.text.muted, padding: '8px 0' }}>+{otherVisits.length - 15} more general visits in this period</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                )
+              })()}
+            </>
           )}
         </div>
 

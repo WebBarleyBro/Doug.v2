@@ -8,9 +8,8 @@ import { t, card } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
 
 const RESOURCES = [
-  { label: 'Sales Territory Map', href: '/planner', icon: '🗺️' },
-  { label: 'Account List', href: '/accounts', icon: '📋' },
-  { label: 'Brand Assets', href: '/clients', icon: '📦' },
+  { label: 'Brand Resources', href: '/intern/resources', icon: '📦' },
+  { label: 'Campaigns', href: '/marketing', icon: '📣' },
 ]
 
 export default function InternPage() {
@@ -46,7 +45,7 @@ export default function InternPage() {
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
             {profile?.name ? `Hey, ${profile.name.split(' ')[0]}` : 'Intern Dashboard'}
           </h1>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your tasks and resources from the Barley Bros team</p>
+          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your work hub — tasks assigned to you, campaigns to support, and brand resources</p>
         </div>
 
         {/* Task summary */}
@@ -80,7 +79,6 @@ export default function InternPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '14px', fontWeight: '500', color: t.text.primary }}>{task.title}</div>
                   {task.description && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{task.description}</div>}
-                  {task.accounts?.name && <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '2px' }}>Account: {task.accounts.name}</div>}
                 </div>
                 {task.due_date && (
                   <div style={{ fontSize: '11px', color: isOverdue ? '#e05252' : t.text.muted, flexShrink: 0 }}>

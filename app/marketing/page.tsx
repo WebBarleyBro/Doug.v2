@@ -415,9 +415,11 @@ export default function MarketingPage() {
                                         onClick={e => e.stopPropagation()}
                                         style={{ fontSize: '10px', color: statusMeta.color, backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
                                       >
-                                        {Object.entries(DELIVERABLE_STATUS_META).map(([k, v]) => (
-                                          <option key={k} value={k}>{v.label}</option>
-                                        ))}
+                                        {Object.entries(DELIVERABLE_STATUS_META)
+                                          .filter(([k]) => !isIntern || k !== 'done')
+                                          .map(([k, v]) => (
+                                            <option key={k} value={k}>{v.label}{isIntern && k === 'review' ? ' (submit for approval)' : ''}</option>
+                                          ))}
                                       </select>
                                       {!isIntern && (
                                         <button onClick={() => handleDeleteDeliverable(d.id)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px', flexShrink: 0 }}>
@@ -460,12 +462,12 @@ export default function MarketingPage() {
                                     <button onClick={() => handleAddDeliverable(c.id)} style={{ ...btnPrimary, padding: '5px 12px', fontSize: '12px' }}>Add</button>
                                   </div>
                                 </div>
-                              ) : (
+                              ) : !isIntern ? (
                                 <button onClick={() => setAddingDeliverable(c.id)}
                                   style={{ fontSize: '12px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0' }}>
                                   <Plus size={12} /> Add deliverable
                                 </button>
-                              )}
+                              ) : null}
                             </div>
 
                             {/* Milestones */}

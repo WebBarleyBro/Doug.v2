@@ -1,12 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { CheckSquare, Check, Plus, AlertCircle } from 'lucide-react'
+import { CheckSquare, Check, AlertCircle } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
-import { getTasks, createTask } from '../../lib/data'
+import { getTasks } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
-import { t, card, btnPrimary, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, todayMT, nDaysAgoMT } from '../../lib/formatters'
-import type { Task, TaskPriority } from '../../lib/types'
+import { t, card } from '../../lib/theme'
+import { formatShortDateMT, nDaysAgoMT } from '../../lib/formatters'
+import type { Task } from '../../lib/types'
 
 const PRIORITY_DOT: Record<string, string> = {
   high:   '#e05252',
@@ -26,8 +26,6 @@ export default function InternTasksPage() {
   const [completedTasks, setCompletedTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [addForm, setAddForm] = useState({ title: '', priority: 'medium' as TaskPriority, due_date: '' })
-  const [saving, setSaving] = useState(false)
 
   async function load(uid: string) {
     const sb = getSupabase()
@@ -41,7 +39,7 @@ export default function InternTasksPage() {
     // Unclaimed tasks (assigned_to IS NULL), incomplete
     const { data: unclaimed } = await sb
       .from('tasks')
-      .select('*, accounts(id, name)')
+      .select('*')
       .is('assigned_to', null)
       .eq('completed', false)
       .order('due_date', { ascending: true, nullsFirst: false })
@@ -50,7 +48,7 @@ export default function InternTasksPage() {
     // Completed tasks last 7 days
     const { data: done } = await sb
       .from('tasks')
-      .select('*, accounts(id, name)')
+      .select('*')
       .or(`user_id.eq.${uid},assigned_to.eq.${uid}`)
       .eq('completed', true)
       .gte('completed_at', sevenDaysAgo)
@@ -85,27 +83,6 @@ export default function InternTasksPage() {
     load(userId)
   }
 
-  async function handleAddTask(e: React.FormEvent) {
-    e.preventDefault()
-    if (!addForm.title.trim() || !userId) return
-    setSaving(true)
-    try {
-      await createTask({
-        user_id: userId,
-        assigned_to: userId,
-        title: addForm.title.trim(),
-        priority: addForm.priority,
-        due_date: addForm.due_date || undefined,
-      })
-      setAddForm({ title: '', priority: 'medium', due_date: '' })
-      load(userId)
-    } catch (err: any) {
-      setError(err.message || 'Failed to create task')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   if (loading) return <LayoutShell><div style={{ padding: '32px 48px', color: t.text.muted, fontSize: '14px' }}>Loading tasks...</div></LayoutShell>
   if (error && myTasks.length === 0 && unclaimedTasks.length === 0) return (
     <LayoutShell><div style={{ padding: '32px 48px', color: t.status.danger, fontSize: '14px' }}>{error}</div></LayoutShell>
@@ -118,7 +95,7 @@ export default function InternTasksPage() {
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
             Tasks
           </h1>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your assigned tasks and team tasks you can claim</p>
+          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Tasks assigned to you by the team. Claim available tasks to pick up extra work.</p>
         </div>
 
         {/* My open tasks */}
@@ -226,56 +203,17 @@ export default function InternTasksPage() {
           </section>
         )}
 
-        {/* Quick add form */}
-        <section>
-          <h2 style={{ fontSize: '13px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
-            Add a Task
-          </h2>
-          <div style={{ ...card }}>
-            <form onSubmit={handleAddTask}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '12px', alignItems: 'end' }}>
-                <div>
-                  <label style={labelStyle}>Task Title</label>
-                  <input
-                    type="text"
-                    value={addForm.title}
-                    onChange={e => setAddForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="What needs to be done?"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Priority</label>
-                  <select value={addForm.priority} onChange={e => setAddForm(f => ({ ...f, priority: e.target.value as TaskPriority }))} style={{ ...selectStyle, width: '120px' }}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Due Date</label>
-                  <input
-                    type="date"
-                    value={addForm.due_date}
-                    min={todayMT()}
-                    onChange={e => setAddForm(f => ({ ...f, due_date: e.target.value }))}
-                    style={{ ...inputStyle, width: '150px' }}
-                  />
-                </div>
-              </div>
-              {error && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: t.status.danger, fontSize: '12px', marginTop: '10px' }}>
-                  <AlertCircle size={13} />{error}
-                </div>
-              )}
-              <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="submit" disabled={saving || !addForm.title.trim()} style={{ ...btnPrimary, opacity: saving || !addForm.title.trim() ? 0.6 : 1 }}>
-                  <Plus size={14} /> {saving ? 'Adding...' : 'Add Task'}
-                </button>
-              </div>
-            </form>
+        {error && myTasks.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: t.status.danger, fontSize: '12px', marginBottom: '16px' }}>
+            <AlertCircle size={13} />{error}
           </div>
-        </section>
+        )}
+
+        <div style={{ ...card, padding: '16px 20px', backgroundColor: t.bg.elevated, borderLeft: `3px solid ${t.status.info}` }}>
+          <div style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5 }}>
+            Need something added to the task list? Message your manager and they&apos;ll assign it to you here.
+          </div>
+        </div>
       </div>
     </LayoutShell>
   )

@@ -687,7 +687,7 @@ export async function getTasks(filters?: {
   const sb = getSupabase()
   let q = sb
     .from('tasks')
-    .select('*, accounts(id, name)')
+    .select('*')
     .order('due_date', { ascending: true, nullsFirst: false })
 
   if (filters?.userId) {
@@ -790,8 +790,16 @@ export async function getCampaigns(clientSlug?: string): Promise<Campaign[]> {
     .order('created_at', { ascending: false })
   if (clientSlug) q = q.eq('client_slug', clientSlug)
   const { data, error } = await q
-  if (error) throw error
-  return data || []
+  if (!error) return data || []
+  // Fallback: campaign_deliverables table may not exist yet (run migration 023)
+  let q2 = sb
+    .from('campaigns')
+    .select('*, campaign_milestones(*), clients(id, name, color)')
+    .order('created_at', { ascending: false })
+  if (clientSlug) q2 = q2.eq('client_slug', clientSlug)
+  const { data: data2, error: error2 } = await q2
+  if (error2) throw error2
+  return data2 || []
 }
 
 export async function toggleMilestone(id: string, completed: boolean) {
