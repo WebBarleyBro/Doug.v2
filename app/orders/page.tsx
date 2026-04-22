@@ -270,6 +270,13 @@ export default function OrdersPage() {
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
+
+  // Lock body scroll when any modal is open — fixes iOS Safari touch offset bug
+  useEffect(() => {
+    const anyOpen = showCreate || showEmailPreview || !!selectedOrder
+    document.body.style.overflow = anyOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showCreate, showEmailPreview, selectedOrder])
   const [activeTab, setActiveTab] = useState<'direct' | 'inquiries' | 'followups'>('direct')
   const [showCreate, setShowCreate] = useState(false)
   const [orderType, setOrderType] = useState<'direct' | 'distributor'>('direct')
@@ -1181,7 +1188,7 @@ export default function OrdersPage() {
             </div>
 
             {/* Sticky footer with action buttons */}
-            <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.border.default}`, flexShrink: 0, backgroundColor: t.bg.elevated }}>
+            <div style={{ padding: '16px 20px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', borderTop: `1px solid ${t.border.default}`, flexShrink: 0, backgroundColor: t.bg.elevated } as any}>
               {createErr && <div style={{ fontSize: '12px', color: t.status.danger, marginBottom: '8px' }}>{createErr}</div>}
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => { setShowCreate(false); resetForm() }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
@@ -1196,7 +1203,7 @@ export default function OrdersPage() {
                       setPreviewEmail(s.primary_contact_email || selectedClient?.contact_email || '')
                       setShowEmailPreview(true)
                     }}
-                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center' }}
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', minHeight: '48px', touchAction: 'manipulation' } as any}
                   >
                     <Send size={15} /> Preview & Send
                   </button>
@@ -1209,7 +1216,7 @@ export default function OrdersPage() {
                       handleCreate()
                     }}
                     disabled={creating}
-                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating ? 0.6 : 1 }}>
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', minHeight: '48px', touchAction: 'manipulation', opacity: creating ? 0.6 : 1 } as any}>
                     {creating ? 'Creating...' : 'Create Inquiry'}
                   </button>
                 )}
