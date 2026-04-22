@@ -845,78 +845,88 @@ export default function OrdersPage() {
                       <Send size={15} /> Mark Sent
                     </button>
                   )}
-                  {resendState === 'sent' ? (
-                    <div style={{ padding: '12px', borderRadius: '6px', backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: '13px', textAlign: 'center' }}>
-                      ✓ Order sent successfully
-                    </div>
-                  ) : resendState === 'open' || resendState === 'sending' ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <input
-                        type="email" value={resendTo}
-                        onChange={e => setResendTo(e.target.value)}
-                        placeholder="Recipient email address"
-                        autoFocus
-                        style={{ backgroundColor: t.bg.input, border: `1px solid ${resendTo === '' && resendState === 'open' ? t.border.default : t.border.default}`, borderRadius: '6px', padding: '12px', color: t.text.primary, fontSize: '14px', outline: 'none', width: '100%' }}
-                      />
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
-                        <button
-                          onClick={async () => {
-                            if (!resendTo.trim()) return
-                            if (resendState === 'sending') return
-                            setResendState('sending')
-                            const itemLines = items.map((li: any) => {
-                              const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
-                              const price = Number(li.unit_price||li.price||0)
-                              return `  • ${li.product_name} – Qty: ${qty}${price > 0 ? ` @ $${price.toFixed(2)} = $${(qty*price).toFixed(2)}` : ''}`
-                            }).join('\n')
-                            const subject = isInquiry
-                              ? `Order Inquiry ${o.po_number} – ${o.deliver_to_name}`
-                              : `PO ${o.po_number} – ${o.deliver_to_name}`
-                            const text = [
-                              isInquiry ? `Order Inquiry #: ${o.po_number}` : `PO Number: ${o.po_number}`,
-                              `Ship To: ${o.deliver_to_name}`,
-                              o.deliver_to_address ? `Address: ${o.deliver_to_address}` : null,
-                              o.deliver_to_phone ? `Phone: ${o.deliver_to_phone}` : null,
-                              '',
-                              'Line Items:',
-                              itemLines || '  (see attached)',
-                              '',
-                              `Order Total: $${total.toFixed(2)}`,
-                              o.notes ? `Notes: ${o.notes}` : null,
-                              '',
-                              isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
-                              '',
-                              '— Barley Bros',
-                            ].filter(l => l !== null).join('\n')
-                            const htmlRows = items.map((li: any) => {
-                              const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
-                              const price = Number(li.unit_price||li.price||0)
-                              return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(qty*price).toFixed(2)}</td></tr>`
-                            }).join('')
-                            const html = `<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto"><h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${o.po_number}</h2><p style="font-size:13px;color:#9a9790;margin:0 0 20px">${o.deliver_to_name} · ${new Date(o.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p><table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px"><thead><tr style="background:#202020"><th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754">Product</th><th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754">Qty</th><th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754">Total</th></tr></thead><tbody>${htmlRows}</tbody></table><div style="text-align:right;font-size:18px;font-weight:700;color:#eceae4">$${total.toFixed(2)}</div>${o.notes ? `<p style="font-size:13px;color:#9a9790;margin-top:16px">${o.notes}</p>` : ''}<p style="font-size:12px;color:#5a5754;margin-top:24px">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p><p style="margin-top:16px;font-size:13px;color:#bfb5a1">— Barley Bros</p></div>`
-                            try {
-                              const res = await fetch('/api/send-email', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ to: resendTo.trim(), subject, text, html }),
-                              })
-                              if (res.ok) { setResendState('sent'); setResendTo('') }
-                              else setResendState('open')
-                            } catch { setResendState('open') }
-                          }}
-                          style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation', opacity: resendState === 'sending' ? 0.6 : 1 } as any}
-                        >
-                          <Send size={14} /> {resendState === 'sending' ? 'Sending...' : 'Send'}
-                        </button>
+                  {(() => {
+                    // Auto-resolve recipient: distributor email for inquiries, client settings for direct
+                    const autoEmail = isInquiry
+                      ? (o.distributor_email || '')
+                      : (clientSettings[o.client_slug || '']?.primary_contact_email || client?.contact_email || '')
+
+                    const doSend = async (email: string) => {
+                      if (!email.trim() || resendState === 'sending') return
+                      setResendState('sending')
+                      const itemLines = items.map((li: any) => {
+                        const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
+                        const price = Number(li.unit_price||li.price||0)
+                        return `  • ${li.product_name} – Qty: ${qty}${price > 0 ? ` @ $${price.toFixed(2)} = $${(qty*price).toFixed(2)}` : ''}`
+                      }).join('\n')
+                      const subject = isInquiry ? `Order Inquiry ${o.po_number} – ${o.deliver_to_name}` : `PO ${o.po_number} – ${o.deliver_to_name}`
+                      const text = [
+                        isInquiry ? `Order Inquiry #: ${o.po_number}` : `PO Number: ${o.po_number}`,
+                        `Ship To: ${o.deliver_to_name}`,
+                        o.deliver_to_address ? `Address: ${o.deliver_to_address}` : null,
+                        o.deliver_to_phone ? `Phone: ${o.deliver_to_phone}` : null,
+                        '', 'Line Items:', itemLines || '  (see attached)', '',
+                        `Order Total: $${total.toFixed(2)}`,
+                        o.notes ? `Notes: ${o.notes}` : null, '',
+                        isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
+                        '', '— Barley Bros',
+                      ].filter(l => l !== null).join('\n')
+                      const htmlRows = items.map((li: any) => {
+                        const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
+                        const price = Number(li.unit_price||li.price||0)
+                        return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(qty*price).toFixed(2)}</td></tr>`
+                      }).join('')
+                      const html = `<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto"><h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${o.po_number}</h2><p style="font-size:13px;color:#9a9790;margin:0 0 20px">${o.deliver_to_name} · ${new Date(o.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p><table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px"><thead><tr style="background:#202020"><th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754">Product</th><th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754">Qty</th><th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754">Total</th></tr></thead><tbody>${htmlRows}</tbody></table><div style="text-align:right;font-size:18px;font-weight:700;color:#eceae4">$${total.toFixed(2)}</div>${o.notes ? `<p style="font-size:13px;color:#9a9790;margin-top:16px">${o.notes}</p>` : ''}<p style="font-size:12px;color:#5a5754;margin-top:24px">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p><p style="margin-top:16px;font-size:13px;color:#bfb5a1">— Barley Bros</p></div>`
+                      try {
+                        const res = await fetch('/api/send-email', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ to: email.trim(), subject, text, html }),
+                        })
+                        if (res.ok) { setResendState('sent'); setResendTo('') }
+                        else setResendState('open')
+                      } catch { setResendState('open') }
+                    }
+
+                    if (resendState === 'sent') return (
+                      <div style={{ padding: '12px', borderRadius: '6px', backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: '13px', textAlign: 'center' }}>
+                        ✓ Order sent successfully
                       </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => { setResendState('open'); setResendTo(o.distributor_email || '') }}
-                      style={{ ...btnSecondary, justifyContent: 'center', padding: '12px' }}>
-                      <Send size={15} /> {isInquiry ? 'Send to Distributor' : 'Resend Order'}
-                    </button>
-                  )}
+                    )
+                    if (resendState === 'open' || resendState === 'sending') return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '11px', color: t.text.muted }}>Sending to:</div>
+                        <input
+                          type="email" value={resendTo}
+                          onChange={e => setResendTo(e.target.value)}
+                          placeholder="Recipient email address"
+                          style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '12px', color: t.text.primary, fontSize: '14px', outline: 'none', width: '100%' }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
+                          <button onClick={() => doSend(resendTo)}
+                            style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation', opacity: resendState === 'sending' ? 0.6 : 1 } as any}>
+                            <Send size={14} /> {resendState === 'sending' ? 'Sending...' : 'Send'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                    // idle — auto-send if email known, else open input
+                    return (
+                      <button
+                        onClick={() => {
+                          if (autoEmail) {
+                            doSend(autoEmail)
+                          } else {
+                            setResendTo('')
+                            setResendState('open')
+                          }
+                        }}
+                        style={{ ...btnSecondary, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation' } as any}>
+                        <Send size={15} /> {resendState === 'sending' ? 'Sending…' : isInquiry ? 'Send to Distributor' : 'Resend Order'}
+                        {autoEmail && <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '4px' }}>→ {autoEmail.split(',')[0]}</span>}
+                      </button>
+                    )
+                  })()}
                   <button
                     onClick={() => { setDeleteTarget(o.id); setSelectedOrder(null) }}
                     style={{ padding: '12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
