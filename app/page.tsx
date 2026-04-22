@@ -363,40 +363,43 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                   .sort((a, b) => b._urgency - a._urgency)
                   .slice(0, 8)
                   .map(v => {
-                    const urgencyColor = v._urgency >= 60 ? t.status.danger : v._urgency >= 40 ? t.status.warning : t.text.muted
-                    const urgencyLabel = v._urgency >= 60 ? 'High' : v._urgency >= 40 ? 'Medium' : 'Low'
+                    const days = daysAgoMT(v.visited_at) ?? 0
+                    const isHigh = v._urgency >= 60
+                    const isMed = v._urgency >= 40
+                    const urgencyColor = isHigh ? t.status.danger : isMed ? t.status.warning : t.text.muted
                     return (
                       <div key={v.id} style={{
-                        backgroundColor: t.bg.elevated,
-                        border: `1px solid ${t.border.subtle}`,
+                        backgroundColor: isHigh ? 'rgba(232,85,64,0.07)' : t.bg.elevated,
+                        border: `1px solid ${isHigh ? 'rgba(232,85,64,0.20)' : isMed ? 'rgba(233,153,40,0.18)' : t.border.subtle}`,
                         borderLeft: `3px solid ${urgencyColor}`,
                         borderRadius: '8px',
                         padding: '10px 12px',
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <Link href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
-                              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontSize: '13px', fontWeight: isHigh ? '700' : '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {v.accounts?.name}
                               </div>
                             </Link>
-                            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
-                              {relativeTimeStr(v.visited_at)}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                              <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                              <span className="mono" style={{ fontSize: '11px', color: urgencyColor, fontWeight: '600' }}>{days}d ago</span>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                            <span style={{ fontSize: '10px', fontWeight: '700', color: urgencyColor, backgroundColor: urgencyColor + '18', padding: '2px 7px', borderRadius: '6px' }}>
-                              {urgencyLabel}
-                            </span>
-                            <span style={badge.visitStatus(v.status)}>{v.status}</span>
-                          </div>
+                          <button
+                            onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
+                            style={{
+                              fontSize: '11px', fontWeight: '600', flexShrink: 0, cursor: 'pointer', whiteSpace: 'nowrap',
+                              color: isHigh ? t.status.danger : t.gold,
+                              backgroundColor: isHigh ? 'rgba(232,85,64,0.12)' : t.goldDim,
+                              border: `1px solid ${isHigh ? 'rgba(232,85,64,0.28)' : t.border.gold}`,
+                              borderRadius: '6px', padding: '5px 10px',
+                            }}
+                          >
+                            Log visit
+                          </button>
                         </div>
-                        <button
-                          onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
-                          style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', width: '100%' }}
-                        >
-                          Log Follow-Up
-                        </button>
                       </div>
                     )
                   })}
