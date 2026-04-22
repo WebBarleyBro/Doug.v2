@@ -1,6 +1,9 @@
 -- Intern workflow tables: projects assigned by staff, assets submitted by interns
+-- Drop first so re-runs are clean (tables have no data at this point)
+DROP TABLE IF EXISTS intern_assets CASCADE;
+DROP TABLE IF EXISTS intern_projects CASCADE;
 
-CREATE TABLE IF NOT EXISTS intern_projects (
+CREATE TABLE intern_projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT,
@@ -14,7 +17,7 @@ CREATE TABLE IF NOT EXISTS intern_projects (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS intern_assets (
+CREATE TABLE intern_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   asset_type TEXT NOT NULL DEFAULT 'Social Media Graphic',
