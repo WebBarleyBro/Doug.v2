@@ -1,11 +1,11 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { X, Search, Check, Plus, AlertCircle } from 'lucide-react'
+import { X, Search, Check, Plus, AlertCircle, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { t, inputStyle, labelStyle, btnPrimary, modalOverlay, mobileSheetContent } from '../lib/theme'
-import { logVisit, getAccounts, getClients, getProducts } from '../lib/data'
+import { logVisit, getAccounts, getClients, getProducts, createPlacement } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
-import type { Account, Client, Product, VisitStatus } from '../lib/types'
+import type { Account, Client, Product, VisitStatus, PlacementType, PlacementStatus } from '../lib/types'
 import AddAccountModal from './AddAccountModal'
 
 interface Props {
@@ -24,6 +24,26 @@ interface TastingEntry {
   products: string[]
   notes: string
 }
+
+interface PlacementEntry {
+  client_slug: string
+  product_name: string
+  placement_type: PlacementType
+  status: PlacementStatus
+  shelf_count: string
+  price_point: string
+  notes: string
+}
+
+const emptyPlacement = (): PlacementEntry => ({
+  client_slug: '',
+  product_name: '',
+  placement_type: 'shelf',
+  status: 'on_shelf',
+  shelf_count: '',
+  price_point: '',
+  notes: '',
+})
 
 interface FormState {
   account_id: string
@@ -64,6 +84,8 @@ export default function VisitLogModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [placements, setPlacements] = useState<PlacementEntry[]>([])
+  const [showPlacements, setShowPlacements] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -100,6 +122,8 @@ export default function VisitLogModal({
       followup_days: null,
       create_checkin: false,
     })
+    setPlacements([])
+    setShowPlacements(false)
     if (defaultAccountId) setShowAccountSearch(false)
     else setShowAccountSearch(true)
   }, [isOpen, defaultAccountId, defaultAccountName, defaultClientSlugs])
@@ -193,6 +217,21 @@ export default function VisitLogModal({
         create_followup: !!(form.followup_days || form.create_checkin),
         followup_note: followupNote,
       })
+
+      // Save any placements added during the visit
+      const validPlacements = placements.filter(p => p.product_name.trim() && p.client_slug)
+      await Promise.all(validPlacements.map(p => createPlacement({
+        account_id: form.account_id,
+        client_slug: p.client_slug,
+        product_name: p.product_name.trim(),
+        placement_type: p.placement_type,
+        status: p.status,
+        shelf_count: p.shelf_count ? parseInt(p.shelf_count) : undefined,
+        price_point: p.price_point ? parseFloat(p.price_point) : undefined,
+        notes: p.notes || undefined,
+        shelf_date: saveDateMT(form.visited_at),
+      })))
+
       setSaved(true)
       setTimeout(() => { onClose(); onSuccess?.() }, 1200)
     } catch (err: any) {
@@ -448,6 +487,148 @@ export default function VisitLogModal({
               })}
             </Section>
           )}
+
+          {/* Placements */}
+          <div style={{ marginBottom: '18px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPlacements(v => !v)
+                if (!showPlacements && placements.length === 0) {
+                  setPlacements([{ ...emptyPlacement(), client_slug: form.client_slugs[0] || '' }])
+                }
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                padding: '10px 14px', borderRadius: '8px', cursor: 'pointer',
+                border: `1px solid ${showPlacements ? t.gold : t.border.default}`,
+                backgroundColor: showPlacements ? t.goldDim : t.bg.input,
+                color: showPlacements ? t.gold : t.text.secondary,
+                fontSize: '13px', fontWeight: '500', textAlign: 'left',
+                transition: 'all 150ms ease',
+              }}
+            >
+              <Package size={14} />
+              <span style={{ flex: 1 }}>Log Placement / Shelf Count</span>
+              {placements.filter(p => p.product_name).length > 0 && (
+                <span style={{ fontSize: '11px', backgroundColor: t.goldDim, color: t.gold, padding: '2px 7px', borderRadius: '10px', fontWeight: '600' }}>
+                  {placements.filter(p => p.product_name).length}
+                </span>
+              )}
+              {showPlacements ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+
+            {showPlacements && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {placements.map((pl, i) => (
+                  <div key={i} style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '14px', position: 'relative' }}>
+                    {placements.length > 1 && (
+                      <button type="button" onClick={() => setPlacements(ps => ps.filter((_, idx) => idx !== i))}
+                        style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px' }}>
+                        <X size={14} />
+                      </button>
+                    )}
+
+                    {/* Brand */}
+                    {clients.length > 0 && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {(form.client_slugs.length > 0 ? clients.filter(c => form.client_slugs.includes(c.slug)) : clients).map(c => (
+                            <button key={c.slug} type="button" onClick={() => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, client_slug: c.slug, product_name: '' }))}
+                              style={{
+                                padding: '5px 12px', borderRadius: '16px', fontSize: '12px', cursor: 'pointer',
+                                border: `1px solid ${pl.client_slug === c.slug ? c.color : t.border.default}`,
+                                backgroundColor: pl.client_slug === c.slug ? c.color + '20' : 'transparent',
+                                color: pl.client_slug === c.slug ? c.color : t.text.muted,
+                                fontWeight: pl.client_slug === c.slug ? '600' : '400',
+                              }}>{c.name}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Product */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Product</div>
+                      {pl.client_slug && (products[pl.client_slug] || []).length > 0 ? (
+                        <select
+                          value={pl.product_name}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, product_name: e.target.value }))}
+                          style={{ ...inputStyle, fontSize: '13px' }}
+                        >
+                          <option value="">Select product...</option>
+                          {(products[pl.client_slug] || []).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                        </select>
+                      ) : (
+                        <input type="text" placeholder="Product name" value={pl.product_name}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, product_name: e.target.value }))}
+                          style={{ ...inputStyle, fontSize: '13px' }} />
+                      )}
+                    </div>
+
+                    {/* Type + Status */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Type</div>
+                        <select value={pl.placement_type}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, placement_type: e.target.value as PlacementType }))}
+                          style={{ ...inputStyle, fontSize: '13px' }}>
+                          <option value="shelf">Shelf</option>
+                          <option value="menu">Menu</option>
+                          <option value="cocktail">Cocktail</option>
+                          <option value="well">Well</option>
+                          <option value="retail">Retail</option>
+                          <option value="seasonal">Seasonal</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</div>
+                        <select value={pl.status}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, status: e.target.value as PlacementStatus }))}
+                          style={{ ...inputStyle, fontSize: '13px' }}>
+                          <option value="on_shelf">On Shelf</option>
+                          <option value="committed">Committed</option>
+                          <option value="ordered">Ordered</option>
+                          <option value="reordering">Reordering</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Shelf count + Price */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Units on Shelf</div>
+                        <input type="number" placeholder="e.g. 6" min="0" value={pl.shelf_count}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, shelf_count: e.target.value }))}
+                          style={{ ...inputStyle, fontSize: '13px' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Price Point ($)</div>
+                        <input type="number" placeholder="e.g. 42" min="0" step="0.01" value={pl.price_point}
+                          onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, price_point: e.target.value }))}
+                          style={{ ...inputStyle, fontSize: '13px' }} />
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes (optional)</div>
+                      <input type="text" placeholder="e.g. Front-of-bar, facing label out..." value={pl.notes}
+                        onChange={e => setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, notes: e.target.value }))}
+                        style={{ ...inputStyle, fontSize: '13px' }} />
+                    </div>
+                  </div>
+                ))}
+
+                <button type="button"
+                  onClick={() => setPlacements(ps => [...ps, { ...emptyPlacement(), client_slug: form.client_slugs[0] || '' }])}
+                  style={{ fontSize: '12px', color: t.gold, background: 'none', border: `1px dashed ${t.border.default}`, borderRadius: '8px', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <Plus size={13} /> Add another placement
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Follow-up */}
           <Section label="Follow-Up">

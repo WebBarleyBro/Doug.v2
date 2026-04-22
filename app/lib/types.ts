@@ -125,6 +125,8 @@ export interface Placement {
   status: PlacementStatus
   shelf_date?: string
   price_point?: number
+  shelf_count?: number
+  notes?: string
   lost_at?: string
   lost_reason?: string
   created_at: string
