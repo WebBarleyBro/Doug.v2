@@ -401,7 +401,7 @@ export default function OrdersPage() {
     })
   }
 
-  function buildEmailBody(): { subject: string; text: string; html: string } {
+  function buildEmailBody(): { subject: string; text: string; html: string; replyTo?: string } {
     const client = selectedClient
     const lineItems = form.line_items.filter(li => li.product_name)
     const isOI = orderType === 'distributor'
@@ -447,7 +447,9 @@ export default function OrdersPage() {
       '',
       isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
       '',
-      'Sent by Barley Bros | doug-v2-three.vercel.app',
+      client?.contact_name ? `— ${client.contact_name}` : '— Barley Bros',
+      client?.contact_email ? client.contact_email : null,
+      client?.contact_phone ? client.contact_phone : null,
     ].filter(l => l !== null).join('\n')
 
     const htmlRows = lineItems.map(li => {
@@ -490,10 +492,17 @@ export default function OrdersPage() {
     </div>
   </div>
   ${form.notes ? `<div style="background:#111110;border-radius:6px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#9a9790">${form.notes}</div>` : ''}
-  <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}<br>Sent by Barley Bros &nbsp;|&nbsp; <a href="https://doug-v2-three.vercel.app" style="color:#d4a843">doug-v2-three.vercel.app</a></p>
+  <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
+  <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2a2a26">
+    <div style="font-size:13px;font-weight:600;color:#eceae4">${client?.contact_name || client?.name || 'Barley Bros'}</div>
+    ${client?.contact_email ? `<div style="font-size:12px;color:#9a9790;margin-top:2px">${client.contact_email}</div>` : ''}
+    ${client?.contact_phone ? `<div style="font-size:12px;color:#9a9790;margin-top:1px">${client.contact_phone}</div>` : ''}
+    <div style="font-size:11px;color:#5a5754;margin-top:4px">${client?.name || 'Barley Bros'}</div>
+  </div>
 </div>`
 
-    return { subject, text, html }
+    const replyTo = client?.contact_email || undefined
+    return { subject, text, html, replyTo }
   }
 
   async function handleCreate() {
@@ -1165,23 +1174,33 @@ export default function OrdersPage() {
 
             {/* Sticky footer with action buttons */}
             <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.border.default}`, flexShrink: 0, backgroundColor: t.bg.elevated }}>
-              {createErr && <div style={{ fontSize: '12px', color: '#e05252', marginBottom: '8px' }}>{createErr}</div>}
+              {createErr && <div style={{ fontSize: '12px', color: t.status.danger, marginBottom: '8px' }}>{createErr}</div>}
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => { setShowCreate(false); resetForm() }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
                 {orderType === 'direct' ? (
                   <button
                     onClick={() => {
+                      if (!form.client_slug) { setCreateErr('Select a brand first'); return }
+                      if (!form.deliver_to_name) { setCreateErr('Enter a deliver-to name'); return }
+                      if (form.line_items.every(li => !li.product_name)) { setCreateErr('Add at least one product'); return }
+                      setCreateErr('')
                       setPreviewEmail(selectedClient?.contact_email || '')
                       setShowEmailPreview(true)
                     }}
-                    disabled={!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)}
-                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: (!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)) ? 0.6 : 1 }}
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center' }}
                   >
                     <Send size={15} /> Preview & Send
                   </button>
                 ) : (
-                  <button onClick={handleCreate} disabled={creating || !form.client_slug || !form.deliver_to_name}
-                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating || !form.client_slug || !form.deliver_to_name ? 0.6 : 1 }}>
+                  <button
+                    onClick={() => {
+                      if (!form.client_slug) { setCreateErr('Select a brand first'); return }
+                      if (!form.deliver_to_name) { setCreateErr('Enter a deliver-to name'); return }
+                      setCreateErr('')
+                      handleCreate()
+                    }}
+                    disabled={creating}
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating ? 0.6 : 1 }}>
                     {creating ? 'Creating...' : 'Create Inquiry'}
                   </button>
                 )}
@@ -1259,11 +1278,11 @@ export default function OrdersPage() {
                         order_type: 'direct',
                       })
                       await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
-                      const { subject: subj, text: txt } = buildEmailBody()
+                      const { subject: subj, text: txt, replyTo } = buildEmailBody()
                       await fetch('/api/send-email', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt }),
+                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, replyTo }),
                       }).catch(() => {})
                       invalidatePrefix('dashboard-stats')
                       setShowEmailPreview(false)
