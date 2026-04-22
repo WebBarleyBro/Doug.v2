@@ -464,9 +464,7 @@ export default function OrdersPage() {
       '',
       isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
       '',
-      contactName ? `— ${contactName}` : '— Barley Bros',
-      contactEmail || null,
-      contactPhone || null,
+      '— Barley Bros',
     ].filter(l => l !== null).join('\n')
 
     const htmlRows = lineItems.map(li => {
@@ -511,10 +509,7 @@ export default function OrdersPage() {
   ${form.notes ? `<div style="background:#111110;border-radius:6px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#9a9790">${form.notes}</div>` : ''}
   <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2a2a26">
-    <div style="font-size:13px;font-weight:600;color:#eceae4">${contactName || 'Barley Bros'}</div>
-    ${contactEmail ? `<div style="font-size:12px;color:#9a9790;margin-top:2px">${contactEmail.split(',')[0].trim()}</div>` : ''}
-    ${contactPhone ? `<div style="font-size:12px;color:#9a9790;margin-top:1px">${contactPhone}</div>` : ''}
-    <div style="font-size:11px;color:#5a5754;margin-top:4px">${client?.name || 'Barley Bros'}</div>
+    <div style="font-size:13px;font-weight:600;color:#eceae4">Barley Bros</div>
   </div>
 </div>`
 
