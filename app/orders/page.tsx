@@ -861,14 +861,9 @@ export default function OrdersPage() {
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
                         <button
-                          disabled={resendState === 'sending'}
                           onClick={async () => {
-                            if (!resendTo.trim()) {
-                              // focus the input instead of silently failing
-                              const el = document.querySelector('input[type="email"]') as HTMLInputElement | null
-                              el?.focus()
-                              return
-                            }
+                            if (!resendTo.trim()) return
+                            if (resendState === 'sending') return
                             setResendState('sending')
                             const itemLines = items.map((li: any) => {
                               const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
@@ -890,23 +885,27 @@ export default function OrdersPage() {
                               `Order Total: $${total.toFixed(2)}`,
                               o.notes ? `Notes: ${o.notes}` : null,
                               '',
-                              isInquiry
-                                ? 'Please process this order inquiry and confirm pricing and availability.'
-                                : 'Please process this order at your earliest convenience.',
+                              isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
                               '',
                               '— Barley Bros',
                             ].filter(l => l !== null).join('\n')
+                            const htmlRows = items.map((li: any) => {
+                              const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
+                              const price = Number(li.unit_price||li.price||0)
+                              return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(qty*price).toFixed(2)}</td></tr>`
+                            }).join('')
+                            const html = `<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto"><h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${o.po_number}</h2><p style="font-size:13px;color:#9a9790;margin:0 0 20px">${o.deliver_to_name} · ${new Date(o.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p><table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px"><thead><tr style="background:#202020"><th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754">Product</th><th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754">Qty</th><th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754">Total</th></tr></thead><tbody>${htmlRows}</tbody></table><div style="text-align:right;font-size:18px;font-weight:700;color:#eceae4">$${total.toFixed(2)}</div>${o.notes ? `<p style="font-size:13px;color:#9a9790;margin-top:16px">${o.notes}</p>` : ''}<p style="font-size:12px;color:#5a5754;margin-top:24px">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p><p style="margin-top:16px;font-size:13px;color:#bfb5a1">— Barley Bros</p></div>`
                             try {
                               const res = await fetch('/api/send-email', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ to: resendTo.trim(), subject, text }),
+                                body: JSON.stringify({ to: resendTo.trim(), subject, text, html }),
                               })
                               if (res.ok) { setResendState('sent'); setResendTo('') }
                               else setResendState('open')
                             } catch { setResendState('open') }
                           }}
-                          style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', opacity: resendState === 'sending' ? 0.6 : 1 }}
+                          style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation', opacity: resendState === 'sending' ? 0.6 : 1 } as any}
                         >
                           <Send size={14} /> {resendState === 'sending' ? 'Sending...' : 'Send'}
                         </button>
@@ -1184,7 +1183,6 @@ export default function OrdersPage() {
                       setCreateErr('')
                       handleCreate()
                     }}
-                    disabled={creating}
                     style={{ ...btnPrimary, flex: 2, justifyContent: 'center', minHeight: '48px', touchAction: 'manipulation', opacity: creating ? 0.6 : 1 } as any}>
                     {creating ? 'Creating...' : 'Create Inquiry'}
                   </button>
@@ -1219,7 +1217,6 @@ export default function OrdersPage() {
                     value={previewEmail}
                     onChange={e => { setPreviewEmail(e.target.value); setSendEmailError('') }}
                     placeholder="Enter recipient email address"
-                    autoFocus={!previewEmail}
                     style={{ flex: 1, backgroundColor: t.bg.input, border: `1px solid ${sendEmailError ? t.status.danger : t.border.default}`, borderRadius: '6px', padding: '8px 10px', color: t.text.primary, fontSize: '14px', outline: 'none' }}
                   />
                 </div>
@@ -1240,7 +1237,7 @@ export default function OrdersPage() {
               </div>
 
               {/* Footer */}
-              <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', flexShrink: 0 }}>
+              <div style={{ padding: '16px 20px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', flexShrink: 0 } as any}>
                 <button onClick={() => { setShowEmailPreview(false); setSendEmailError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
                 <button
                   onClick={async () => {
@@ -1251,6 +1248,29 @@ export default function OrdersPage() {
                     setSendEmailError('')
                     setCreating(true)
                     try {
+                      // Send email FIRST — if it fails, nothing gets written to DB
+                      const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
+                      const emailRes = await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody, replyTo }),
+                      })
+                      if (!emailRes.ok) {
+                        const errJson = await emailRes.json().catch(() => ({}))
+                        throw new Error(errJson.error || 'Email delivery failed — check the address and try again')
+                      }
+                      // Email confirmed — now save the order
+                      const resolvedItems = form.line_items.filter(li => li.product_name).map(li => {
+                        const prod = clientProducts.find(p => p.name === li.product_name)
+                        return {
+                          product_name: li.product_name,
+                          quantity: li.quantity,
+                          price: prod?.price ?? li.price ?? 0,
+                          cases: (li as any).cases || 0,
+                          bottles: (li as any).bottles || 0,
+                          bottle_price: prod?.bottle_price ?? 0,
+                        }
+                      })
                       const newOrder = await createOrder({
                         client_slug: form.client_slug,
                         client_name: selectedClient?.name || form.client_slug,
@@ -1259,27 +1279,11 @@ export default function OrdersPage() {
                         deliver_to_address: form.deliver_to_address,
                         po_number: form.po_number,
                         notes: form.notes,
-                        line_items: form.line_items.filter(li => li.product_name).map(li => {
-                          const prod = clientProducts.find(p => p.name === li.product_name)
-                          return {
-                            product_name: li.product_name,
-                            quantity: li.quantity,
-                            price: prod?.price ?? li.price ?? 0,
-                            cases: (li as any).cases || 0,
-                            bottles: (li as any).bottles || 0,
-                            bottle_price: prod?.bottle_price ?? 0,
-                          }
-                        }),
+                        line_items: resolvedItems,
                         commission_rate: selectedClient?.commission_rate || 0,
                         order_type: 'direct',
                       })
                       await updateOrder(newOrder.id, { status: 'sent' })
-                      const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
-                      await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody, replyTo }),
-                      }).catch(() => {})
                       invalidatePrefix('dashboard-stats')
                       setShowEmailPreview(false)
                       setSendEmailError('')
