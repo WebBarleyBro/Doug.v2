@@ -555,7 +555,7 @@ export default function OrdersPage() {
         commission_rate: selectedClient?.commission_rate || 0,
         ...extra,
       })
-      await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
+      await updateOrder(newOrder.id, { status: 'sent' })
       invalidatePrefix('dashboard-stats')
       setShowCreate(false)
       resetForm()
@@ -840,7 +840,7 @@ export default function OrdersPage() {
                     </button>
                   )}
                   {o.status === 'draft' && (
-                    <button onClick={async () => { await updateOrder(o.id, { status: 'sent', sent_at: new Date().toISOString() }); load() }}
+                    <button onClick={async () => { await updateOrder(o.id, { status: 'sent' }); load() }}
                       style={{ ...btnPrimary, justifyContent: 'center', padding: '12px' }}>
                       <Send size={15} /> Mark Sent
                     </button>
@@ -1273,7 +1273,7 @@ export default function OrdersPage() {
                         commission_rate: selectedClient?.commission_rate || 0,
                         order_type: 'direct',
                       })
-                      await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
+                      await updateOrder(newOrder.id, { status: 'sent' })
                       const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
                       await fetch('/api/send-email', {
                         method: 'POST',

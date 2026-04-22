@@ -161,7 +161,7 @@ export interface PurchaseOrder {
   last_resent_to?: string
   notes?: string
   created_at: string
-  sent_at?: string
+  sent_at?: string  // not a DB column — kept for local typing only; do not write to DB
   // joined
   po_line_items?: POLineItem[]
   accounts?: { id: string; name: string }

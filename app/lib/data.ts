@@ -555,7 +555,9 @@ export async function createOrder(order: {
 
 export async function updateOrder(id: string, updates: Partial<PurchaseOrder> & { client_slug?: string }) {
   const sb = getSupabase()
-  const { error } = await sb.from('purchase_orders').update(updates).eq('id', id)
+  // Strip joined/virtual fields that don't exist as DB columns
+  const { po_line_items, accounts, sent_at, ...dbUpdates } = updates as any
+  const { error } = await sb.from('purchase_orders').update(dbUpdates).eq('id', id)
   if (error) throw error
   invalidatePrefix('dashboard-stats')
   if (updates.client_slug) invalidate(`orders:${updates.client_slug}`)
