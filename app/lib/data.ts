@@ -537,15 +537,16 @@ export async function createOrder(order: {
   if (error) throw error
 
   if (order.line_items.length) {
-    await sb.from('po_line_items').insert(
+    const { error: liError } = await sb.from('po_line_items').insert(
       order.line_items.map(li => ({
         po_id: po.id,
         product_name: li.product_name,
         quantity: li.quantity,
-        price: li.price,
+        unit_price: li.price,
         total: resolveLineTotal(li),
       }))
     )
+    if (liError) throw liError
   }
 
   invalidatePrefix('dashboard-stats')
