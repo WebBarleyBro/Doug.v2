@@ -541,7 +541,17 @@ export default function OrdersPage() {
         deliver_to_address: form.deliver_to_address,
         po_number: form.po_number,
         notes: form.notes,
-        line_items: form.line_items.filter(li => li.product_name),
+        line_items: form.line_items.filter(li => li.product_name).map(li => {
+          const prod = clientProducts.find(p => p.name === li.product_name)
+          return {
+            product_name: li.product_name,
+            quantity: li.quantity,
+            price: prod?.price ?? li.price ?? 0,
+            cases: (li as any).cases || 0,
+            bottles: (li as any).bottles || 0,
+            bottle_price: prod?.bottle_price ?? 0,
+          }
+        }),
         commission_rate: selectedClient?.commission_rate || 0,
         ...extra,
       })
@@ -1170,17 +1180,9 @@ export default function OrdersPage() {
               </div>
 
               {orderTotal > 0 && (
-                <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', border: `1px solid ${t.goldBorder}` }}>
-                  <div>
-                    <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
-                    <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
-                  </div>
-                  {orderCommission > 0 && (
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '11px', color: t.text.muted }}>Commission ({((selectedClient?.commission_rate || 0) * 100).toFixed(0)}%)</div>
-                      <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.gold }}>{formatCurrency(orderCommission)}</div>
-                    </div>
-                  )}
+                <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${t.goldBorder}` }}>
+                  <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
+                  <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
                 </div>
               )}
 
@@ -1293,16 +1295,26 @@ export default function OrdersPage() {
                         deliver_to_address: form.deliver_to_address,
                         po_number: form.po_number,
                         notes: form.notes,
-                        line_items: form.line_items.filter(li => li.product_name),
+                        line_items: form.line_items.filter(li => li.product_name).map(li => {
+                          const prod = clientProducts.find(p => p.name === li.product_name)
+                          return {
+                            product_name: li.product_name,
+                            quantity: li.quantity,
+                            price: prod?.price ?? li.price ?? 0,
+                            cases: (li as any).cases || 0,
+                            bottles: (li as any).bottles || 0,
+                            bottle_price: prod?.bottle_price ?? 0,
+                          }
+                        }),
                         commission_rate: selectedClient?.commission_rate || 0,
                         order_type: 'direct',
                       })
                       await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
-                      const { subject: subj, text: txt, replyTo } = buildEmailBody()
+                      const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
                       await fetch('/api/send-email', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, replyTo }),
+                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody, replyTo }),
                       }).catch(() => {})
                       invalidatePrefix('dashboard-stats')
                       setShowEmailPreview(false)
@@ -1315,8 +1327,7 @@ export default function OrdersPage() {
                       setSendEmailError(e?.message || 'Failed to send order')
                     } finally { setCreating(false) }
                   }}
-                  disabled={creating}
-                  style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating ? 0.6 : 1 }}
+                  style={{ ...btnPrimary, flex: 2, justifyContent: 'center', minHeight: '48px', touchAction: 'manipulation', opacity: creating ? 0.6 : 1 } as any}
                 >
                   <Send size={14} /> {creating ? 'Sending...' : 'Send Order'}
                 </button>

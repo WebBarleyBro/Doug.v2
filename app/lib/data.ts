@@ -496,14 +496,20 @@ export async function createOrder(order: {
   deliver_to_phone?: string
   po_number: string
   notes?: string
-  line_items: { product_name: string; quantity: number; price: number }[]
+  line_items: { product_name: string; quantity: number; price: number; cases?: number; bottles?: number; bottle_price?: number }[]
   commission_rate: number
   order_type?: 'direct' | 'distributor'
   distributor_email?: string
   distributor_rep_name?: string
 }): Promise<PurchaseOrder> {
   const sb = getSupabase()
-  const total = order.line_items.reduce((sum, li) => sum + li.quantity * li.price, 0)
+  const resolveLineTotal = (li: typeof order.line_items[0]) => {
+    const cases = li.cases || 0
+    const bottles = li.bottles || 0
+    if (cases + bottles > 0) return cases * li.price + bottles * (li.bottle_price || 0)
+    return li.quantity * li.price
+  }
+  const total = order.line_items.reduce((sum, li) => sum + resolveLineTotal(li), 0)
   const commission = total * order.commission_rate
 
   const { data: po, error } = await sb
@@ -537,7 +543,7 @@ export async function createOrder(order: {
         product_name: li.product_name,
         quantity: li.quantity,
         price: li.price,
-        total: li.quantity * li.price,
+        total: resolveLineTotal(li),
       }))
     )
   }
