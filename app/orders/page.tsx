@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, ShoppingCart, Send, X, Trash2, ChevronRight, Package,
   MapPin, Calendar, Hash, Search, UserPlus, Truck, FileText,
-  CheckCircle, Clock, MessageSquare, Ban,
+  CheckCircle, Clock, MessageSquare,
 } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import StatCard from '../components/StatCard'
@@ -13,7 +13,7 @@ import {
   getOrders, getClients, getAccounts, createOrder, updateOrder, deleteOrder,
   getDistributorReps, createDistributorRep, getNextOrderNumber, getProducts,
 } from '../lib/data'
-import { invalidate, invalidatePrefix } from '../lib/cache'
+import { invalidatePrefix } from '../lib/cache'
 import AddAccountModal from '../components/AddAccountModal'
 import type { Product } from '../lib/types'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
@@ -280,6 +280,7 @@ export default function OrdersPage() {
   const [resendState, setResendState] = useState<'idle' | 'open' | 'sending' | 'sent'>('idle')
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [previewEmail, setPreviewEmail] = useState('')
+  const [sendEmailError, setSendEmailError] = useState('')
   const [distributorReps, setDistributorReps] = useState<Contact[]>([])
   const [showAddDistributor, setShowAddDistributor] = useState(false)
   const [showAddAccount, setShowAddAccount] = useState(false)
@@ -400,7 +401,7 @@ export default function OrdersPage() {
     })
   }
 
-  function buildEmailBody(recipientEmail: string): { subject: string; text: string; html: string } {
+  function buildEmailBody(): { subject: string; text: string; html: string } {
     const client = selectedClient
     const lineItems = form.line_items.filter(li => li.product_name)
     const isOI = orderType === 'distributor'
@@ -816,27 +817,32 @@ export default function OrdersPage() {
                       <input
                         type="email" value={resendTo}
                         onChange={e => setResendTo(e.target.value)}
-                        placeholder={o.distributor_email || 'Recipient email address...'}
-                        style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '10px 12px', color: t.text.primary, fontSize: '13px', outline: 'none', width: '100%' }}
+                        placeholder="Recipient email address"
+                        autoFocus
+                        style={{ backgroundColor: t.bg.input, border: `1px solid ${resendTo === '' && resendState === 'open' ? t.border.default : t.border.default}`, borderRadius: '6px', padding: '12px', color: t.text.primary, fontSize: '14px', outline: 'none', width: '100%' }}
                       />
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '10px' }}>Cancel</button>
+                        <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
                         <button
-                          disabled={!resendTo || resendState === 'sending'}
+                          disabled={resendState === 'sending'}
                           onClick={async () => {
-                            if (!resendTo) return
+                            if (!resendTo.trim()) {
+                              // focus the input instead of silently failing
+                              const el = document.querySelector('input[type="email"]') as HTMLInputElement | null
+                              el?.focus()
+                              return
+                            }
                             setResendState('sending')
                             const itemLines = items.map((li: any) => {
                               const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
                               const price = Number(li.unit_price||li.price||0)
                               return `  • ${li.product_name} – Qty: ${qty}${price > 0 ? ` @ $${price.toFixed(2)} = $${(qty*price).toFixed(2)}` : ''}`
                             }).join('\n')
-                            const isOI = isInquiry
-                            const subject = isOI
+                            const subject = isInquiry
                               ? `Order Inquiry ${o.po_number} – ${o.deliver_to_name}`
                               : `PO ${o.po_number} – ${o.deliver_to_name}`
                             const text = [
-                              isOI ? `Order Inquiry #: ${o.po_number}` : `PO Number: ${o.po_number}`,
+                              isInquiry ? `Order Inquiry #: ${o.po_number}` : `PO Number: ${o.po_number}`,
                               `Ship To: ${o.deliver_to_name}`,
                               o.deliver_to_address ? `Address: ${o.deliver_to_address}` : null,
                               o.deliver_to_phone ? `Phone: ${o.deliver_to_phone}` : null,
@@ -847,7 +853,7 @@ export default function OrdersPage() {
                               `Order Total: $${total.toFixed(2)}`,
                               o.notes ? `Notes: ${o.notes}` : null,
                               '',
-                              isOI
+                              isInquiry
                                 ? 'Please process this order inquiry and confirm pricing and availability.'
                                 : 'Please process this order at your earliest convenience.',
                               '',
@@ -857,13 +863,13 @@ export default function OrdersPage() {
                               const res = await fetch('/api/send-email', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ to: resendTo, subject, text }),
+                                body: JSON.stringify({ to: resendTo.trim(), subject, text }),
                               })
                               if (res.ok) { setResendState('sent'); setResendTo('') }
                               else setResendState('open')
                             } catch { setResendState('open') }
                           }}
-                          style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '10px', opacity: !resendTo || resendState === 'sending' ? 0.6 : 1 }}
+                          style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', opacity: resendState === 'sending' ? 0.6 : 1 }}
                         >
                           <Send size={14} /> {resendState === 'sending' ? 'Sending...' : 'Send'}
                         </button>
@@ -890,295 +896,296 @@ export default function OrdersPage() {
 
       {/* ── Create Order / Inquiry Modal ── */}
       {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '12px', padding: '28px', width: '100%', maxWidth: '580px', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 1000, padding: isMobile ? '0' : '20px' }}>
+          <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: isMobile ? '16px 16px 0 0' : '12px', width: '100%', maxWidth: '580px', maxHeight: isMobile ? '92vh' : '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            {/* Sticky header */}
+            <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${t.border.subtle}`, flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '18px', fontWeight: '700', color: t.text.primary }}>New {orderType === 'distributor' ? 'Order Inquiry' : 'Direct Order'}</h2>
               <button onClick={() => { setShowCreate(false); resetForm() }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={20} /></button>
             </div>
 
-            {/* Order type toggle */}
-            <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', backgroundColor: t.bg.card, borderRadius: '8px', padding: '3px', border: `1px solid ${t.border.default}` }}>
-              {([
-                { key: 'direct', label: 'Direct Order', icon: FileText },
-                { key: 'distributor', label: 'Order Inquiry (Distributor)', icon: Truck },
-              ] as const).map(opt => {
-                const Icon = opt.icon
-                const active = orderType === opt.key
-                return (
-                  <button key={opt.key} onClick={() => setOrderType(opt.key)}
-                    style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                      padding: '8px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                      fontSize: '13px', fontWeight: active ? '600' : '400',
-                      backgroundColor: active ? t.bg.elevated : 'transparent',
-                      color: active ? t.text.primary : t.text.muted,
-                      boxShadow: active ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
-                    }}
-                  >
-                    <Icon size={13} /> {opt.label}
-                  </button>
-                )
-              })}
-            </div>
+            {/* Scrollable form content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', WebkitOverflowScrolling: 'touch' } as any}>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
-                <label style={labelStyle}>Brand</label>
-                <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
-                  <option value="">Select brand...</option>
-                  {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-                </select>
+              {/* Order type toggle */}
+              <div style={{ display: 'flex', gap: '2px', marginBottom: '20px', backgroundColor: t.bg.card, borderRadius: '8px', padding: '3px', border: `1px solid ${t.border.default}` }}>
+                {([
+                  { key: 'direct', label: isMobile ? 'Direct' : 'Direct Order', icon: FileText },
+                  { key: 'distributor', label: isMobile ? 'Inquiry' : 'Order Inquiry (Distributor)', icon: Truck },
+                ] as const).map(opt => {
+                  const Icon = opt.icon
+                  const active = orderType === opt.key
+                  return (
+                    <button key={opt.key} onClick={() => setOrderType(opt.key)}
+                      style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        padding: '8px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                        fontSize: '13px', fontWeight: active ? '600' : '400',
+                        backgroundColor: active ? t.bg.elevated : 'transparent',
+                        color: active ? t.text.primary : t.text.muted,
+                        boxShadow: active ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
+                      }}
+                    >
+                      <Icon size={13} /> {opt.label}
+                    </button>
+                  )
+                })}
               </div>
-              <div>
-                <label style={labelStyle}>{orderType === 'distributor' ? 'Inquiry #' : 'PO Number'}</label>
-                <input type="text" value={form.po_number} onChange={e => setForm(f => ({ ...f, po_number: e.target.value }))} style={inputStyle} />
-              </div>
-            </div>
 
-            {/* Account search */}
-            <div style={{ marginBottom: '14px' }}>
-              <label style={labelStyle}>Account (links order to account)</label>
-              <AccountSearch
-                accounts={accounts}
-                value={form.account_id}
-                onChange={(id, name, address) => setForm(f => ({ ...f, account_id: id, deliver_to_name: name || f.deliver_to_name, deliver_to_address: address || f.deliver_to_address }))}
-                onAddAccount={() => setShowAddAccount(true)}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
-                <label style={labelStyle}>{orderType === 'distributor' ? 'Ship To' : 'Deliver To'}</label>
-                <input type="text" value={form.deliver_to_name} onChange={e => setForm(f => ({ ...f, deliver_to_name: e.target.value }))} placeholder="Business name" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Address</label>
-                <input type="text" value={form.deliver_to_address} onChange={e => setForm(f => ({ ...f, deliver_to_address: e.target.value }))} placeholder="Street address" style={inputStyle} />
-              </div>
-            </div>
-
-            {orderType === 'distributor' && (
-              <>
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={labelStyle}>Phone</label>
-                  <input type="text" value={form.deliver_to_phone} onChange={e => setForm(f => ({ ...f, deliver_to_phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label style={labelStyle}>Brand</label>
+                  <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
+                    <option value="">Select brand...</option>
+                    {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+                  </select>
                 </div>
+                <div>
+                  <label style={labelStyle}>{orderType === 'distributor' ? 'Inquiry #' : 'PO Number'}</label>
+                  <input type="text" value={form.po_number} onChange={e => setForm(f => ({ ...f, po_number: e.target.value }))} style={inputStyle} />
+                </div>
+              </div>
 
-                {/* Distributor rep */}
-                <div style={{ marginBottom: '14px', padding: '14px 16px', borderRadius: '8px', backgroundColor: t.bg.card, border: `1px solid ${t.border.default}` }}>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Truck size={11} /> Distributor Rep
+              {/* Account search */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Account (links order to account)</label>
+                <AccountSearch
+                  accounts={accounts}
+                  value={form.account_id}
+                  onChange={(id, name, address) => setForm(f => ({ ...f, account_id: id, deliver_to_name: name || f.deliver_to_name, deliver_to_address: address || f.deliver_to_address }))}
+                  onAddAccount={() => setShowAddAccount(true)}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label style={labelStyle}>{orderType === 'distributor' ? 'Ship To' : 'Deliver To'}</label>
+                  <input type="text" value={form.deliver_to_name} onChange={e => setForm(f => ({ ...f, deliver_to_name: e.target.value }))} placeholder="Business name" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Address</label>
+                  <input type="text" value={form.deliver_to_address} onChange={e => setForm(f => ({ ...f, deliver_to_address: e.target.value }))} placeholder="Street address" style={inputStyle} />
+                </div>
+              </div>
+
+              {orderType === 'distributor' && (
+                <>
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={labelStyle}>Phone</label>
+                    <input type="text" value={form.deliver_to_phone} onChange={e => setForm(f => ({ ...f, deliver_to_phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
                   </div>
-                  {form.client_slug && distributorReps.length > 0 && (
-                    <div style={{ marginBottom: '10px' }}>
-                      <select
-                        value={form.distributor_rep_id}
-                        onChange={e => {
-                          const rep = distributorReps.find(r => r.id === e.target.value)
-                          setForm(f => ({
-                            ...f,
-                            distributor_rep_id: e.target.value,
-                            distributor_rep_name: rep?.name || f.distributor_rep_name,
-                            distributor_email: rep?.email || f.distributor_email,
-                          }))
-                        }}
-                        style={selectStyle}
+
+                  {/* Distributor rep */}
+                  <div style={{ marginBottom: '14px', padding: '14px 16px', borderRadius: '8px', backgroundColor: t.bg.card, border: `1px solid ${t.border.default}` }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Truck size={11} /> Distributor Rep
+                    </div>
+                    {form.client_slug && distributorReps.length > 0 && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <select
+                          value={form.distributor_rep_id}
+                          onChange={e => {
+                            const rep = distributorReps.find(r => r.id === e.target.value)
+                            setForm(f => ({
+                              ...f,
+                              distributor_rep_id: e.target.value,
+                              distributor_rep_name: rep?.name || f.distributor_rep_name,
+                              distributor_email: rep?.email || f.distributor_email,
+                            }))
+                          }}
+                          style={selectStyle}
+                        >
+                          <option value="">Select existing rep...</option>
+                          {distributorReps.map(r => <option key={r.id} value={r.id}>{r.name} {r.email ? `(${r.email})` : ''}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <input type="text" value={form.distributor_rep_name} onChange={e => setForm(f => ({ ...f, distributor_rep_name: e.target.value }))} placeholder="Rep name" style={{ ...inputStyle, fontSize: '13px' }} />
+                      <input type="email" value={form.distributor_email} onChange={e => setForm(f => ({ ...f, distributor_email: e.target.value }))} placeholder="rep@distributor.com" style={{ ...inputStyle, fontSize: '13px' }} />
+                    </div>
+                    {form.client_slug && (
+                      <button
+                        onClick={() => setShowAddDistributor(true)}
+                        style={{ marginTop: '10px', fontSize: '12px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0' }}
                       >
-                        <option value="">Select existing rep...</option>
-                        {distributorReps.map(r => <option key={r.id} value={r.id}>{r.name} {r.email ? `(${r.email})` : ''}</option>)}
-                      </select>
+                        <UserPlus size={12} /> Add Distributor Rep
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Line items */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ ...labelStyle, marginBottom: '8px', display: 'block' }}>Line Items</label>
+
+                {/* Quick-add buttons from products table */}
+                {clientProducts.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    {clientProducts.map(prod => (
+                      <button
+                        key={prod.id}
+                        type="button"
+                        onClick={() => {
+                          const existingIdx = form.line_items.findIndex(li => li.product_name === prod.name)
+                          if (existingIdx >= 0) {
+                            updateLineItem(existingIdx, 'quantity', form.line_items[existingIdx].quantity + 1)
+                          } else {
+                            const emptyIdx = form.line_items.findIndex(li => !li.product_name)
+                            if (emptyIdx >= 0) {
+                              updateLineItem(emptyIdx, 'product_name', prod.name)
+                              if (prod.price) updateLineItem(emptyIdx, 'price', prod.price)
+                            } else {
+                              setForm(f => ({ ...f, line_items: [...f.line_items, { product_name: prod.name, quantity: 1, price: prod.price || 0 }] }))
+                            }
+                          }
+                        }}
+                        style={{
+                          padding: '6px 12px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer',
+                          border: `1px solid ${form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.border.default}`,
+                          backgroundColor: form.line_items.some(li => li.product_name === prod.name) ? t.goldDim : 'transparent',
+                          color: form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.text.secondary,
+                        }}
+                      >
+                        {prod.name}{prod.price ? ` — ${formatCurrency(prod.price)}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Line item rows — mobile uses card layout, desktop uses grid */}
+                {form.line_items.map((li, i) => {
+                  const prod = clientProducts.find(p => p.name === li.product_name)
+                  const cases = (li as any).cases || 0
+                  const bottles = (li as any).bottles || 0
+                  const caseAmt = cases * (prod?.price ?? li.price ?? 0)
+                  const btlAmt = bottles * (prod?.bottle_price != null
+                    ? prod.bottle_price
+                    : (prod?.price && (prod as any).case_count ? prod.price / (prod as any).case_count : 0))
+                  const sub = caseAmt + btlAmt
+                  return (
+                    <div key={i} style={{ marginBottom: '10px', padding: '12px', borderRadius: '8px', backgroundColor: t.bg.card, border: `1px solid ${t.border.default}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        {clientProducts.length > 0 ? (
+                          <select
+                            value={li.product_name}
+                            onChange={e => {
+                              const p = clientProducts.find(p => p.name === e.target.value)
+                              setForm(f => ({
+                                ...f,
+                                line_items: f.line_items.map((item, idx) =>
+                                  idx !== i ? item : { ...item, product_name: e.target.value, price: p?.price ?? item.price }
+                                ),
+                              }))
+                            }}
+                            style={{ ...selectStyle, fontSize: '13px', flex: 1 }}
+                          >
+                            <option value="">Select product…</option>
+                            {clientProducts.map(p => (
+                              <option key={p.id} value={p.name}>{p.name}{p.price ? ` — ${formatCurrency(p.price)}` : ''}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text" value={li.product_name}
+                            onChange={e => updateLineItem(i, 'product_name', e.target.value)}
+                            placeholder="Product name"
+                            style={{ ...inputStyle, fontSize: '13px', flex: 1 }}
+                          />
+                        )}
+                        {form.line_items.length > 1 && (
+                          <button onClick={() => removeLineItem(i)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', flexShrink: 0 }}><X size={16} /></button>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '4px' }}>Bottles</div>
+                          <input type="number" value={(li as any).bottles ?? ''} min="0" placeholder="0"
+                            onChange={e => {
+                              const b = parseInt(e.target.value) || 0
+                              setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles: b, quantity: ((item as any).cases || 0) + b }) }))
+                            }}
+                            style={{ ...inputStyle, fontSize: '14px' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '4px' }}>Cases</div>
+                          <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
+                            onChange={e => {
+                              const c = parseInt(e.target.value) || 0
+                              setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases: c, quantity: c + ((item as any).bottles || 0) }) }))
+                            }}
+                            style={{ ...inputStyle, fontSize: '14px' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '4px' }}>$/case</div>
+                          <input type="number" value={li.price || ''} min="0" step="0.01"
+                            onChange={e => updateLineItem(i, 'price', parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            style={{ ...inputStyle, fontSize: '14px' }} />
+                        </div>
+                      </div>
+                      {sub > 0 && (
+                        <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '6px' }}>
+                          {cases > 0 && <span>{cases} case{cases !== 1 ? 's' : ''} × {formatCurrency(prod?.price ?? li.price ?? 0)}</span>}
+                          {cases > 0 && bottles > 0 && <span> + </span>}
+                          {bottles > 0 && <span>{bottles} btl × {formatCurrency(prod?.bottle_price ?? 0)}</span>}
+                          <span style={{ color: t.gold, fontWeight: '600' }}> = {formatCurrency(sub)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                <button onClick={addLineItem} style={{ fontSize: '13px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0' }}>
+                  <Plus size={13} /> Add item
+                </button>
+              </div>
+
+              {orderTotal > 0 && (
+                <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', border: `1px solid ${t.goldBorder}` }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
+                    <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
+                  </div>
+                  {orderCommission > 0 && (
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '11px', color: t.text.muted }}>Commission ({((selectedClient?.commission_rate || 0) * 100).toFixed(0)}%)</div>
+                      <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.gold }}>{formatCurrency(orderCommission)}</div>
                     </div>
                   )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <input type="text" value={form.distributor_rep_name} onChange={e => setForm(f => ({ ...f, distributor_rep_name: e.target.value }))} placeholder="Rep name" style={{ ...inputStyle, fontSize: '13px' }} />
-                    <input type="email" value={form.distributor_email} onChange={e => setForm(f => ({ ...f, distributor_email: e.target.value }))} placeholder="rep@distributor.com" style={{ ...inputStyle, fontSize: '13px' }} />
-                  </div>
-                  {form.client_slug && (
-                    <button
-                      onClick={() => setShowAddDistributor(true)}
-                      style={{ marginTop: '10px', fontSize: '12px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0' }}
-                    >
-                      <UserPlus size={12} /> Add Distributor Rep
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Line items */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={labelStyle}>Line Items</label>
-                {clientProducts.length > 0 && (
-                  <span style={{ fontSize: '11px', color: t.text.muted }}>Select a product to auto-fill price</span>
-                )}
-              </div>
-
-              {/* Quick-add buttons from products table */}
-              {clientProducts.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                  {clientProducts.map(prod => (
-                    <button
-                      key={prod.id}
-                      type="button"
-                      onClick={() => {
-                        // Check if product already in list
-                        const existingIdx = form.line_items.findIndex(li => li.product_name === prod.name)
-                        if (existingIdx >= 0) {
-                          updateLineItem(existingIdx, 'quantity', form.line_items[existingIdx].quantity + 1)
-                        } else {
-                          // Replace first empty row, or add new
-                          const emptyIdx = form.line_items.findIndex(li => !li.product_name)
-                          if (emptyIdx >= 0) {
-                            updateLineItem(emptyIdx, 'product_name', prod.name)
-                            if (prod.price) updateLineItem(emptyIdx, 'price', prod.price)
-                          } else {
-                            setForm(f => ({ ...f, line_items: [...f.line_items, { product_name: prod.name, quantity: 1, price: prod.price || 0 }] }))
-                          }
-                        }
-                      }}
-                      style={{
-                        padding: '5px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
-                        border: `1px solid ${form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.border.default}`,
-                        backgroundColor: form.line_items.some(li => li.product_name === prod.name) ? t.goldDim : 'transparent',
-                        color: form.line_items.some(li => li.product_name === prod.name) ? t.gold : t.text.secondary,
-                      }}
-                    >
-                      {prod.name}{prod.price ? ` — ${formatCurrency(prod.price)}` : ''}
-                    </button>
-                  ))}
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 90px 28px', gap: '6px', marginBottom: '4px', padding: '0 2px' }}>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Product</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Bottles</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Cases</span>
-                <span style={{ fontSize: '10px', color: t.text.muted }}>Case Price</span>
-                <span />
+              <div>
+                <label style={labelStyle}>Notes (optional)</label>
+                <input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Special instructions..." style={inputStyle} />
               </div>
-              {form.line_items.map((li, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 90px 28px', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
-                  {clientProducts.length > 0 ? (
-                    <select
-                      value={li.product_name}
-                      onChange={e => {
-                        const prod = clientProducts.find(p => p.name === e.target.value)
-                        setForm(f => ({
-                          ...f,
-                          line_items: f.line_items.map((item, idx) =>
-                            idx !== i ? item : {
-                              ...item,
-                              product_name: e.target.value,
-                              price: prod?.price ?? item.price,
-                            }
-                          ),
-                        }))
-                      }}
-                      style={{ ...selectStyle, fontSize: '13px' }}
-                    >
-                      <option value="">Select product…</option>
-                      {clientProducts.map(p => (
-                        <option key={p.id} value={p.name}>
-                          {p.name}{p.price ? ` — ${formatCurrency(p.price)}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text" value={li.product_name}
-                      onChange={e => updateLineItem(i, 'product_name', e.target.value)}
-                      placeholder="Product name"
-                      style={{ ...inputStyle, fontSize: '13px' }}
-                    />
-                  )}
-                  <input type="number" value={(li as any).bottles ?? ''} min="0" placeholder="0"
-                    onChange={e => {
-                      const bottles = parseInt(e.target.value) || 0
-                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, bottles, quantity: ((item as any).cases || 0) + bottles }) }))
-                    }}
-                    style={{ ...inputStyle, fontSize: '13px' }} />
-                  <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
-                    onChange={e => {
-                      const cases = parseInt(e.target.value) || 0
-                      setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases, quantity: cases + ((item as any).bottles || 0) }) }))
-                    }}
-                    style={{ ...inputStyle, fontSize: '13px' }} />
-                  <input type="number" value={li.price || ''} min="0" step="0.01"
-                    onChange={e => updateLineItem(i, 'price', parseFloat(e.target.value) || 0)}
-                    placeholder="$/case" style={{ ...inputStyle, fontSize: '13px' }} />
-                  {form.line_items.length > 1 && (
-                    <button onClick={() => removeLineItem(i)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px' }}><X size={14} /></button>
-                  )}
-                  {li.product_name && (() => {
-                    const prod = clientProducts.find(p => p.name === li.product_name)
-                    const cases = (li as any).cases || 0
-                    const bottles = (li as any).bottles || 0
-                    const caseAmt = cases * (prod?.price ?? li.price ?? 0)
-                    const btlAmt = bottles * (prod?.bottle_price != null
-                      ? prod.bottle_price
-                      : (prod?.price && (prod as any).case_count ? prod.price / (prod as any).case_count : 0))
-                    const sub = caseAmt + btlAmt
-                    if (sub <= 0) return null
-                    return (
-                      <div style={{ gridColumn: '1 / -1', fontSize: '11px', color: t.text.muted, paddingLeft: '2px', marginTop: '-4px' }}>
-                        {cases > 0 && <span>{cases} case{cases !== 1 ? 's' : ''} × {formatCurrency(prod?.price ?? li.price ?? 0)}</span>}
-                        {cases > 0 && bottles > 0 && <span> + </span>}
-                        {bottles > 0 && <span>{bottles} btl × {formatCurrency(prod?.bottle_price ?? 0)}</span>}
-                        <span style={{ color: t.gold, fontWeight: '600' }}> = {formatCurrency(sub)}</span>
-                      </div>
-                    )
-                  })()}
-                </div>
-              ))}
-              <button onClick={addLineItem} style={{ fontSize: '12px', color: t.gold, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 0' }}>
-                <Plus size={12} /> Add item
-              </button>
             </div>
 
-            {orderTotal > 0 && (
-              <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', border: `1px solid ${t.goldBorder}` }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
-                  <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
-                </div>
-                {orderCommission > 0 && (
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '11px', color: t.text.muted }}>Commission ({((selectedClient?.commission_rate || 0) * 100).toFixed(0)}%)</div>
-                    <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.gold }}>{formatCurrency(orderCommission)}</div>
-                  </div>
+            {/* Sticky footer with action buttons */}
+            <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.border.default}`, flexShrink: 0, backgroundColor: t.bg.elevated }}>
+              {createErr && <div style={{ fontSize: '12px', color: '#e05252', marginBottom: '8px' }}>{createErr}</div>}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => { setShowCreate(false); resetForm() }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
+                {orderType === 'direct' ? (
+                  <button
+                    onClick={() => {
+                      setPreviewEmail(selectedClient?.contact_email || '')
+                      setShowEmailPreview(true)
+                    }}
+                    disabled={!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)}
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: (!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)) ? 0.6 : 1 }}
+                  >
+                    <Send size={15} /> Preview & Send
+                  </button>
+                ) : (
+                  <button onClick={handleCreate} disabled={creating || !form.client_slug || !form.deliver_to_name}
+                    style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating || !form.client_slug || !form.deliver_to_name ? 0.6 : 1 }}>
+                    {creating ? 'Creating...' : 'Create Inquiry'}
+                  </button>
                 )}
               </div>
-            )}
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={labelStyle}>Notes (optional)</label>
-              <input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Special instructions..." style={inputStyle} />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowCreate(false); resetForm() }} style={btnSecondary}>Cancel</button>
-              {orderType === 'direct' ? (
-                <button
-                  onClick={() => {
-                    const { subject, text, html } = buildEmailBody(selectedClient?.contact_email || '')
-                    setPreviewEmail(selectedClient?.contact_email || '')
-                    setShowEmailPreview(true)
-                  }}
-                  disabled={!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)}
-                  style={{ ...btnPrimary, opacity: (!form.client_slug || !form.deliver_to_name || form.line_items.every(li => !li.product_name)) ? 0.6 : 1 }}
-                >
-                  Preview & Send
-                </button>
-              ) : (
-                <button onClick={handleCreate} disabled={creating || !form.client_slug || !form.deliver_to_name}
-                  style={{ ...btnPrimary, opacity: creating || !form.client_slug || !form.deliver_to_name ? 0.6 : 1 }}>
-                  {creating ? 'Creating...' : 'Create Inquiry'}
-                </button>
-              )}
-              {createErr && <div style={{ fontSize: '12px', color: '#e05252', marginTop: '6px', gridColumn: '1 / -1' }}>{createErr}</div>}
             </div>
           </div>
         </div>
@@ -1186,31 +1193,35 @@ export default function OrdersPage() {
 
       {/* ── Email Preview Modal ── */}
       {showEmailPreview && (() => {
-        const { subject, text, html } = buildEmailBody(previewEmail)
+        const { subject, html } = buildEmailBody()
         return (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, padding: '20px' }}>
-            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '14px', width: '100%', maxWidth: '620px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 1300, padding: isMobile ? '0' : '20px' }}>
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: isMobile ? '16px 16px 0 0' : '14px', width: '100%', maxWidth: '620px', maxHeight: isMobile ? '92vh' : '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Header */}
-              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${t.border.default}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${t.border.default}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Email Preview</h3>
                   <p style={{ fontSize: '12px', color: t.text.muted, margin: '2px 0 0' }}>Review before sending</p>
                 </div>
-                <button onClick={() => setShowEmailPreview(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}><X size={18} /></button>
+                <button onClick={() => { setShowEmailPreview(false); setSendEmailError('') }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}><X size={18} /></button>
               </div>
 
               {/* Meta */}
-              <div style={{ padding: '16px 24px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, width: '52px', textAlign: 'right', flexShrink: 0 }}>To:</span>
                   <input
                     type="email"
                     value={previewEmail}
-                    onChange={e => setPreviewEmail(e.target.value)}
-                    placeholder="Recipient email..."
-                    style={{ flex: 1, backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.primary, fontSize: '13px', outline: 'none' }}
+                    onChange={e => { setPreviewEmail(e.target.value); setSendEmailError('') }}
+                    placeholder="Enter recipient email address"
+                    autoFocus={!previewEmail}
+                    style={{ flex: 1, backgroundColor: t.bg.input, border: `1px solid ${sendEmailError ? t.status.danger : t.border.default}`, borderRadius: '6px', padding: '8px 10px', color: t.text.primary, fontSize: '14px', outline: 'none' }}
                   />
                 </div>
+                {sendEmailError && (
+                  <div style={{ fontSize: '12px', color: t.status.danger, paddingLeft: '62px' }}>{sendEmailError}</div>
+                )}
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, width: '52px', textAlign: 'right', flexShrink: 0 }}>Subject:</span>
                   <span style={{ fontSize: '13px', color: t.text.secondary }}>{subject}</span>
@@ -1218,22 +1229,24 @@ export default function OrdersPage() {
               </div>
 
               {/* Body preview */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-                <div style={{ backgroundColor: t.bg.card, borderRadius: '8px', padding: '0', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch' } as any}>
+                <div style={{ backgroundColor: t.bg.card, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
                   <div dangerouslySetInnerHTML={{ __html: html }} />
                 </div>
               </div>
 
               {/* Footer */}
-              <div style={{ padding: '16px 24px', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setShowEmailPreview(false)} style={btnSecondary}>Cancel</button>
+              <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', flexShrink: 0 }}>
+                <button onClick={() => { setShowEmailPreview(false); setSendEmailError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
                 <button
-                  disabled={creating || !previewEmail}
                   onClick={async () => {
-                    if (!previewEmail) return
+                    if (!previewEmail.trim()) {
+                      setSendEmailError('Enter a recipient email address above')
+                      return
+                    }
+                    setSendEmailError('')
                     setCreating(true)
                     try {
-                      const extra = { order_type: 'direct' as const }
                       const newOrder = await createOrder({
                         client_slug: form.client_slug,
                         account_id: form.account_id || undefined,
@@ -1243,26 +1256,28 @@ export default function OrdersPage() {
                         notes: form.notes,
                         line_items: form.line_items.filter(li => li.product_name),
                         commission_rate: selectedClient?.commission_rate || 0,
-                        ...extra,
+                        order_type: 'direct',
                       })
                       await updateOrder(newOrder.id, { status: 'sent', sent_at: new Date().toISOString() })
-                      // Send email
-                      const { subject: subj, text: txt } = buildEmailBody(previewEmail)
+                      const { subject: subj, text: txt } = buildEmailBody()
                       await fetch('/api/send-email', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to: previewEmail, subject: subj, text: txt }),
+                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt }),
                       }).catch(() => {})
                       invalidatePrefix('dashboard-stats')
                       setShowEmailPreview(false)
+                      setSendEmailError('')
                       setShowCreate(false)
                       resetForm()
                       load()
                       setActiveTab('direct')
-                    } catch (e) { console.error(e) }
-                    finally { setCreating(false) }
+                    } catch (e: any) {
+                      setSendEmailError(e?.message || 'Failed to send order')
+                    } finally { setCreating(false) }
                   }}
-                  style={{ ...btnPrimary, opacity: (creating || !previewEmail) ? 0.6 : 1 }}
+                  disabled={creating}
+                  style={{ ...btnPrimary, flex: 2, justifyContent: 'center', opacity: creating ? 0.6 : 1 }}
                 >
                   <Send size={14} /> {creating ? 'Sending...' : 'Send Order'}
                 </button>
