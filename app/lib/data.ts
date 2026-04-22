@@ -39,6 +39,16 @@ export async function updateClient(id: string, updates: Partial<Client>) {
   invalidatePrefix('dashboard-stats')
 }
 
+export function getClientSettings(): Promise<Record<string, any>> {
+  return cached('client-settings', 5 * 60_000, async () => {
+    const sb = getSupabase()
+    const { data } = await sb.from('client_settings').select('*')
+    const map: Record<string, any> = {}
+    for (const row of data || []) map[row.client_slug] = row
+    return map
+  })
+}
+
 // ─── Accounts ─────────────────────────────────────────────────────────────
 
 export function getAccounts(filters?: {

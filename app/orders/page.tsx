@@ -12,6 +12,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import {
   getOrders, getClients, getAccounts, createOrder, updateOrder, deleteOrder,
   getDistributorReps, createDistributorRep, getNextOrderNumber, getProducts,
+  getClientSettings,
 } from '../lib/data'
 import { invalidatePrefix } from '../lib/cache'
 import AddAccountModal from '../components/AddAccountModal'
@@ -287,6 +288,7 @@ export default function OrdersPage() {
   const [nextPONum, setNextPONum] = useState('PO-000039')
   const [nextOINum, setNextOINum] = useState('OI-000001')
   const [clientProducts, setClientProducts] = useState<Product[]>([])
+  const [clientSettings, setClientSettings] = useState<Record<string, any>>({})
 
   const [form, setForm] = useState({
     client_slug: '',
@@ -303,13 +305,15 @@ export default function OrdersPage() {
   })
 
   const load = useCallback(async () => {
-    const [ords, cls, accs, nextPO, nextOI] = await Promise.all([
+    const [ords, cls, accs, nextPO, nextOI, settings] = await Promise.all([
       getOrders(), getClients(), getAccounts({ limit: 500 }),
       getNextOrderNumber('PO'), getNextOrderNumber('OI'),
+      getClientSettings(),
     ])
     setOrders(ords)
     setClients(cls)
     setAccounts(accs)
+    setClientSettings(settings)
     setForm(f => ({ ...f, po_number: nextPO }))
     setNextPONum(nextPO)
     setNextOINum(nextOI)
@@ -403,6 +407,10 @@ export default function OrdersPage() {
 
   function buildEmailBody(): { subject: string; text: string; html: string; replyTo?: string } {
     const client = selectedClient
+    const settings = clientSettings[form.client_slug] || {}
+    const contactName = settings.primary_contact_name || client?.contact_name || client?.name
+    const contactEmail = settings.primary_contact_email || client?.contact_email || ''
+    const contactPhone = settings.primary_contact_phone || client?.contact_phone || ''
     const lineItems = form.line_items.filter(li => li.product_name)
     const isOI = orderType === 'distributor'
 
@@ -447,9 +455,9 @@ export default function OrdersPage() {
       '',
       isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
       '',
-      client?.contact_name ? `— ${client.contact_name}` : '— Barley Bros',
-      client?.contact_email ? client.contact_email : null,
-      client?.contact_phone ? client.contact_phone : null,
+      contactName ? `— ${contactName}` : '— Barley Bros',
+      contactEmail || null,
+      contactPhone || null,
     ].filter(l => l !== null).join('\n')
 
     const htmlRows = lineItems.map(li => {
@@ -494,14 +502,14 @@ export default function OrdersPage() {
   ${form.notes ? `<div style="background:#111110;border-radius:6px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#9a9790">${form.notes}</div>` : ''}
   <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2a2a26">
-    <div style="font-size:13px;font-weight:600;color:#eceae4">${client?.contact_name || client?.name || 'Barley Bros'}</div>
-    ${client?.contact_email ? `<div style="font-size:12px;color:#9a9790;margin-top:2px">${client.contact_email}</div>` : ''}
-    ${client?.contact_phone ? `<div style="font-size:12px;color:#9a9790;margin-top:1px">${client.contact_phone}</div>` : ''}
+    <div style="font-size:13px;font-weight:600;color:#eceae4">${contactName || 'Barley Bros'}</div>
+    ${contactEmail ? `<div style="font-size:12px;color:#9a9790;margin-top:2px">${contactEmail.split(',')[0].trim()}</div>` : ''}
+    ${contactPhone ? `<div style="font-size:12px;color:#9a9790;margin-top:1px">${contactPhone}</div>` : ''}
     <div style="font-size:11px;color:#5a5754;margin-top:4px">${client?.name || 'Barley Bros'}</div>
   </div>
 </div>`
 
-    const replyTo = client?.contact_email || undefined
+    const replyTo = contactEmail.split(',')[0].trim() || undefined
     return { subject, text, html, replyTo }
   }
 
@@ -1184,7 +1192,8 @@ export default function OrdersPage() {
                       if (!form.deliver_to_name) { setCreateErr('Enter a deliver-to name'); return }
                       if (form.line_items.every(li => !li.product_name)) { setCreateErr('Add at least one product'); return }
                       setCreateErr('')
-                      setPreviewEmail(selectedClient?.contact_email || '')
+                      const s = clientSettings[form.client_slug] || {}
+                      setPreviewEmail(s.primary_contact_email || selectedClient?.contact_email || '')
                       setShowEmailPreview(true)
                     }}
                     style={{ ...btnPrimary, flex: 2, justifyContent: 'center' }}
