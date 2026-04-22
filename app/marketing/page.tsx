@@ -185,7 +185,7 @@ export default function MarketingPage() {
   const activeCampaigns = campaigns.filter(c => c.status === 'active').length
   const totalBudget = campaigns.reduce((s, c) => s + Number(c.budget || 0), 0)
 
-  const filteredEmail = emailFilter === 'all' ? emailList : emailList.filter(p => p.client_slug === emailFilter || p.event_client_slug === emailFilter)
+  const filteredEmail = emailFilter === 'all' ? emailList : emailList.filter(p => p.client_slug === emailFilter || (p.client_id && clients.find(c => c.slug === emailFilter)?.id === p.client_id))
 
   function copyEmails() {
     navigator.clipboard.writeText(filteredEmail.filter(p => p.email).map((p: any) => p.email).join(', '))
@@ -583,7 +583,7 @@ export default function MarketingPage() {
                     <a href={`mailto:${person.email}`} style={{ fontSize: '12px', color: t.status.info, textDecoration: 'none', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {person.email || '—'}
                     </a>
-                    <span style={{ fontSize: '11px', color: t.text.muted }}>{person.tasting_events?.client_slug || person.client_slug || '—'}</span>
+                    <span style={{ fontSize: '11px', color: t.text.muted }}>{person.client_slug || clients.find(c => c.id === person.client_id)?.name || '—'}</span>
                     <span className="mono" style={{ fontSize: '11px', color: t.text.muted }}>{formatShortDateMT(person.captured_at)}</span>
                   </div>
                 ))}

@@ -23,7 +23,7 @@ export default function InternHubPage() {
       setInterns(internData || [])
       setTasks(taskData.filter(t => t.assigned_to && internData?.find((i: any) => i.id === t.assigned_to)))
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [])
 
   async function handleAssign() {
@@ -73,7 +73,7 @@ export default function InternHubPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{intern.name}</div>
-                    <div style={{ fontSize: '11px', color: t.text.muted }}>{intern.email}</div>
+                    <div style={{ fontSize: '11px', color: t.text.muted }}>{intern.full_name || intern.email || 'Intern'}</div>
                   </div>
                 </div>
                 <div style={{ fontSize: '12px', color: t.text.secondary }}>
