@@ -77,9 +77,9 @@ export default function AnalyticsPage() {
       getClients(),
       getVisitTrend({ start, end }),
       getPlacementFunnel({ start, end }),
-      getCommissionTrend(12),
+      getCommissionTrend(start),
       getPlacements(),
-      getVisits({ since: start.toISOString() }),
+      getVisits({ since: start.toISOString(), limit: 2000 }),
     ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)
@@ -99,19 +99,38 @@ export default function AnalyticsPage() {
       })
       setVisitData(bucketData)
 
-      // Commission trend by month (12 months)
-      const monthMap: Record<string, { month: string; commission: number }> = {}
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date()
-        d.setMonth(d.getMonth() - i)
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        monthMap[key] = { month: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0 }
+      // Commission trend — bucket by day/week/month depending on range
+      const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number }[] = []
+      const useDaily = rangeDays <= 14
+      const useWeekly = rangeDays <= 90 && !useDaily
+      if (useDaily) {
+        for (let i = 0; i < rangeDays; i++) {
+          const d = new Date(start.getTime() + i * 86400_000)
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000 })
+        }
+      } else if (useWeekly) {
+        const weeks = Math.ceil(rangeDays / 7)
+        for (let i = 0; i < weeks; i++) {
+          const d = new Date(start.getTime() + i * 7 * 86400_000)
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000 })
+        }
+      } else {
+        const months = Math.ceil(rangeDays / 30)
+        for (let i = months - 1; i >= 0; i--) {
+          const d = new Date()
+          d.setDate(1)
+          d.setMonth(d.getMonth() - i)
+          const monthStart = d.getTime()
+          const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd })
+        }
       }
       commTrend.forEach((o: any) => {
-        const key = o.created_at.slice(0, 7)
-        if (monthMap[key]) monthMap[key].commission += Number(o.commission_amount || 0)
+        const t2 = new Date(o.created_at).getTime()
+        const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
+        if (bucket) bucket.commission += Number(o.commission_amount || 0)
       })
-      setCommissionData(Object.values(monthMap))
+      setCommissionData(commBuckets.map(b => ({ month: b.label, commission: b.commission })))
 
       // Placements by status
       const statusMap2: Record<string, number> = {}
@@ -205,7 +224,7 @@ export default function AnalyticsPage() {
           {/* Commission trend */}
           <div style={{ ...card, padding: '22px 24px' }}>
             <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '18px' }}>
-              Commission — 12 Months
+              Commission
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={commissionData}>

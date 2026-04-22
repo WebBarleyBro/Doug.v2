@@ -1113,10 +1113,9 @@ export async function getVisitTrend(range: DateRange) {
   return data || []
 }
 
-export async function getCommissionTrend(months = 12) {
+export async function getCommissionTrend(sinceDate?: Date) {
   const sb = getSupabase()
-  const since = new Date()
-  since.setMonth(since.getMonth() - months)
+  const since = sinceDate ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 12); return d })()
   const { data, error } = await sb
     .from('purchase_orders')
     .select('created_at, commission_amount, total_amount, client_slug')
