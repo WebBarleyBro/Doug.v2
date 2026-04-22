@@ -786,7 +786,7 @@ export async function getCampaigns(clientSlug?: string): Promise<Campaign[]> {
   const sb = getSupabase()
   let q = sb
     .from('campaigns')
-    .select('*, campaign_milestones(*), clients(id, name, color)')
+    .select('*, campaign_milestones(*), campaign_deliverables(*), clients(id, name, color)')
     .order('created_at', { ascending: false })
   if (clientSlug) q = q.eq('client_slug', clientSlug)
   const { data, error } = await q
@@ -1594,6 +1594,33 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>) {
     .from('campaigns')
     .update(updates as any)
     .eq('id', id)
+  if (error) throw error
+}
+
+export async function createDeliverable(d: {
+  campaign_id: string
+  title: string
+  deliverable_type: string
+  channel: string
+  status?: string
+  due_date?: string
+  notes?: string
+}) {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('campaign_deliverables').insert({ ...d, status: d.status || 'not_started' }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateDeliverable(id: string, updates: { status?: string; title?: string; due_date?: string | null; notes?: string }) {
+  const sb = getSupabase()
+  const { error } = await sb.from('campaign_deliverables').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteDeliverable(id: string) {
+  const sb = getSupabase()
+  const { error } = await sb.from('campaign_deliverables').delete().eq('id', id)
   if (error) throw error
 }
 

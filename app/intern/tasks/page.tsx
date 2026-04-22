@@ -66,10 +66,10 @@ export default function InternTasksPage() {
   useEffect(() => {
     const sb = getSupabase()
     sb.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+      if (!user) { setLoading(false); return }
       setUserId(user.id)
-      await load(user.id)
-    })
+      try { await load(user.id) } catch (err: any) { setError(err.message || 'Failed to load tasks'); setLoading(false) }
+    }).catch((err: any) => { setError(err.message || 'Auth error'); setLoading(false) })
   }, [])
 
   async function completeTask(taskId: string) {
@@ -106,13 +106,10 @@ export default function InternTasksPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <LayoutShell>
-        <div style={{ padding: '32px 48px', color: t.text.muted, fontSize: '14px' }}>Loading tasks...</div>
-      </LayoutShell>
-    )
-  }
+  if (loading) return <LayoutShell><div style={{ padding: '32px 48px', color: t.text.muted, fontSize: '14px' }}>Loading tasks...</div></LayoutShell>
+  if (error && myTasks.length === 0 && unclaimedTasks.length === 0) return (
+    <LayoutShell><div style={{ padding: '32px 48px', color: t.status.danger, fontSize: '14px' }}>{error}</div></LayoutShell>
+  )
 
   return (
     <LayoutShell>

@@ -233,6 +233,9 @@ export interface Campaign {
   title: string
   campaign_type?: string
   description?: string
+  target_audience?: string
+  key_messages?: string
+  channels?: string[]
   budget?: number
   start_date?: string
   end_date?: string
@@ -241,7 +244,24 @@ export interface Campaign {
   created_at: string
   // joined
   campaign_milestones?: CampaignMilestone[]
+  campaign_deliverables?: CampaignDeliverable[]
   clients?: Pick<Client, 'id' | 'name' | 'color'>
+}
+
+export type DeliverableType = 'post' | 'story' | 'reel' | 'email' | 'graphic' | 'event' | 'video' | 'other'
+export type DeliverableChannel = 'instagram' | 'tiktok' | 'facebook' | 'email' | 'print' | 'website' | 'other'
+export type DeliverableStatus = 'not_started' | 'in_progress' | 'review' | 'done'
+
+export interface CampaignDeliverable {
+  id: string
+  campaign_id: string
+  title: string
+  deliverable_type: DeliverableType
+  channel: DeliverableChannel
+  status: DeliverableStatus
+  due_date?: string
+  notes?: string
+  created_at: string
 }
 
 export interface CampaignMilestone {

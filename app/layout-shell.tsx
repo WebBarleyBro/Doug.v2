@@ -62,6 +62,7 @@ const repNav = [
 const internNav = [
   { href: '/intern',           label: 'My Work',   icon: Home },
   { href: '/intern/tasks',     label: 'Tasks',     icon: ClipboardList },
+  { href: '/marketing',        label: 'Campaigns', icon: Megaphone },
   { href: '/intern/projects',  label: 'Projects',  icon: FolderOpen },
   { href: '/intern/assets',    label: 'Assets',    icon: Upload },
   { href: '/intern/resources', label: 'Resources', icon: BookOpen },
@@ -515,7 +516,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       if (!user) { window.location.replace('/login'); return }
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       if (!p) { window.location.replace('/login'); return }
-      if (p.role === 'intern' && !window.location.pathname.startsWith('/intern')) {
+      const INTERN_ALLOWED = ['/intern', '/marketing']
+      if (p.role === 'intern' && !INTERN_ALLOWED.some(prefix => window.location.pathname.startsWith(prefix))) {
         window.location.replace('/intern'); return
       }
       if (p.role === 'portal' && p.client_slug) { window.location.replace(`/portal/${p.client_slug}`); return }
