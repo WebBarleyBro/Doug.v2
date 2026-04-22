@@ -922,7 +922,7 @@ export default function OrdersPage() {
                           }
                         }}
                         style={{ ...btnSecondary, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation' } as any}>
-                        <Send size={15} /> {resendState === 'sending' ? 'Sending…' : isInquiry ? 'Send to Distributor' : 'Resend Order'}
+                        <Send size={15} /> {isInquiry ? 'Send to Distributor' : 'Resend Order'}
                         {autoEmail && <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '4px' }}>→ {autoEmail.split(',')[0]}</span>}
                       </button>
                     )
