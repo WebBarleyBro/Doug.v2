@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, Cell,
+  ResponsiveContainer, CartesianGrid,
 } from 'recharts'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import StatCard from '../components/StatCard'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
@@ -12,7 +13,7 @@ import {
   getClients, getPlacements, getVisits,
 } from '../lib/data'
 import { t, card } from '../lib/theme'
-import { formatCurrency, nDaysAgoMT } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT } from '../lib/formatters'
 import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
 import type { Client, PlacementStatus } from '../lib/types'
 
@@ -56,6 +57,9 @@ const VISIT_STATUS_COLORS: Record<string, string> = {
   'General Check-In':  t.text.secondary,
 }
 
+// Statuses that represent actionable follow-up items
+const ACTION_STATUSES = new Set(['Will Order Soon', 'Needs Follow Up'])
+
 export default function AnalyticsPage() {
   const [rangeDays, setRangeDays] = useState(30)
   const [clients, setClients] = useState<Client[]>([])
@@ -64,11 +68,14 @@ export default function AnalyticsPage() {
   const [funnel, setFunnel] = useState<any>(null)
   const [placementsByStatus, setPlacementsByStatus] = useState<any[]>([])
   const [placementsByBrand, setPlacementsByBrand] = useState<Record<string, number>>({})
-  const [visitsByStatus, setVisitsByStatus] = useState<any[]>([])
+  const [visitsByStatus, setVisitsByStatus] = useState<{ status: string; count: number }[]>([])
+  const [visitsByStatusGrouped, setVisitsByStatusGrouped] = useState<Record<string, any[]>>({})
+  const [expandedStatus, setExpandedStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
+    setExpandedStatus(null)
     const end = new Date()
     const start = new Date()
     start.setDate(start.getDate() - rangeDays)
@@ -77,14 +84,14 @@ export default function AnalyticsPage() {
       getClients(),
       getVisitTrend({ start, end }),
       getPlacementFunnel({ start, end }),
-      getCommissionTrend(start),
+      getCommissionTrend(start, end),
       getPlacements(),
       getVisits({ since: start.toISOString(), limit: 2000 }),
     ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)
 
-      // Weekly visit trend buckets
+      // Visit activity buckets
       const buckets = Math.max(1, Math.ceil(rangeDays / (rangeDays <= 14 ? 1 : 7)))
       const bucketMs = (rangeDays * 24 * 60 * 60 * 1000) / buckets
       const bucketData: { label: string; visits: number }[] = []
@@ -99,20 +106,20 @@ export default function AnalyticsPage() {
       })
       setVisitData(bucketData)
 
-      // Commission trend — bucket by day/week/month depending on range
-      const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number }[] = []
+      // Commission — bucket by day/week/month depending on range
+      const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number; orders: any[] }[] = []
       const useDaily = rangeDays <= 14
       const useWeekly = rangeDays <= 90 && !useDaily
       if (useDaily) {
         for (let i = 0; i < rangeDays; i++) {
           const d = new Date(start.getTime() + i * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000 })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000, orders: [] })
         }
       } else if (useWeekly) {
         const weeks = Math.ceil(rangeDays / 7)
         for (let i = 0; i < weeks; i++) {
           const d = new Date(start.getTime() + i * 7 * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000 })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000, orders: [] })
         }
       } else {
         const months = Math.ceil(rangeDays / 30)
@@ -122,17 +129,17 @@ export default function AnalyticsPage() {
           d.setMonth(d.getMonth() - i)
           const monthStart = d.getTime()
           const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
         }
       }
       commTrend.forEach((o: any) => {
         const t2 = new Date(o.created_at).getTime()
         const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
-        if (bucket) bucket.commission += Number(o.commission_amount || 0)
+        if (bucket) { bucket.commission += Number(o.commission_amount || 0); bucket.orders.push(o) }
       })
       setCommissionData(commBuckets.map(b => ({ month: b.label, commission: b.commission })))
 
-      // Placements by status
+      // Placements by status (all active, not date-ranged — current state)
       const statusMap2: Record<string, number> = {}
       const brandMap: Record<string, number> = {}
       placements.forEach((p: any) => {
@@ -143,16 +150,19 @@ export default function AnalyticsPage() {
       setPlacementsByStatus(STATUS_ORDER.filter(s => statusMap2[s]).map(s => ({ name: s, value: statusMap2[s] })))
       setPlacementsByBrand(brandMap)
 
-      // Visits by status
-      const statusMap: Record<string, number> = {}
+      // Visits by status — grouped for drill-down
+      const statusCount: Record<string, number> = {}
+      const grouped: Record<string, any[]> = {}
       recentVisits.forEach((v: any) => {
-        if (v.status) statusMap[v.status] = (statusMap[v.status] || 0) + 1
+        if (!v.status) return
+        statusCount[v.status] = (statusCount[v.status] || 0) + 1
+        if (!grouped[v.status]) grouped[v.status] = []
+        grouped[v.status].push(v)
       })
-      setVisitsByStatus(
-        Object.entries(statusMap)
-          .map(([status, count]) => ({ status, count }))
-          .sort((a, b) => b.count - a.count)
-      )
+      // Sort each group by most recent first
+      Object.values(grouped).forEach(arr => arr.sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime()))
+      setVisitsByStatus(Object.entries(statusCount).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count))
+      setVisitsByStatusGrouped(grouped)
 
       setLoading(false)
     }).catch(() => setLoading(false))
@@ -164,6 +174,12 @@ export default function AnalyticsPage() {
     on_shelf: t.status.success,
     reordering: t.gold,
   }
+
+  // Derive follow-up list from visit data
+  const followUpVisits = Object.entries(visitsByStatusGrouped)
+    .filter(([status]) => ACTION_STATUSES.has(status))
+    .flatMap(([status, visits]) => visits.map(v => ({ ...v, _status: status })))
+    .sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime())
 
   return (
     <LayoutShell>
@@ -197,7 +213,7 @@ export default function AnalyticsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
             <StatCard label="Total Visits" value={funnel.totalVisits} color={t.gold} />
             <StatCard label="Placements Created" value={funnel.placementsCreated} color={t.status.success} />
-            <StatCard label="Active On Shelf" value={funnel.activeOnShelf} color={t.status.info} />
+            <StatCard label="Active On Shelf" value={funnel.activeOnShelf} color={t.status.info} subtext="all active placements" />
             <StatCard label="Unique Accounts Visited" value={funnel.uniqueAccounts ?? '—'} color={t.text.secondary} />
           </div>
         )}
@@ -223,8 +239,11 @@ export default function AnalyticsPage() {
 
           {/* Commission trend */}
           <div style={{ ...card, padding: '22px 24px' }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '18px' }}>
-              Commission
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '18px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Commission
+              </div>
+              <div style={{ fontSize: '10px', color: t.text.muted }}>by order date</div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={commissionData}>
@@ -240,27 +259,70 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Bottom row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
 
-          {/* Visits by outcome */}
+          {/* Visit outcomes — with drill-down */}
           {visitsByStatus.length > 0 && (
             <div style={{ ...card, padding: '22px 24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
                 Visit Outcomes
+                <span style={{ fontWeight: '400', textTransform: 'none', marginLeft: '6px', color: t.text.muted, fontSize: '10px' }}>click to see accounts</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {visitsByStatus.map(({ status, count }) => {
                   const color = VISIT_STATUS_COLORS[status] || t.text.muted
                   const max = visitsByStatus[0].count
+                  const isOpen = expandedStatus === status
+                  const visits = visitsByStatusGrouped[status] || []
                   return (
-                    <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '140px', fontSize: '12px', color: t.text.secondary, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {status}
+                    <div key={status}>
+                      {/* Status row */}
+                      <div
+                        onClick={() => setExpandedStatus(isOpen ? null : status)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 8px', borderRadius: '7px', cursor: 'pointer', backgroundColor: isOpen ? t.bg.elevated : 'transparent', transition: 'background 150ms ease' }}
+                      >
+                        <div style={{ color: t.text.muted, flexShrink: 0 }}>
+                          {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        </div>
+                        <div style={{ width: '130px', fontSize: '12px', color: t.text.secondary, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {status}
+                        </div>
+                        <div style={{ flex: 1, height: '6px', backgroundColor: t.border.default, borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${(count / max) * 100}%`, height: '100%', backgroundColor: color, borderRadius: '3px', transition: 'width 600ms ease' }} />
+                        </div>
+                        <div className="mono" style={{ fontSize: '12px', color, fontWeight: '700', minWidth: '28px', textAlign: 'right' }}>{count}</div>
                       </div>
-                      <div style={{ flex: 1, height: '6px', backgroundColor: t.border.default, borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ width: `${(count / max) * 100}%`, height: '100%', backgroundColor: color, borderRadius: '3px', transition: 'width 600ms ease' }} />
-                      </div>
-                      <div className="mono" style={{ fontSize: '12px', color, fontWeight: '700', minWidth: '28px', textAlign: 'right' }}>{count}</div>
+
+                      {/* Drill-down panel */}
+                      {isOpen && (
+                        <div style={{ marginLeft: '20px', marginBottom: '6px', borderLeft: `2px solid ${color}33`, paddingLeft: '12px' }}>
+                          {visits.map((v: any) => (
+                            <div key={v.id} style={{ padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>
+                                  {v.accounts?.name || 'Unknown Account'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>
+                                  {formatShortDateMT(v.visited_at)}
+                                </div>
+                              </div>
+                              {v.user_profiles?.name && (
+                                <div style={{ fontSize: '11px', color: t.text.muted }}>Rep: {v.user_profiles.name}</div>
+                              )}
+                              {v.notes && (
+                                <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.4, marginTop: '2px' }}>
+                                  {v.notes.length > 120 ? v.notes.slice(0, 120) + '…' : v.notes}
+                                </div>
+                              )}
+                              {v.feedback && (
+                                <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic' }}>
+                                  Feedback: {v.feedback.length > 100 ? v.feedback.slice(0, 100) + '…' : v.feedback}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -268,7 +330,7 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* Placements by status */}
+          {/* Active placements */}
           {placementsByStatus.length > 0 && (
             <div style={{ ...card, padding: '22px 24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
@@ -277,12 +339,9 @@ export default function AnalyticsPage() {
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 {placementsByStatus.map(p => (
                   <div key={p.name} style={{
-                    backgroundColor: t.bg.elevated,
-                    border: `1px solid ${t.border.default}`,
-                    borderRadius: '8px',
-                    padding: '16px 20px',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-                    minWidth: '80px',
+                    backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`,
+                    borderRadius: '8px', padding: '16px 20px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minWidth: '80px',
                   }}>
                     <div className="mono" style={{ fontSize: '24px', fontWeight: '700', color: statusColors[p.name] || t.gold }}>{p.value}</div>
                     <div style={{ fontSize: '10px', color: t.text.muted, textAlign: 'center' }}>{PLACEMENT_STATUS_LABELS[p.name as PlacementStatus] || p.name}</div>
@@ -290,12 +349,9 @@ export default function AnalyticsPage() {
                 ))}
               </div>
 
-              {/* Per-brand placement count */}
               {clients.length > 0 && (
                 <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: `1px solid ${t.border.subtle}` }}>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
-                    By Brand
-                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>By Brand</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {clients.filter(c => placementsByBrand[c.slug]).map(c => {
                       const logo = clientLogoUrl(c)
@@ -306,9 +362,7 @@ export default function AnalyticsPage() {
                             : <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, flexShrink: 0, margin: '0 4px' }} />
                           }
                           <span style={{ fontSize: '12px', color: t.text.secondary, flex: 1 }}>{c.name}</span>
-                          <span className="mono" style={{ fontSize: '12px', color: t.text.muted, fontWeight: '600' }}>
-                            {placementsByBrand[c.slug] || 0}
-                          </span>
+                          <span className="mono" style={{ fontSize: '12px', color: t.text.muted, fontWeight: '600' }}>{placementsByBrand[c.slug] || 0}</span>
                         </div>
                       )
                     })}
@@ -318,6 +372,38 @@ export default function AnalyticsPage() {
             </div>
           )}
         </div>
+
+        {/* Follow-up action list */}
+        {followUpVisits.length > 0 && (
+          <div style={{ ...card, padding: '22px 24px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
+              Needs Action — {followUpVisits.length} account{followUpVisits.length !== 1 ? 's' : ''} from last {rangeDays} days
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+              {followUpVisits.map((v: any) => {
+                const color = VISIT_STATUS_COLORS[v._status] || t.text.muted
+                return (
+                  <div key={v.id} style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderLeft: `3px solid ${color}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{v.accounts?.name || '—'}</div>
+                      <div style={{ fontSize: '10px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</div>
+                    </div>
+                    <div style={{ fontSize: '11px', color, marginBottom: '4px' }}>{v._status}</div>
+                    {v.notes && (
+                      <div style={{ fontSize: '11px', color: t.text.secondary, lineHeight: 1.4 }}>
+                        {v.notes.length > 80 ? v.notes.slice(0, 80) + '…' : v.notes}
+                      </div>
+                    )}
+                    {v.user_profiles?.name && (
+                      <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{v.user_profiles.name}</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
       </div>
     </LayoutShell>
   )

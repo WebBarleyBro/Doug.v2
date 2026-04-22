@@ -1113,15 +1113,16 @@ export async function getVisitTrend(range: DateRange) {
   return data || []
 }
 
-export async function getCommissionTrend(sinceDate?: Date) {
+export async function getCommissionTrend(sinceDate?: Date, untilDate?: Date) {
   const sb = getSupabase()
   const since = sinceDate ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 12); return d })()
-  const { data, error } = await sb
+  let q = sb
     .from('purchase_orders')
-    .select('created_at, commission_amount, total_amount, client_slug')
+    .select('created_at, commission_amount, total_amount, client_slug, po_number, deliver_to_name')
     .in('status', ['sent', 'fulfilled'])
     .gte('created_at', since.toISOString())
-    .order('created_at')
+  if (untilDate) q = q.lte('created_at', untilDate.toISOString())
+  const { data, error } = await q.order('created_at')
   if (error) throw error
   return data || []
 }
