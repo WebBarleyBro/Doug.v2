@@ -14,7 +14,7 @@ import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
 import AddAccountModal from '../components/AddAccountModal'
 import EmptyState from '../components/EmptyState'
-import { getOverdueAccounts, getPlannerStops, upsertPlannerStop, updatePlannerStop, deletePlannerStop, savePlannerOrder, getAccounts } from '../lib/data'
+import { getOverdueAccounts, getPlannerStops, upsertPlannerStop, updatePlannerStop, deletePlannerStop, savePlannerOrder, getAccounts, getVisits } from '../lib/data'
 import type { PlannerStop } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary } from '../lib/theme'
@@ -104,6 +104,7 @@ export default function PlannerPage() {
   const [customStop, setCustomStop] = useState('')
   const [loading, setLoading] = useState(true)
   const [overdueOpen, setOverdueOpen] = useState(false)
+  const [todayVisits, setTodayVisits] = useState<any[]>([])
   const [stopSearch, setStopSearch] = useState('')
   const [stopResults, setStopResults] = useState<any[]>([])
   const [showAddAccount, setShowAddAccount] = useState(false)
@@ -146,6 +147,18 @@ export default function PlannerPage() {
   useEffect(() => {
     if (profile?.id) loadStops(profile.id, date)
   }, [profile?.id, date, loadStops])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    getVisits({ userId: profile.id, since: date, limit: 50 }).then(vs => {
+      const seen = new Set<string>()
+      setTodayVisits(vs.filter((v: any) => {
+        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}`
+        if (seen.has(key) || String(v.visited_at).slice(0, 10) !== date) return false
+        seen.add(key); return true
+      }))
+    }).catch(() => {})
+  }, [profile?.id, date])
 
   // Auto-seed from today's events when there are no planned stops
   useEffect(() => {
@@ -453,6 +466,27 @@ export default function PlannerPage() {
           {/* RIGHT — sidebar panels (desktop only) */}
           {!isMobile && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Today's logged visits */}
+              <div style={{ ...card, padding: '14px 16px' }}>
+                <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                  Logged Today ({todayVisits.length})
+                </div>
+                {todayVisits.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted }}>No visits logged yet today</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {todayVisits.map((v: any) => (
+                      <div key={v.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: t.gold, flexShrink: 0, marginTop: '5px' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12px', fontWeight: '500', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || 'Unknown'}</div>
+                          <div style={{ fontSize: '10px', color: t.text.muted }}>{v.status}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {/* Today's scheduled events */}
               {todayEvents.length > 0 && (
                 <div style={{ ...card, padding: '14px 16px' }}>

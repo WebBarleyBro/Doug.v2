@@ -23,10 +23,12 @@ export default function InternPage() {
       if (!user) return
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       setProfile(p)
-      const allTasks = await getTasks({ userId: user.id, completed: false })
-      setTasks(allTasks)
+      try {
+        const allTasks = await getTasks({ userId: user.id, completed: false })
+        setTasks(allTasks)
+      } catch { /* RLS may block — show empty state */ }
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [])
 
   async function complete(id: string) {

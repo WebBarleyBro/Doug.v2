@@ -251,6 +251,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
             icon={<MapPin size={22} />}
             color={t.gold}
             subtext={isOwner && stats?.myVisits !== stats?.teamVisits ? `${stats?.myVisits} by you` : undefined}
+            href="/visits"
           />
           <StatCard label="Active Placements"
             value={stats?.activePlacements || 0}
