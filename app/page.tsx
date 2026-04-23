@@ -14,7 +14,7 @@ import { StatsSkeleton, CardSkeleton } from './components/LoadingSkeleton'
 import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
-  getVisitStreak, getClientSuggestions,
+  getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
 } from './lib/data'
 import { getSupabase } from './lib/supabase'
 import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
@@ -376,7 +376,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                         borderRadius: '8px',
                         padding: '10px 12px',
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <Link href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
                               <div style={{ fontSize: '13px', fontWeight: isHigh ? '700' : '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -388,18 +388,50 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                               <span className="mono" style={{ fontSize: '11px', color: urgencyColor, fontWeight: '600' }}>{days}d ago</span>
                             </div>
                           </div>
-                          <button
-                            onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
-                            style={{
-                              fontSize: '11px', fontWeight: '600', flexShrink: 0, cursor: 'pointer', whiteSpace: 'nowrap',
-                              color: isHigh ? t.status.danger : t.gold,
-                              backgroundColor: isHigh ? 'rgba(232,85,64,0.12)' : t.goldDim,
-                              border: `1px solid ${isHigh ? 'rgba(232,85,64,0.28)' : t.border.gold}`,
-                              borderRadius: '6px', padding: '5px 10px',
-                            }}
-                          >
-                            Log visit
-                          </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                            <button
+                              onClick={() => { setFollowUpAccountId(v.account_id); setVisitModal(true) }}
+                              style={{
+                                fontSize: '11px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
+                                color: isHigh ? t.status.danger : t.gold,
+                                backgroundColor: isHigh ? 'rgba(232,85,64,0.12)' : t.goldDim,
+                                border: `1px solid ${isHigh ? 'rgba(232,85,64,0.28)' : t.border.gold}`,
+                                borderRadius: '6px', padding: '4px 8px',
+                              }}
+                            >
+                              Log visit
+                            </button>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={async () => {
+                                  setFollowups(prev => prev.filter(f => f.id !== v.id))
+                                  await clearFollowUp(v.id)
+                                }}
+                                style={{
+                                  flex: 1, fontSize: '10px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
+                                  color: t.status.success, backgroundColor: 'rgba(61,186,120,0.10)',
+                                  border: '1px solid rgba(61,186,120,0.25)', borderRadius: '5px', padding: '3px 6px',
+                                }}
+                                title="Mark follow-up as done"
+                              >
+                                Cleared
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  setFollowups(prev => prev.filter(f => f.id !== v.id))
+                                  await dismissFollowUp(v.id)
+                                }}
+                                style={{
+                                  flex: 1, fontSize: '10px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
+                                  color: t.text.muted, backgroundColor: t.bg.card,
+                                  border: `1px solid ${t.border.subtle}`, borderRadius: '5px', padding: '3px 6px',
+                                }}
+                                title="No longer applicable"
+                              >
+                                Disregard
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )

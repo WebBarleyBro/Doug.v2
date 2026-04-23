@@ -9,7 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import {
   MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp,
   CheckCircle, Send, Building2, User, ExternalLink, Upload, FileDown,
-  Calendar, ArrowRight, Star, AlertCircle,
+  Calendar, Star, AlertCircle,
 } from 'lucide-react'
 import { clientLogoUrl } from '../../lib/constants'
 
@@ -363,30 +363,23 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
           </div>
         </div>
 
-        {/* ── Pipeline funnel ── */}
+        {/* ── Program Overview ── */}
         <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '18px 16px' : '22px 28px' }}>
-          <SectionHeader>Sales Pipeline</SectionHeader>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: isMobile ? '12px' : '0', position: 'relative' }}>
+          <SectionHeader>Program Overview</SectionHeader>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px' }}>
             {[
               { label: 'Accounts Visited', value: visits.length, sub: 'in last 90 days', color: accent, icon: <MapPin size={14} /> },
-              { label: 'Showing Interest', value: interestedAccounts, sub: 'actively following up', color: t.status.warning, icon: <Star size={14} /> },
+              { label: 'Showing Interest', value: interestedAccounts, sub: 'active follow-ups', color: t.status.warning, icon: <Star size={14} /> },
               { label: distOrders.length > 0 ? 'Inquiries Sent' : 'Orders Placed', value: distOrders.length > 0 ? distOrders.length : visibleOrders.length, sub: distOrders.length > 0 ? 'to distributors' : 'purchase orders', color: t.status.info, icon: <Send size={14} /> },
-              { label: 'Active Placements', value: activePlacements.length, sub: 'product on shelf/menu', color: t.status.success, icon: <Package size={14} /> },
-            ].map((step, i) => (
-              <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                <div style={{ flex: 1, textAlign: 'center', padding: '16px 12px', backgroundColor: `${step.color}0d`, borderRadius: '10px', border: `1px solid ${step.color}22` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: step.color, marginBottom: '8px', opacity: 0.85 }}>
-                    {step.icon}
-                    <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{step.label}</span>
-                  </div>
-                  <div style={{ fontSize: '32px', fontWeight: '800', color: step.color, letterSpacing: '-0.04em', lineHeight: 1 }}>{step.value}</div>
-                  <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '5px' }}>{step.sub}</div>
+              { label: 'Active Placements', value: activePlacements.length, sub: 'products on shelf/menu', color: t.status.success, icon: <Package size={14} /> },
+            ].map((step) => (
+              <div key={step.label} style={{ textAlign: 'center', padding: '16px 12px', backgroundColor: `${step.color}0d`, borderRadius: '10px', border: `1px solid ${step.color}22` }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', color: step.color, marginBottom: '8px', opacity: 0.85 }}>
+                  {step.icon}
+                  <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{step.label}</span>
                 </div>
-                {i < 3 && !isMobile && (
-                  <div style={{ color: t.border.hover, flexShrink: 0, padding: '0 6px' }}>
-                    <ArrowRight size={16} />
-                  </div>
-                )}
+                <div style={{ fontSize: '32px', fontWeight: '800', color: step.color, letterSpacing: '-0.04em', lineHeight: 1 }}>{step.value}</div>
+                <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '5px' }}>{step.sub}</div>
               </div>
             ))}
           </div>

@@ -346,11 +346,20 @@ export function getFollowUpVisits(): Promise<Visit[]> {
       .from('visits')
       .select('*, accounts(id, name, address, account_type, visit_frequency_days)')
       .in('status', ['Will Order Soon', 'Needs Follow Up'])
+      .is('follow_up_cleared_at', null)
+      .is('follow_up_dismissed_at', null)
       .gte('visited_at', since)
-      .order('visited_at', { ascending: true })
-      .limit(50)
+      .order('visited_at', { ascending: false })
+      .limit(200)
     if (error) throw error
-    const visits = data || []
+    const rows = data || []
+    // One entry per account — keep the most recent (already sorted desc)
+    const seen = new Set<string>()
+    const visits = rows.filter((v: any) => {
+      if (!v.account_id || seen.has(v.account_id)) return false
+      seen.add(v.account_id)
+      return true
+    })
     if (visits.length > 0) {
       const userIds = [...new Set(visits.map((v: any) => v.user_id).filter(Boolean))]
       if (userIds.length > 0) {
@@ -361,6 +370,20 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     }
     return visits
   })
+}
+
+export async function clearFollowUp(visitId: string): Promise<void> {
+  const sb = getSupabase()
+  const { error } = await sb.from('visits').update({ follow_up_cleared_at: new Date().toISOString() }).eq('id', visitId)
+  if (error) throw error
+  invalidate('followup-visits')
+}
+
+export async function dismissFollowUp(visitId: string): Promise<void> {
+  const sb = getSupabase()
+  const { error } = await sb.from('visits').update({ follow_up_dismissed_at: new Date().toISOString() }).eq('id', visitId)
+  if (error) throw error
+  invalidate('followup-visits')
 }
 
 // ─── Placements ───────────────────────────────────────────────────────────
