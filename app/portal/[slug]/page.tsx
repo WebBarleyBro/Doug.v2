@@ -533,7 +533,6 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
         {visibleOrders.length > 0 && (
           <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '18px 16px' : '22px 28px' }}>
             <div style={{ marginBottom: '16px' }}>
-              <SectionHeader />
               <div style={{ marginTop: '-14px' }}>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '10px' }}>
                   {distOrders.length > 0 ? 'Order Inquiries — Last 90 Days' : 'Orders — Last 90 Days'}
