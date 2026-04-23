@@ -15,7 +15,9 @@ import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
   getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
+  getPlannerStops,
 } from './lib/data'
+import type { PlannerStop } from './lib/data'
 import { getSupabase } from './lib/supabase'
 import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
 import { formatCurrency, formatShortDateMT, relativeTimeStr, daysAgoMT, todayMT } from './lib/formatters'
@@ -42,6 +44,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [searchResults, setSearchResults] = useState<any>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [showAllFollowUps, setShowAllFollowUps] = useState(false)
+  const [plannerStops, setPlannerStops] = useState<PlannerStop[]>([])
 
   const isOwner = profile.role === 'owner'
 
@@ -64,6 +67,8 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
       }).catch(() => {})
       // Visit streak
       getVisitStreak(profile.id).then(setStreak).catch(() => {})
+      // Planner stops for today's progress
+      getPlannerStops(profile.id, todayMT()).then(setPlannerStops).catch(() => {})
       // Commission comes from getDashboardStats to avoid duplicate fetches
       if (s?.commissionThisMonth !== undefined) setCommission(s.commissionThisMonth)
     } catch (e) { console.error('dashboard load err', e) }
@@ -305,6 +310,11 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
         </div>
       )}
 
+      {/* Today's Route Progress */}
+      {plannerStops.length > 0 && (
+        <DailyProgressBar stops={plannerStops} />
+      )}
+
       {/* Main 3-column grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
 
@@ -534,6 +544,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
+  const [plannerStops, setPlannerStops] = useState<PlannerStop[]>([])
 
   const load = useCallback(async () => {
     try {
@@ -548,6 +559,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
         getClientSuggestions('new').then(setSuggestions).catch(() => {})
       }
       if (s?.commissionThisMonth !== undefined) setCommission(s.commissionThisMonth)
+      getPlannerStops(profile.id, todayMT()).then(setPlannerStops).catch(() => {})
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [profile.id, profile.role])
@@ -687,6 +699,13 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
         </MobileSection>
       )}
 
+      {/* Today's Route Progress */}
+      {plannerStops.length > 0 && (
+        <div style={{ marginTop: '4px', marginBottom: '16px' }}>
+          <DailyProgressBar stops={plannerStops} />
+        </div>
+      )}
+
       <VisitLogModal
         isOpen={visitModal}
         onClose={() => setVisitModal(false)}
@@ -695,6 +714,82 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
         isMobile
       />
     </div>
+  )
+}
+
+// ─── Daily Progress Bar ──────────────────────────────────────────────────
+
+function DailyProgressBar({ stops }: { stops: PlannerStop[] }) {
+  const total = stops.length
+  const done = stops.filter(s => s.completed).length
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100)
+
+  const getMessage = () => {
+    if (total === 0) return ''
+    if (done === 0) return `0/${total} stops visited. Time to hit the road! 🚗`
+    if (done === total) return `${total}/${total} stops done. You absolutely crushed it today! 🏆`
+    if (pct >= 75) return `${done}/${total} stops visited. Almost there — push through! 💪`
+    if (pct >= 50) return `${done}/${total} stops visited. Halfway! You're on fire. 🔥`
+    if (pct >= 25) return `${done}/${total} stops visited. Getting warmed up! Keep rolling.`
+    return `${done}/${total} stops visited. Just getting started!`
+  }
+
+  const barColor = done === total ? t.status.success : t.gold
+  const glowColor = done === total ? 'rgba(61,188,118,0.4)' : 'rgba(212,168,67,0.35)'
+
+  return (
+    <Link href="/planner" style={{ textDecoration: 'none', display: 'block', marginBottom: '20px' }}>
+      <div style={{
+        ...card,
+        padding: '14px 18px',
+        background: `linear-gradient(135deg, ${t.bg.elevated} 0%, ${t.bg.card} 100%)`,
+        border: `1px solid ${done === total ? 'rgba(61,188,118,0.3)' : t.goldBorder}`,
+        cursor: 'pointer',
+        transition: 'border-color 0.15s',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Today's Route
+          </span>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: barColor }}>
+            {done}/{total}
+          </span>
+        </div>
+        {/* XP bar track */}
+        <div style={{
+          height: '10px',
+          borderRadius: '99px',
+          backgroundColor: 'rgba(255,255,255,0.07)',
+          overflow: 'hidden',
+          marginBottom: '10px',
+          position: 'relative',
+        }}>
+          <div style={{
+            height: '100%',
+            width: `${pct}%`,
+            borderRadius: '99px',
+            background: done === total
+              ? `linear-gradient(90deg, #2da85e, ${t.status.success})`
+              : `linear-gradient(90deg, #b8891e, ${t.gold})`,
+            boxShadow: pct > 0 ? `0 0 10px ${glowColor}` : 'none',
+            transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          }} />
+          {/* Shimmer effect */}
+          {pct > 0 && pct < 100 && (
+            <div style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, bottom: 0,
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 2s infinite',
+            }} />
+          )}
+        </div>
+        <div style={{ fontSize: '12px', color: t.text.secondary, fontWeight: '500' }}>
+          {getMessage()}
+        </div>
+      </div>
+    </Link>
   )
 }
 
