@@ -1276,8 +1276,11 @@ export async function getPortalData(clientSlug: string) {
   const sb = getSupabase()
   const ninetyDaysAgo = nDaysAgoMT(90)
 
-  const [clientRes, visitsRes, placementsRes, ordersRes, eventsRes, suggestionsRes, campaignsRes] = await Promise.all([
-    getClient(clientSlug),
+  // Fetch client first so we have its ID for registrations
+  const client = await getClient(clientSlug)
+  if (!client) return null
+
+  const [visitsRes, placementsRes, ordersRes, eventsRes, suggestionsRes, campaignsRes, registrationsRes] = await Promise.all([
     sb.from('visits')
       .select('id, visited_at, status, notes, account_id, accounts(id, name, address, account_type)')
       .eq('client_slug', clientSlug)
@@ -1309,15 +1312,19 @@ export async function getPortalData(clientSlug: string) {
       .eq('client_slug', clientSlug)
       .in('status', ['active', 'paused', 'draft'])
       .order('created_at', { ascending: false }),
+    sb.from('state_registrations')
+      .select('*')
+      .eq('client_id', client.id)
+      .order('state'),
   ])
 
-  const client = clientRes
   const visits = visitsRes.data || []
   const placements = placementsRes.data || []
   const orders = ordersRes.data || []
   const events = eventsRes.data || []
   const suggestions = (suggestionsRes.data || []) as any[]
   const campaigns = (campaignsRes.data || []) as any[]
+  const registrations = (registrationsRes.data || []) as any[]
 
   // Treat as distributor inquiry if order_type is 'distributor', OR if it has a distributor email/rep
   // but no explicit 'direct' type (handles orders where order_type was never set)
@@ -1374,6 +1381,7 @@ export async function getPortalData(clientSlug: string) {
     distOrders,
     suggestions,
     campaigns,
+    registrations,
     funnel,
     visitTrend,
   }

@@ -2,14 +2,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
-import { getPortalData, submitClientSuggestion, getCampaignExpenses, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile } from '../../lib/data'
+import { getPortalData, submitClientSuggestion, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile } from '../../lib/data'
 import { t, card, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
 import { formatShortDateMT, startOfMonthMT, formatCurrency } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
-  MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp,
-  CheckCircle, Send, Building2, User, ExternalLink, Upload, FileDown,
-  Calendar, Star, AlertCircle, Folder, Download,
+  MapPin, Package, LogOut, ChevronDown, ChevronUp, CheckCircle, Send,
+  Building2, User, ExternalLink, Upload, FileDown, Calendar, Star,
+  AlertCircle, Folder, Download, Shield, TrendingUp, BarChart2,
 } from 'lucide-react'
 import type { ClientFile, ClientFileType } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
@@ -33,32 +33,21 @@ const STATUS_ACCENT: Record<string, string> = {
   'General Check-In': '#7a7060',
 }
 
-const ACTION_STATUSES = ['Will Order Soon', 'Needs Follow Up']
-const WIN_STATUSES = ['Just Ordered', 'Menu Feature Won', 'New Placement']
-
 const PLACEMENT_STATUS_LABELS: Record<string, string> = {
-  committed: 'Committed',
-  ordered: 'Ordered',
-  on_shelf: 'On Shelf',
-  reordering: 'Reordering',
+  committed: 'Committed', ordered: 'Ordered', on_shelf: 'On Shelf', reordering: 'Reordering',
 }
 const PLACEMENT_STATUS_COLORS: Record<string, string> = {
-  committed: '#e99928',
-  ordered: '#6aaee0',
-  on_shelf: '#3dbc76',
-  reordering: '#a78bfa',
+  committed: '#e99928', ordered: '#6aaee0', on_shelf: '#3dbc76', reordering: '#a78bfa',
+}
+const REG_STATUS_COLORS: Record<string, string> = {
+  active: '#3dbc76', pending: '#e99928', expired: '#e85540', not_registered: '#4a4a45',
+}
+const REG_STATUS_LABELS: Record<string, string> = {
+  active: 'Active', pending: 'Pending', expired: 'Expired', not_registered: 'Not Registered',
 }
 
-function SectionHeader({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-      <div style={{ fontSize: '11px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-        {children}
-      </div>
-      {action}
-    </div>
-  )
-}
+const WIN_STATUSES = ['Just Ordered', 'Menu Feature Won', 'New Placement']
+const ACTION_STATUSES = ['Will Order Soon', 'Needs Follow Up']
 
 export default function ClientPortalPage() {
   const { slug } = useParams() as { slug: string }
@@ -67,30 +56,14 @@ export default function ClientPortalPage() {
   const [error, setError] = useState('')
   const [isMobile, setIsMobile] = useState(false)
   const [isPreview, setIsPreview] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview')
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
-
-  // Visit filter
   const [visitFilter, setVisitFilter] = useState<'all' | 'action' | 'wins' | 'general'>('all')
-
-  // Suggest form
-  const [showSuggest, setShowSuggest] = useState(false)
-  const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
-  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [suggestErr, setSuggestErr] = useState('')
-
-  // Campaign state
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
-  const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
   const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
   const [uploadingAsset, setUploadingAsset] = useState(false)
-
-  // Order state
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
-
-  // Files state
   const [clientFiles, setClientFiles] = useState<ClientFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [fileUploading, setFileUploading] = useState(false)
@@ -100,11 +73,16 @@ export default function ClientPortalPage() {
   const [fileUploadDesc, setFileUploadDesc] = useState('')
   const [fileUploadExpiry, setFileUploadExpiry] = useState('')
   const portalFileInputRef = useRef<HTMLInputElement>(null)
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
+  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [suggestErr, setSuggestErr] = useState('')
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
+    check(); window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
 
@@ -114,28 +92,21 @@ export default function ClientPortalPage() {
       const user = session?.user ?? null
       if (!user) { window.location.replace(`/login?redirect=/portal/${slug}`); return }
       const { data: profile } = await sb.from('user_profiles').select('role, client_slug').eq('id', user.id).single()
-      const staffRoles = ['owner', 'admin', 'rep', 'intern']
-      const isStaff = staffRoles.includes(profile?.role)
+      const isStaff = ['owner', 'admin', 'rep', 'intern'].includes(profile?.role)
       const isPortal = profile?.role === 'portal'
-      if (!isStaff && !isPortal) {
-        setError(`Access denied — your account (role: ${profile?.role ?? 'no profile'}) is not authorized.`)
-        setLoading(false); return
-      }
+      if (!isStaff && !isPortal) { setError(`Access denied`); setLoading(false); return }
       if (isPortal && profile?.client_slug && profile.client_slug !== slug) {
-        setError(`Access denied — portal account is assigned to "${profile.client_slug}", not "${slug}".`)
-        setLoading(false); return
+        setError(`Access denied — this portal is for ${profile.client_slug}.`); setLoading(false); return
       }
       if (isStaff) setIsPreview(true)
       try {
         const d = await getPortalData(slug)
         setData(d)
-        // Fetch upcoming events
         sb.from('events')
           .select('id, title, event_type, start_time, accounts(name, address)')
           .eq('client_slug', slug)
           .gt('start_time', new Date().toISOString())
-          .order('start_time')
-          .limit(6)
+          .order('start_time').limit(6)
           .then(({ data: ev }) => setUpcomingEvents(ev || []))
         setFilesLoading(true)
         getClientFiles(slug).then(f => { setClientFiles(f); setFilesLoading(false) }).catch(() => setFilesLoading(false))
@@ -163,102 +134,89 @@ export default function ClientPortalPage() {
 
   function handlePrintReport() {
     if (!data) return
-    const { client: cl, visits: vs, placements: pls, orders: ords, events: evts } = data
+    const { client: cl, visits: vs, placements: pls, orders: ords } = data
     const mStart = startOfMonthMT()
     const mVisits = vs.filter((v: any) => v.visited_at >= mStart).length
     const actPlacements = pls.filter((p: any) => !p.lost_at)
     const nonDraftOrders = ords.filter((o: any) => o.status !== 'draft')
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const clName = (cl?.name || slug).replace(/</g, '&lt;')
-    const orderRows = nonDraftOrders.map((o: any) =>
-      `<tr><td>${(o.deliver_to_name || '—').replace(/</g, '&lt;')}</td><td>${isDistInquiry(o) ? 'Distributor Inquiry' : 'Purchase Order'}</td><td>${o.status}</td><td>${o.total_amount > 0 ? '$' + Number(o.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—'}</td><td>${formatShortDateMT(o.created_at)}</td></tr>`
-    ).join('')
-    const placementRows = actPlacements.slice(0, 40).map((p: any) =>
-      `<tr><td>${(p.accounts?.name || '—').replace(/</g, '&lt;')}</td><td>${(p.product_name || '—').replace(/</g, '&lt;')}</td><td>${p.status || '—'}</td></tr>`
-    ).join('')
-    const visitRows = vs.slice(0, 30).map((v: any) =>
-      `<tr><td>${(v.accounts?.name || '—').replace(/</g, '&lt;')}</td><td>${v.status}</td><td>${formatShortDateMT(v.visited_at)}</td><td>${(v.notes || '—').replace(/</g, '&lt;')}</td></tr>`
-    ).join('')
+    const isDistClient = cl?.order_type === 'distributor'
     const html = `<!DOCTYPE html><html><head><title>${clName} — Field Report</title>
-<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:48px 56px;color:#111;max-width:820px;margin:0 auto;font-size:13px}
-h1{font-size:24px;font-weight:800;margin:0 0 4px}.meta{color:#888;font-size:12px;margin-bottom:24px}
-h2{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#666;margin:28px 0 10px;border-bottom:1px solid #eee;padding-bottom:6px}
-.stats{display:flex;gap:12px;margin-bottom:24px}.stat{background:#f7f7f5;border-radius:8px;padding:12px 16px;flex:1}
-.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:4px}
-.stat-val{font-size:24px;font-weight:800}table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;font-size:10px;text-transform:uppercase;color:#666}
-td{padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;vertical-align:top}
-@media print{body{padding:24px}}</style></head><body>
-<h1>${clName} — Field Report</h1>
-<div class="meta">Generated ${dateStr} · Barley Bros · Fort Collins, CO</div>
-<div class="stats">
-  <div class="stat"><div class="stat-label">Visits This Month</div><div class="stat-val">${mVisits}</div></div>
-  <div class="stat"><div class="stat-label">Active Placements</div><div class="stat-val">${actPlacements.length}</div></div>
-  <div class="stat"><div class="stat-label">Orders (90 days)</div><div class="stat-val">${nonDraftOrders.length}</div></div>
-  <div class="stat"><div class="stat-label">Events</div><div class="stat-val">${evts.length}</div></div>
-</div>
-${nonDraftOrders.length > 0 ? `<h2>Orders</h2><table><thead><tr><th>Account</th><th>Type</th><th>Status</th><th>Amount</th><th>Date</th></tr></thead><tbody>${orderRows}</tbody></table>` : ''}
-${actPlacements.length > 0 ? `<h2>Active Placements (${actPlacements.length})</h2><table><thead><tr><th>Account</th><th>Product</th><th>Status</th></tr></thead><tbody>${placementRows}</tbody></table>` : ''}
-${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${visitRows}</tbody></table>` : ''}
-</body></html>`
+    <style>body{font-family:sans-serif;color:#111;max-width:800px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}h2{font-size:16px;margin-top:32px;border-bottom:2px solid #eee;padding-bottom:8px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #eee}th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666}.meta{color:#666;font-size:13px;margin-bottom:24px}</style>
+    </head><body>
+    <h1>${clName}</h1>
+    <div class="meta">Field Report — Generated by Barley Bros · ${dateStr}</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">Visits This Month</div><div style="font-size:28px;font-weight:700">${mVisits}</div></div>
+      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">Active Placements</div><div style="font-size:28px;font-weight:700">${actPlacements.length}</div></div>
+      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">${isDistClient ? 'Distributor Inquiries' : 'Orders'}</div><div style="font-size:28px;font-weight:700">${nonDraftOrders.length}</div></div>
+    </div>
+    ${vs.length > 0 ? `<h2>Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${vs.slice(0,20).map((v: any) => `<tr><td>${v.accounts?.name||''}</td><td>${v.status}</td><td>${formatShortDateMT(v.visited_at)}</td><td>${v.notes||''}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${actPlacements.length > 0 ? `<h2>Active Placements (${actPlacements.length})</h2><table><thead><tr><th>Account</th><th>Product</th><th>Status</th></tr></thead><tbody>${actPlacements.map((p: any) => `<tr><td>${p.accounts?.name||''}</td><td>${p.product_name}</td><td>${p.status}</td></tr>`).join('')}</tbody></table>` : ''}
+    </body></html>`
     const w = window.open('', '_blank')
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
   }
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 48, height: 48, borderRadius: '12px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '800', color: '#0f0f0d', margin: '0 auto 12px' }}>D</div>
-          <div style={{ color: t.text.muted, fontSize: '13px' }}>Loading your field report...</div>
-        </div>
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: '12px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '800', color: '#0f0f0d', margin: '0 auto 12px' }}>D</div>
+        <div style={{ color: t.text.muted, fontSize: '13px' }}>Loading your brand report...</div>
       </div>
-    )
-  }
+    </div>
+  )
 
-  if (error) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '14px', color: t.status.danger, marginBottom: '8px' }}>{error}</div>
-          <button onClick={() => { getSupabase().auth.signOut(); window.location.href = '/login' }}
-            style={{ fontSize: '12px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Sign in</button>
-        </div>
+  if (error) return (
+    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '14px', color: t.status.danger, marginBottom: '8px' }}>{error}</div>
+        <button onClick={() => { getSupabase().auth.signOut(); window.location.href = '/login' }} style={{ fontSize: '12px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Sign in again</button>
       </div>
-    )
-  }
+    </div>
+  )
 
-  const { client, visits, placements, orders, events, campaigns, funnel, visitTrend } = data
-  const isDistInquiry = (o: any) =>
-    o.order_type === 'distributor' || (o.order_type !== 'direct' && (o.distributor_email || o.distributor_rep_name))
-  const nonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
-  const distOrders = nonDraftOrders.filter(isDistInquiry)
-  const visibleOrders = nonDraftOrders
-
+  const { client, visits, placements, orders, events, campaigns, registrations, visitTrend } = data
   const accent = client?.color || t.gold
   const logoUrl = client ? clientLogoUrl(client) : null
+  const isDistributorClient = client?.order_type === 'distributor'
   const monthStart = startOfMonthMT()
   const monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
   const activePlacements = placements.filter((p: any) => !p.lost_at)
-  const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  const pad = isMobile ? '16px' : '32px 40px'
-
-  // Visit groupings
+  const nonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
   const actionVisits = visits.filter((v: any) => ACTION_STATUSES.includes(v.status))
   const winVisits = visits.filter((v: any) => WIN_STATUSES.includes(v.status))
   const generalVisits = visits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))
   const filteredVisits = visitFilter === 'action' ? actionVisits : visitFilter === 'wins' ? winVisits : visitFilter === 'general' ? generalVisits : visits
-
-  // Placement breakdown
+  const warmAccountCount = new Set(actionVisits.map((v: any) => v.account_id).filter(Boolean)).size
+  const warmAccounts = Object.values(
+    actionVisits.reduce((acc: any, v: any) => {
+      if (!v.account_id || acc[v.account_id]) return acc
+      acc[v.account_id] = v; return acc
+    }, {})
+  ) as any[]
   const placementBreakdown = ['committed', 'ordered', 'on_shelf', 'reordering'].map(status => ({
-    status,
+    status, label: PLACEMENT_STATUS_LABELS[status], color: PLACEMENT_STATUS_COLORS[status],
     count: activePlacements.filter((p: any) => p.status === status).length,
-    items: activePlacements.filter((p: any) => p.status === status),
   })).filter(g => g.count > 0)
+  const expiringRegs = registrations.filter((r: any) => {
+    if (!r.expiry_date || r.status === 'expired') return false
+    return (new Date(r.expiry_date).getTime() - Date.now()) < 60 * 86400000
+  })
+  const expiredRegs = registrations.filter((r: any) => r.status === 'expired')
 
-  // Pipeline numbers
-  const interestedAccounts = [...new Set(actionVisits.map((v: any) => v.account_id).filter(Boolean))].length
-  const confirmedOrders = nonDraftOrders.filter((o: any) => o.status === 'fulfilled').length
+  const TABS = [
+    { key: 'overview', label: 'Overview', icon: <BarChart2 size={13} /> },
+    { key: 'activity', label: 'Field Activity', icon: <MapPin size={13} />, count: visits.length },
+    { key: 'placements', label: 'Placements', icon: <Package size={13} />, count: activePlacements.length },
+    { key: 'orders', label: isDistributorClient ? 'Inquiries' : 'Orders', icon: <Send size={13} />, count: nonDraftOrders.length },
+    ...(campaigns?.length > 0 ? [{ key: 'campaigns', label: 'Campaigns', icon: <TrendingUp size={13} />, count: campaigns.length }] : []),
+    ...(registrations?.length > 0 ? [{ key: 'compliance', label: 'Compliance', icon: <Shield size={13} />, count: (expiringRegs.length + expiredRegs.length) || undefined, countDanger: true }] : []),
+    { key: 'files', label: 'Files', icon: <Folder size={13} />, count: clientFiles.length || undefined },
+  ]
+
+  const pad = isMobile ? '16px' : '28px 40px'
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, color: t.text.primary, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
@@ -266,13 +224,13 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
       {/* Preview banner */}
       {isPreview && (
         <div style={{ backgroundColor: '#7c3aed', color: '#fff', fontSize: '12px', fontWeight: '600', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <span>Previewing client portal — this is exactly what {client?.name || slug} sees when they log in.</span>
+          <span>Previewing client portal — this is exactly what {client?.name || slug} sees.</span>
           <a href={`/clients/${slug}`} style={{ color: '#fff', fontSize: '11px', opacity: 0.85, textDecoration: 'underline', whiteSpace: 'nowrap' }}>← Back to CRM</a>
         </div>
       )}
 
       {/* Sticky header */}
-      <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: `0 ${isMobile ? '16px' : '32px'}`, height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
+      <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: `0 ${isMobile ? '16px' : '32px'}`, height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {logoUrl ? (
             <img src={logoUrl} alt={client?.name} style={{ height: '32px', width: 'auto', maxWidth: '100px', objectFit: 'contain' }} />
@@ -283,7 +241,7 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
           )}
           <div>
             <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, lineHeight: 1.2 }}>{client?.name}</div>
-            <div style={{ fontSize: '10px', color: t.text.muted, lineHeight: 1.2 }}>Barley Bros Field Report</div>
+            <div style={{ fontSize: '10px', color: t.text.muted, lineHeight: 1.2 }}>Barley Bros — Brand Report</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -296,349 +254,157 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
         </div>
       </header>
 
+      {/* KPI strip — always visible */}
+      <div style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${t.border.subtle}`, padding: `12px ${isMobile ? '16px' : '32px'}` }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px' }}>
+          {/* Visits */}
+          <button onClick={() => setActiveTab('activity')} style={{ background: 'none', border: `1px solid ${activeTab === 'activity' ? accent : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'activity' ? `${accent}0d` : t.bg.card }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Visits This Month</div>
+            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'activity' ? accent : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{monthVisits}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{visits.length} total in 90 days</div>
+          </button>
+          {/* Placements */}
+          <button onClick={() => setActiveTab('placements')} style={{ background: 'none', border: `1px solid ${activeTab === 'placements' ? t.status.success : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'placements' ? `${t.status.success}0d` : t.bg.card }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Active Placements</div>
+            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'placements' ? t.status.success : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{activePlacements.length}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{placements.length} total tracked</div>
+          </button>
+          {/* Orders / Inquiries */}
+          <button onClick={() => setActiveTab('orders')} style={{ background: 'none', border: `1px solid ${activeTab === 'orders' ? t.status.info : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'orders' ? `${t.status.info}0d` : t.bg.card }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>{isDistributorClient ? 'Distributor Inquiries' : 'Direct Orders'}</div>
+            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'orders' ? t.status.info : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{nonDraftOrders.length}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{isDistributorClient ? 'sent to distributor on your behalf' : 'purchase orders placed'}</div>
+          </button>
+          {/* Warm accounts */}
+          <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ background: 'none', border: `1px solid ${(activeTab === 'activity' && visitFilter === 'action') ? '#6aaee0' : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: (activeTab === 'activity' && visitFilter === 'action') ? '#6aaee00d' : t.bg.card }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Warm Accounts</div>
+            <div style={{ fontSize: '28px', fontWeight: '800', color: (activeTab === 'activity' && visitFilter === 'action') ? '#6aaee0' : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{warmAccountCount}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>accounts likely to order soon</div>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab navigation */}
+      <div style={{ backgroundColor: t.bg.elevated, borderBottom: `1px solid ${t.border.default}`, position: 'sticky', top: '60px', zIndex: 15, overflowX: 'auto' }}>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', padding: `0 ${isMobile ? '12px' : '32px'}`, gap: '2px', whiteSpace: 'nowrap' }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); if (tab.key === 'activity') setVisitFilter('all') }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: '12px', fontWeight: activeTab === tab.key ? '700' : '500',
+                color: activeTab === tab.key ? accent : t.text.secondary,
+                borderBottom: `2px solid ${activeTab === tab.key ? accent : 'transparent'}`,
+                transition: 'color 150ms',
+                position: 'relative',
+              }}
+            >
+              {tab.icon}
+              {tab.label}
+              {tab.count != null && tab.count > 0 && (
+                <span style={{
+                  fontSize: '10px', fontWeight: '700', lineHeight: 1,
+                  backgroundColor: tab.countDanger ? `${t.status.danger}22` : `${accent}22`,
+                  color: tab.countDanger ? t.status.danger : accent,
+                  padding: '2px 5px', borderRadius: '8px',
+                }}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: pad }}>
 
-        {/* ── Hero ── */}
-        <div style={{ marginBottom: '32px', paddingBottom: '28px', borderBottom: `1px solid ${t.border.subtle}` }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: isMobile ? '26px' : '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.03em', lineHeight: 1.1, marginBottom: '8px' }}>
-                {month} Field Report
-              </div>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '13px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <MapPin size={13} color={accent} /> {visits.length} account visits in 90 days
-                </span>
-                {activePlacements.length > 0 && (
-                  <span style={{ fontSize: '13px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Package size={13} color={t.status.success} /> {activePlacements.length} active placements
-                  </span>
-                )}
-                {events.length > 0 && (
-                  <span style={{ fontSize: '13px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Calendar size={13} color={t.status.warning} /> {events.length} events in 90 days
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── KPI tiles ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: '12px', marginBottom: '28px' }}>
-          {/* Visits */}
-          <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${accent}, transparent)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Visits This Month</div>
-              <MapPin size={16} color={accent} opacity={0.7} />
-            </div>
-            <div style={{ fontSize: '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.04em', lineHeight: 1 }}>{monthVisits}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>{visits.length} total in 90 days</div>
-          </div>
-
-          {/* Placements */}
-          <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${t.status.success}, transparent)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Active Placements</div>
-              <Package size={16} color={t.status.success} opacity={0.7} />
-            </div>
-            <div style={{ fontSize: '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.04em', lineHeight: 1 }}>{activePlacements.length}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>{placements.length} total tracked</div>
-          </div>
-
-          {/* Orders */}
-          <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${t.status.info}, transparent)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>{distOrders.length > 0 ? 'Order Inquiries Sent' : 'Orders Placed'}</div>
-              <Send size={16} color={t.status.info} opacity={0.7} />
-            </div>
-            <div style={{ fontSize: '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.04em', lineHeight: 1 }}>
-              {distOrders.length > 0 ? distOrders.length : visibleOrders.length}
-            </div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>
-              {distOrders.length > 0 ? 'to distributors on your behalf' : 'purchase orders placed'}
-            </div>
-          </div>
-
-          {/* Events */}
-          <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${t.status.warning}, transparent)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Events & Tastings</div>
-              <TrendingUp size={16} color={t.status.warning} opacity={0.7} />
-            </div>
-            <div style={{ fontSize: '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.04em', lineHeight: 1 }}>{events.length}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>
-              {upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming` : 'in last 90 days'}
-            </div>
-          </div>
-
-          {/* Showing Interest */}
-          <div style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${accent}, transparent)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Showing Interest</div>
-              <Star size={16} color={accent} opacity={0.7} />
-            </div>
-            <div style={{ fontSize: '34px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.04em', lineHeight: 1 }}>{interestedAccounts}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>accounts following up</div>
-          </div>
-        </div>
-
-        {/* ── Visit Trend ── */}
-        {visitTrend.some((w: any) => w.visits > 0) && (
-          <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-            <SectionHeader>Account Visits — Last 12 Weeks</SectionHeader>
-            <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '16px' }}>Each bar represents accounts our team visited that week on your behalf.</div>
-            <ResponsiveContainer width="100%" height={isMobile ? 120 : 160}>
-              <BarChart data={visitTrend} barCategoryGap="35%">
-                <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
-                <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={24} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '8px', fontSize: '12px' }}
-                  labelStyle={{ color: t.text.muted }}
-                  itemStyle={{ color: accent }}
-                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                  formatter={(value: any) => [value, 'visits']}
-                  labelFormatter={(label: any, payload: any) => {
-                    const weekEnd = payload?.[0]?.payload?.weekEnd
-                    return weekEnd ? `${label} – ${weekEnd}` : label
-                  }}
-                />
-                <Bar dataKey="visits" fill={accent} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* ── Field Activity ── */}
-        <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '11px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-              Recent Field Activity — Last 90 Days
-            </div>
-            {/* Filter chips */}
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {([
-                { key: 'all', label: `All (${visits.length})` },
-                { key: 'action', label: `Needs Attention (${actionVisits.length})`, color: t.status.warning },
-                { key: 'wins', label: `Wins (${winVisits.length})`, color: t.status.success },
-                { key: 'general', label: `General (${generalVisits.length})` },
-              ] as { key: string; label: string; color?: string }[]).map(f => (
-                <button key={f.key} onClick={() => setVisitFilter(f.key as any)} style={{
-                  padding: '4px 10px', borderRadius: '20px', fontSize: '11px', cursor: 'pointer', fontWeight: visitFilter === f.key ? '700' : '500',
-                  border: `1px solid ${visitFilter === f.key ? (f.color || accent) : t.border.default}`,
-                  backgroundColor: visitFilter === f.key ? `${(f.color || accent)}22` : 'transparent',
-                  color: visitFilter === f.key ? (f.color || accent) : t.text.muted,
-                  transition: 'all 100ms ease',
-                }}>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {visits.length === 0 ? (
-            <div style={{ fontSize: '13px', color: t.text.muted, padding: '24px 0', textAlign: 'center' }}>No field activity recorded in this period.</div>
-          ) : filteredVisits.length === 0 ? (
-            <div style={{ fontSize: '13px', color: t.text.muted, padding: '24px 0', textAlign: 'center' }}>No visits in this category.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {filteredVisits.slice(0, 30).map((v: any) => {
-                const ac = STATUS_ACCENT[v.status] || t.text.muted
-                return (
-                  <div key={v.id} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px 12px 16px', boxShadow: `inset 3px 0 0 ${ac}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '4px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
-                        <span style={badge.visitStatus(v.status)}>{v.status}</span>
-                        <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{v.accounts?.name || 'Unknown account'}</span>
-                      </div>
-                      <span style={{ fontSize: '11px', color: t.text.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</span>
-                    </div>
-                    {v.accounts?.address && (
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: v.notes ? '6px' : '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts.address}</div>
-                    )}
-                    {v.notes && (
-                      <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.6, borderLeft: `2px solid ${t.border.default}`, paddingLeft: '10px', marginTop: '6px' }}>
-                        {v.notes}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {filteredVisits.length > 30 && (
-                <div style={{ fontSize: '12px', color: t.text.muted, textAlign: 'center', padding: '8px 0' }}>
-                  +{filteredVisits.length - 30} more visits in this period
+        {/* ══ OVERVIEW TAB ══ */}
+        {activeTab === 'overview' && (
+          <div>
+            {/* Visit trend */}
+            {visitTrend.some((w: any) => w.visits > 0) && (
+              <div style={{ ...card, padding: isMobile ? '16px' : '22px 28px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>Account Visits — Last 12 Weeks</div>
+                  <button onClick={() => setActiveTab('activity')} style={{ fontSize: '11px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+                <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '14px' }}>Each bar = accounts our team visited that week on your behalf.</div>
+                <ResponsiveContainer width="100%" height={isMobile ? 110 : 150}>
+                  <BarChart data={visitTrend} barCategoryGap="35%">
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
+                    <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 10 }} axisLine={false} tickLine={false} interval={isMobile ? 2 : 1} />
+                    <YAxis tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '8px', fontSize: '12px' }}
+                      labelStyle={{ color: t.text.muted }} itemStyle={{ color: accent }}
+                      cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                      formatter={(value: any) => [value, 'visits']}
+                      labelFormatter={(label: any, payload: any) => { const wE = payload?.[0]?.payload?.weekEnd; return wE ? `${label} – ${wE}` : label }}
+                    />
+                    <Bar dataKey="visits" fill={accent} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
-        {/* ── Active Placements ── */}
-        {activePlacements.length > 0 && (
-          <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-            <SectionHeader>Active Placement Coverage</SectionHeader>
-
-            {/* Status breakdown */}
-            {placementBreakdown.length > 1 && (
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap' }}>
-                {placementBreakdown.map(g => (
-                  <div key={g.status} style={{ backgroundColor: `${PLACEMENT_STATUS_COLORS[g.status]}14`, border: `1px solid ${PLACEMENT_STATUS_COLORS[g.status]}30`, borderRadius: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: PLACEMENT_STATUS_COLORS[g.status], boxShadow: `0 0 5px ${PLACEMENT_STATUS_COLORS[g.status]}88` }} />
-                    <div>
-                      <div style={{ fontSize: '18px', fontWeight: '800', color: PLACEMENT_STATUS_COLORS[g.status], lineHeight: 1 }}>{g.count}</div>
-                      <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '1px' }}>{PLACEMENT_STATUS_LABELS[g.status]}</div>
+            {/* 2-col: recent wins + warm accounts */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              {/* Recent wins */}
+              <div style={{ ...card, padding: '18px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Recent Wins</div>
+                  {winVisits.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('wins') }} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
+                </div>
+                {winVisits.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No wins recorded yet in the last 90 days.</div>
+                ) : winVisits.slice(0, 5).map((v: any) => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: t.status.success, flexShrink: 0, marginTop: '5px', boxShadow: `0 0 4px ${t.status.success}88` }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || 'Unknown'}</div>
+                      <div style={{ fontSize: '11px', color: t.status.success, marginTop: '1px' }}>{v.status}</div>
                     </div>
+                    <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</div>
                   </div>
                 ))}
               </div>
-            )}
 
-            {/* Placement list */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
-              {activePlacements.slice(0, 24).map((p: any) => {
-                const statusColor = PLACEMENT_STATUS_COLORS[p.status] || t.text.muted
-                return (
-                  <div key={p.id} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px', border: `1px solid ${t.border.subtle}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: statusColor, flexShrink: 0, boxShadow: `0 0 4px ${statusColor}88` }} />
+              {/* Warm accounts */}
+              <div style={{ ...card, padding: '18px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Warm Accounts</div>
+                    <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts our team is actively following up with</div>
+                  </div>
+                  {warmAccounts.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ fontSize: '11px', color: '#6aaee0', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
+                </div>
+                {warmAccounts.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No active follow-ups at the moment.</div>
+                ) : warmAccounts.slice(0, 5).map((v: any) => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: STATUS_ACCENT[v.status] || '#6aaee0', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.accounts?.name}</div>
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>
-                        {p.product_name}{p.placement_type ? ` · ${p.placement_type.replace('_', ' ')}` : ''}
-                      </div>
+                      <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || 'Unknown'}</div>
                     </div>
-                    <span style={{ fontSize: '10px', fontWeight: '700', color: statusColor, backgroundColor: `${statusColor}18`, padding: '2px 7px', borderRadius: '6px', textTransform: 'capitalize', flexShrink: 0 }}>
-                      {PLACEMENT_STATUS_LABELS[p.status] || p.status}
-                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: '700', color: STATUS_ACCENT[v.status] || '#6aaee0', backgroundColor: `${STATUS_ACCENT[v.status] || '#6aaee0'}18`, padding: '2px 6px', borderRadius: '6px', flexShrink: 0 }}>{v.status}</span>
                   </div>
-                )
-              })}
-            </div>
-            {activePlacements.length > 24 && (
-              <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '10px' }}>+{activePlacements.length - 24} more placements</div>
-            )}
-          </div>
-        )}
-
-        {/* ── Orders / Inquiries ── */}
-        {visibleOrders.length > 0 && (
-          <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '18px 16px' : '22px 28px' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ marginTop: '-14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '10px' }}>
-                  {distOrders.length > 0 ? 'Order Inquiries — Last 90 Days' : 'Orders — Last 90 Days'}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                  <span style={{ fontSize: '36px', fontWeight: '800', color: accent, letterSpacing: '-0.03em', lineHeight: 1 }}>{visibleOrders.length}</span>
-                  <span style={{ fontSize: '13px', color: t.text.muted }}>
-                    {distOrders.length > 0 ? 'distributor inquiries sent on your behalf' : 'orders placed on your behalf'}
-                  </span>
-                </div>
-                {distOrders.length > 0 && (
-                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '8px', lineHeight: 1.6, borderLeft: `3px solid ${t.border.default}`, paddingLeft: '10px' }}>
-                    Order inquiries represent accounts that expressed interest — we send a formal request to the distributor to create a record of the demand we generated.
-                  </div>
-                )}
+                ))}
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {visibleOrders.map((o: any) => {
-                const isExpanded = expandedOrder === o.id
-                const lineItems = orderLineItems[o.id]
-                const STATUS_COLORS: Record<string, string> = { sent: t.status.info, fulfilled: t.status.success, cancelled: t.status.danger }
-                const statusColor = STATUS_COLORS[o.status] || t.text.muted
-                const isOrderInquiry = isDistInquiry(o)
-                return (
-                  <div key={o.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', overflow: 'hidden' }}>
-                    <button
-                      onClick={async () => {
-                        if (isExpanded) { setExpandedOrder(null) } else {
-                          setExpandedOrder(o.id)
-                          if (orderLineItems[o.id] === undefined) {
-                            const { data: liData } = await getSupabase().from('po_line_items').select('product_name, quantity, price, total').eq('po_id', o.id).order('id')
-                            setOrderLineItems(prev => ({ ...prev, [o.id]: liData || [] }))
-                          }
-                        }
-                      }}
-                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', textAlign: 'left' }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name}</span>
-                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{o.status}</span>
-                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.page, color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
-                            {isOrderInquiry ? 'Order Inquiry' : 'Purchase Order'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '11px', color: t.text.muted }}>
-                          {o.po_number} · {formatShortDateMT(o.created_at)}
-                          {o.deliver_to_address && !isMobile ? ` · ${o.deliver_to_address}` : ''}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                        {o.total_amount > 0 && <span style={{ fontSize: '14px', fontWeight: '700', color: accent }}>{formatCurrency(o.total_amount)}</span>}
-                        <span style={{ color: t.text.muted, fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
-                      </div>
-                    </button>
-                    {isExpanded && (
-                      <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '14px 16px' }}>
-                        {lineItems === undefined ? (
-                          <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>Loading details...</div>
-                        ) : lineItems.length === 0 ? (
-                          <div style={{ fontSize: '12px', color: t.text.muted }}>No line items on file.</div>
-                        ) : (
-                          <div>
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto auto' : '1fr auto auto auto', gap: '4px 16px', paddingBottom: '8px', marginBottom: '4px', borderBottom: `1px solid ${t.border.subtle}` }}>
-                              {['Product', 'Qty', ...(isMobile ? [] : ['Unit Price']), 'Total'].map(h => (
-                                <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Product' ? 'left' : 'right' }}>{h}</div>
-                              ))}
-                            </div>
-                            {lineItems.map((li: any, idx: number) => (
-                              <div key={idx} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto auto' : '1fr auto auto auto', gap: '4px 16px', padding: '6px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
-                                <div style={{ fontSize: '12px', color: t.text.primary }}>{li.product_name}</div>
-                                <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{li.quantity}</div>
-                                {!isMobile && <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{formatCurrency(li.price)}</div>}
-                                <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, textAlign: 'right' }}>{formatCurrency(li.total)}</div>
-                              </div>
-                            ))}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '10px' }}>
-                              <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>Total: {formatCurrency(o.total_amount)}</span>
-                            </div>
-                          </div>
-                        )}
-                        {(o.distributor_email || o.distributor_rep_name) && (
-                          <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${t.border.subtle}` }}>
-                            Sent to: {o.distributor_rep_name || ''}{o.distributor_email ? ` · ${o.distributor_email}` : ''}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
-        {/* ── Events & Tastings ── */}
-        {(upcomingEvents.length > 0 || events.length > 0) && (
-          <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-            <SectionHeader>Events & Tastings</SectionHeader>
+            {/* Upcoming events */}
             {upcomingEvents.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '10px', fontWeight: '700', color: t.status.success, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Upcoming</div>
+              <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary, marginBottom: '12px' }}>Upcoming Events & Tastings</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {upcomingEvents.map((e: any) => (
-                    <div key={e.id} style={{ backgroundColor: `${t.status.success}0d`, border: `1px solid ${t.status.success}22`, borderRadius: '8px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Calendar size={14} color={t.status.success} style={{ flexShrink: 0 }} />
+                  {upcomingEvents.slice(0, 3).map((e: any) => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', backgroundColor: `${t.status.success}0d`, border: `1px solid ${t.status.success}22`, borderRadius: '8px' }}>
+                      <Calendar size={14} color={t.status.success} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{e.title}</div>
-                        {e.accounts?.name && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>{e.accounts.name}</div>}
+                        {e.accounts?.name && <div style={{ fontSize: '11px', color: t.text.muted }}>{e.accounts.name}</div>}
                       </div>
                       <div style={{ fontSize: '11px', color: t.status.success, fontWeight: '600', flexShrink: 0 }}>
                         {new Date(e.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -648,384 +414,595 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
                 </div>
               </div>
             )}
-            {events.length > 0 && (
-              <div>
-                {upcomingEvents.length > 0 && <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Past 90 Days</div>}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {events.slice(0, 8).map((e: any) => (
-                    <div key={e.id} style={{ backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', border: `1px solid ${t.border.subtle}` }}>
-                      <Calendar size={14} color={t.text.muted} style={{ flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{e.title}</div>
-                        {e.accounts?.name && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>{e.accounts.name}</div>}
+
+            {/* Placements breakdown summary */}
+            {activePlacements.length > 0 && (
+              <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>{activePlacements.length} Active Placements</div>
+                  <button onClick={() => setActiveTab('placements')} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>View all →</button>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {placementBreakdown.map(g => (
+                    <div key={g.status} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: `${g.color}14`, border: `1px solid ${g.color}33`, borderRadius: '8px', padding: '8px 14px' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: g.color, boxShadow: `0 0 5px ${g.color}88` }} />
+                      <div>
+                        <div style={{ fontSize: '18px', fontWeight: '800', color: g.color, lineHeight: 1 }}>{g.count}</div>
+                        <div style={{ fontSize: '10px', color: t.text.muted }}>{g.label}</div>
                       </div>
-                      <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(e.start_time)}</div>
                     </div>
                   ))}
                 </div>
+                {/* Stacked bar */}
+                {activePlacements.length > 0 && (
+                  <div style={{ marginTop: '12px', height: '6px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden', display: 'flex' }}>
+                    {placementBreakdown.map(g => (
+                      <div key={g.status} style={{ width: `${(g.count / activePlacements.length) * 100}%`, backgroundColor: g.color, transition: 'width 400ms ease' }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Compliance alerts in overview */}
+            {(expiringRegs.length > 0 || expiredRegs.length > 0) && (
+              <div style={{ ...card, padding: '16px 20px', marginBottom: '20px', border: `1px solid ${t.status.danger}33`, backgroundColor: `${t.status.danger}07` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertCircle size={16} color={t.status.danger} />
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: t.status.danger }}>
+                        {expiredRegs.length > 0 ? `${expiredRegs.length} expired registration${expiredRegs.length > 1 ? 's' : ''}` : ''}{expiredRegs.length > 0 && expiringRegs.length > 0 ? ' · ' : ''}{expiringRegs.length > 0 ? `${expiringRegs.length} expiring within 60 days` : ''}
+                      </div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Action required — see Compliance tab</div>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveTab('compliance')} style={{ fontSize: '11px', color: t.status.danger, background: 'none', border: `1px solid ${t.status.danger}44`, borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', fontWeight: '600' }}>View →</button>
+                </div>
+              </div>
+            )}
+
+            {/* Suggest section */}
+            <div style={{ ...card, padding: isMobile ? '16px' : '22px 28px' }}>
+              <button onClick={() => setShowSuggest(!showSuggest)} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 0 }}>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary }}>Suggest an Account or Contact</div>
+                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '3px' }}>Know a bar, restaurant, or rep we should be talking to?</div>
+                </div>
+                {showSuggest ? <ChevronUp size={16} color={t.text.muted} /> : <ChevronDown size={16} color={t.text.muted} />}
+              </button>
+              {showSuggest && (
+                <div style={{ marginTop: '20px' }}>
+                  {submitted ? (
+                    <div style={{ padding: '16px', backgroundColor: `${t.status.success}14`, border: `1px solid ${t.status.success}44`, borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <CheckCircle size={18} color={t.status.success} />
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '600', color: t.status.success }}>Submitted — thank you!</div>
+                        <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Our team will review and follow up.</div>
+                      </div>
+                      <button onClick={() => setSubmitted(false)} style={{ marginLeft: 'auto', fontSize: '12px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>Add another</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {(['account', 'contact'] as const).map(type => (
+                          <button key={type} onClick={() => setSuggestType(type)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
+                            {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
+                            {type === 'account' ? 'An Account' : 'A Contact'}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
+                          <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie — Bar Manager'} style={inputStyle} />
+                        </div>
+                        {suggestType === 'account' && (
+                          <div>
+                            <label style={labelStyle}>Address (optional)</label>
+                            <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="City or full address" style={inputStyle} />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Reason *</label>
+                        <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={selectStyle}>
+                          <option value="">Select a reason</option>
+                          {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Notes (optional)</label>
+                        <input value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any context that would help our team..." style={inputStyle} />
+                      </div>
+                      {suggestErr && <div style={{ fontSize: '12px', color: t.status.danger }}>{suggestErr}</div>}
+                      <button onClick={handleSuggest} disabled={submitting || !suggestForm.name.trim() || !suggestForm.reason} style={{ padding: '11px 20px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', opacity: submitting || !suggestForm.name.trim() || !suggestForm.reason ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <Send size={14} /> {submitting ? 'Sending...' : 'Submit to Barley Bros'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ══ ACTIVITY TAB ══ */}
+        {activeTab === 'activity' && (
+          <div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              {([
+                { key: 'all', label: `All (${visits.length})` },
+                { key: 'wins', label: `Wins (${winVisits.length})`, color: t.status.success },
+                { key: 'action', label: `Needs Attention (${actionVisits.length})`, color: '#6aaee0' },
+                { key: 'general', label: `General (${generalVisits.length})` },
+              ] as { key: string; label: string; color?: string }[]).map(f => (
+                <button key={f.key} onClick={() => setVisitFilter(f.key as any)} style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: visitFilter === f.key ? '700' : '500', border: `1px solid ${visitFilter === f.key ? (f.color || accent) : t.border.default}`, backgroundColor: visitFilter === f.key ? `${(f.color || accent)}22` : 'transparent', color: visitFilter === f.key ? (f.color || accent) : t.text.muted }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {filteredVisits.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '40px 0', textAlign: 'center' }}>No visits in this category.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {filteredVisits.map((v: any) => {
+                  const ac = STATUS_ACCENT[v.status] || t.text.muted
+                  return (
+                    <div key={v.id} style={{ ...card, padding: '12px 14px 12px 16px', boxShadow: `inset 3px 0 0 ${ac}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: v.notes ? '8px' : '0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
+                          <span style={badge.visitStatus(v.status)}>{v.status}</span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{v.accounts?.name || 'Unknown account'}</span>
+                          {v.accounts?.address && !isMobile && <span style={{ fontSize: '11px', color: t.text.muted }}>{v.accounts.address}</span>}
+                        </div>
+                        <span style={{ fontSize: '11px', color: t.text.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</span>
+                      </div>
+                      {v.notes && <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.6, borderLeft: `2px solid ${t.border.default}`, paddingLeft: '10px' }}>{v.notes}</div>}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Campaigns ── */}
-        {campaigns && campaigns.length > 0 && (
-          <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-            <SectionHeader>Active Campaigns ({campaigns.length})</SectionHeader>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {campaigns.map((camp: any) => {
-                const isExpanded = expandedCampaign === camp.id
-                const milestones: any[] = camp.campaign_milestones || []
-                const completedMs = milestones.filter((m: any) => m.completed).length
-                const expenses: any[] = campaignExpenses[camp.id] || []
-                const assets: any[] = campaignAssets[camp.id] || []
-                const totalExpenses = expenses.reduce((s: number, exp: any) => s + Number(exp.amount || 0), 0)
-                const msPct = milestones.length > 0 ? Math.round((completedMs / milestones.length) * 100) : 0
-                const statusColors: Record<string, string> = { active: t.status.success, completed: t.status.info, paused: t.status.warning, draft: t.text.muted }
-                const statusColor = statusColors[camp.status] || t.text.muted
-                return (
-                  <div key={camp.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', overflow: 'hidden' }}>
-                    <button
-                      onClick={async () => {
-                        if (isExpanded) { setExpandedCampaign(null) } else {
-                          setExpandedCampaign(camp.id)
-                          if (!campaignExpenses[camp.id]) {
-                            const [exps, asts] = await Promise.all([getCampaignExpenses(camp.id).catch(() => []), getCampaignAssets(camp.id).catch(() => [])])
-                            setCampaignExpenses(prev => ({ ...prev, [camp.id]: exps }))
-                            setCampaignAssets(prev => ({ ...prev, [camp.id]: asts }))
+        {/* ══ PLACEMENTS TAB ══ */}
+        {activeTab === 'placements' && (
+          <div>
+            {activePlacements.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No active placements tracked yet.</div>
+            ) : (
+              <>
+                {/* Status breakdown */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  {placementBreakdown.map(g => (
+                    <div key={g.status} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: `${g.color}14`, border: `1px solid ${g.color}33`, borderRadius: '8px', padding: '10px 16px' }}>
+                      <div style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: g.color, boxShadow: `0 0 5px ${g.color}88` }} />
+                      <div>
+                        <div style={{ fontSize: '22px', fontWeight: '800', color: g.color, lineHeight: 1 }}>{g.count}</div>
+                        <div style={{ fontSize: '10px', color: t.text.muted }}>{g.label}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Progress bar */}
+                <div style={{ height: '6px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden', display: 'flex', marginBottom: '20px' }}>
+                  {placementBreakdown.map(g => <div key={g.status} style={{ width: `${(g.count / activePlacements.length) * 100}%`, backgroundColor: g.color }} />)}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
+                  {activePlacements.map((p: any) => {
+                    const sc = PLACEMENT_STATUS_COLORS[p.status] || t.text.muted
+                    return (
+                      <div key={p.id} style={{ ...card, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sc, flexShrink: 0, boxShadow: `0 0 4px ${sc}88` }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.accounts?.name}</div>
+                          <div style={{ fontSize: '11px', color: t.text.muted }}>{p.product_name}{p.placement_type ? ` · ${p.placement_type.replace('_', ' ')}` : ''}{p.price_point ? ` · $${p.price_point}` : ''}</div>
+                        </div>
+                        <span style={{ fontSize: '10px', fontWeight: '700', color: sc, backgroundColor: `${sc}18`, padding: '2px 7px', borderRadius: '6px', flexShrink: 0 }}>{PLACEMENT_STATUS_LABELS[p.status]}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══ ORDERS TAB ══ */}
+        {activeTab === 'orders' && (
+          <div>
+            {/* Distributor explanation */}
+            {isDistributorClient && (
+              <div style={{ ...card, padding: '16px 20px', marginBottom: '20px', border: `1px solid ${t.border.gold}`, backgroundColor: t.goldDim }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: t.gold, marginBottom: '6px' }}>About Distributor Inquiries</div>
+                <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.6 }}>
+                  When our team generates demand for your brand at an account, we submit a formal inquiry to your distributor rep to fulfill it. Each entry below represents market demand we've created for your brand and documented with your distribution partner.
+                </div>
+              </div>
+            )}
+            {nonDraftOrders.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No {isDistributorClient ? 'inquiries' : 'orders'} on record yet.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {nonDraftOrders.map((o: any) => {
+                  const isExpanded = expandedOrder === o.id
+                  const lineItems = orderLineItems[o.id]
+                  const STATUS_COLORS: Record<string, string> = { sent: t.status.info, fulfilled: t.status.success, cancelled: t.status.danger }
+                  const statusColor = STATUS_COLORS[o.status] || t.text.muted
+                  return (
+                    <div key={o.id} style={{ ...card, overflow: 'hidden' }}>
+                      <button onClick={async () => {
+                        if (isExpanded) { setExpandedOrder(null) } else {
+                          setExpandedOrder(o.id)
+                          if (orderLineItems[o.id] === undefined) {
+                            const { data: li } = await getSupabase().from('po_line_items').select('product_name, quantity, price, total').eq('po_id', o.id).order('id')
+                            setOrderLineItems(prev => ({ ...prev, [o.id]: li || [] }))
                           }
                         }
-                      }}
-                      style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{camp.title || camp.name}</span>
-                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{camp.status}</span>
+                      }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name}</span>
+                            <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{o.status}</span>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.elevated, color: t.text.muted, fontWeight: '600', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
+                              {isDistributorClient ? 'Distributor Inquiry' : 'Purchase Order'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: t.text.muted }}>{o.po_number} · {formatShortDateMT(o.created_at)}{o.distributor_rep_name ? ` · Rep: ${o.distributor_rep_name}` : ''}</div>
                         </div>
-                        <span style={{ color: t.text.muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: t.text.muted }}>
-                        {camp.start_date && <span>{camp.start_date}{camp.end_date ? ` – ${camp.end_date}` : ''}</span>}
-                        {milestones.length > 0 && <span>{completedMs} of {milestones.length} milestones complete</span>}
-                        {expenses.length > 0 && <span style={{ color: accent }}>Spend: {formatCurrency(totalExpenses)}</span>}
-                      </div>
-                      {milestones.length > 0 && (
-                        <div style={{ height: '4px', backgroundColor: t.border.subtle, borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${msPct}%`, backgroundColor: accent, borderRadius: '2px', transition: 'width 300ms ease' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                          {o.total_amount > 0 && <span style={{ fontSize: '14px', fontWeight: '700', color: accent }}>{formatCurrency(o.total_amount)}</span>}
+                          <span style={{ color: t.text.muted, fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
                         </div>
-                      )}
-                    </button>
-                    {isExpanded && (
-                      <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        {milestones.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Milestones</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                              {milestones.map((m: any) => (
-                                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <div style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: m.completed ? t.status.success : 'transparent', border: `2px solid ${m.completed ? t.status.success : t.border.hover}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    {m.completed && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#0f0f0d' }} />}
-                                  </div>
-                                  <span style={{ fontSize: '12px', color: m.completed ? t.text.muted : t.text.primary, textDecoration: m.completed ? 'line-through' : 'none' }}>{m.title}</span>
-                                  {m.due_date && <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: 'auto' }}>{m.due_date}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {expenses.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Campaign Expenses — {formatCurrency(totalExpenses)}</div>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              {(() => {
-                                const byCategory: Record<string, number> = {}
-                                expenses.forEach((exp: any) => { byCategory[exp.category] = (byCategory[exp.category] || 0) + Number(exp.amount || 0) })
-                                return Object.entries(byCategory).map(([cat, amt]) => (
-                                  <div key={cat} style={{ backgroundColor: t.bg.page, border: `1px solid ${t.border.subtle}`, borderRadius: '6px', padding: '6px 10px' }}>
-                                    <div style={{ fontSize: '10px', color: t.text.muted, textTransform: 'capitalize', marginBottom: '2px' }}>{cat}</div>
-                                    <div style={{ fontSize: '13px', fontWeight: '700', color: accent }}>{formatCurrency(amt)}</div>
-                                  </div>
-                                ))
-                              })()}
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Assets ({assets.length})</div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: '600', color: accent, backgroundColor: accent + '18', border: `1px solid ${accent}44`, borderRadius: '6px', padding: '4px 10px', cursor: uploadingAsset ? 'wait' : 'pointer' }}>
-                              <Upload size={11} /> {uploadingAsset ? 'Uploading…' : 'Upload File'}
-                              <input type="file" style={{ display: 'none' }} disabled={uploadingAsset} onChange={async (e) => {
-                                const file = e.target.files?.[0]; if (!file) return
-                                setUploadingAsset(true)
-                                try {
-                                  const sb = getSupabase()
-                                  const path = `${slug}/${camp.id}/${Date.now()}-${file.name}`
-                                  const { error: upErr } = await sb.storage.from('campaign-assets').upload(path, file, { upsert: false })
-                                  if (upErr) throw upErr
-                                  const { data: urlData } = sb.storage.from('campaign-assets').getPublicUrl(path)
-                                  const created = await createCampaignAsset({ campaign_id: camp.id, client_slug: slug, name: file.name, file_url: urlData.publicUrl, file_type: file.type, file_size: file.size, uploaded_by: 'client' })
-                                  setCampaignAssets(prev => ({ ...prev, [camp.id]: [created, ...(prev[camp.id] || [])] }))
-                                } catch (err) { console.error('Upload failed:', err) }
-                                setUploadingAsset(false); e.target.value = ''
-                              }} />
-                            </label>
-                          </div>
-                          {assets.length === 0 ? (
-                            <div style={{ fontSize: '12px', color: t.text.muted }}>No assets yet. Use the button above to share files with your team.</div>
+                      </button>
+                      {isExpanded && (
+                        <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '14px 16px' }}>
+                          {lineItems === undefined ? (
+                            <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>Loading details...</div>
+                          ) : lineItems.length === 0 ? (
+                            <div style={{ fontSize: '12px', color: t.text.muted }}>No line items on file.</div>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {assets.map((asset: any) => (
-                                <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: t.bg.page, borderRadius: '6px', border: `1px solid ${t.border.subtle}` }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '12px', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</div>
-                                    <div style={{ fontSize: '10px', color: t.text.muted }}>{asset.uploaded_by === 'client' ? 'Your upload' : 'From Barley Bros'}{asset.file_size ? ` · ${Math.round(asset.file_size / 1024)}KB` : ''}</div>
-                                  </div>
-                                  <a href={asset.file_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: accent, textDecoration: 'none', flexShrink: 0 }}>
-                                    <ExternalLink size={12} /> View
-                                  </a>
+                            <div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '4px 16px', paddingBottom: '8px', marginBottom: '4px', borderBottom: `1px solid ${t.border.subtle}` }}>
+                                {['Product', 'Qty', 'Total'].map(h => (
+                                  <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Product' ? 'left' : 'right' }}>{h}</div>
+                                ))}
+                              </div>
+                              {lineItems.map((li: any, i: number) => (
+                                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '4px 16px', padding: '5px 0' }}>
+                                  <div style={{ fontSize: '12px', color: t.text.primary }}>{li.product_name}</div>
+                                  <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{li.quantity}</div>
+                                  <div style={{ fontSize: '12px', color: t.text.primary, fontWeight: '600', textAlign: 'right' }}>{formatCurrency(li.total || (li.price * li.quantity))}</div>
                                 </div>
                               ))}
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Files & Assets ── */}
-        <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
-          <SectionHeader action={
-            <button
-              onClick={() => { setShowFileUpload(v => !v); setFileUploadErr('') }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-            >
-              <Upload size={13} /> Share a File
-            </button>
-          }>
-            Files & Assets
-          </SectionHeader>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '16px', lineHeight: 1.5 }}>
-            Logos, compliance documents, brand photos, and other assets shared between your team and Barley Bros.
-          </p>
+        {/* ══ CAMPAIGNS TAB ══ */}
+        {activeTab === 'campaigns' && (
+          <div>
+            {!campaigns || campaigns.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No active campaigns at the moment.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {campaigns.map((camp: any) => {
+                  const isExpanded = expandedCampaign === camp.id
+                  const milestones: any[] = camp.campaign_milestones || []
+                  const completedMs = milestones.filter((m: any) => m.completed).length
+                  const msPct = milestones.length > 0 ? Math.round((completedMs / milestones.length) * 100) : 0
+                  const assets: any[] = campaignAssets[camp.id] || []
+                  const statusColors: Record<string, string> = { active: t.status.success, completed: t.status.info, paused: t.status.warning, draft: t.text.muted }
+                  const statusColor = statusColors[camp.status] || t.text.muted
+                  return (
+                    <div key={camp.id} style={{ ...card, overflow: 'hidden' }}>
+                      <button onClick={async () => {
+                        if (isExpanded) { setExpandedCampaign(null) } else {
+                          setExpandedCampaign(camp.id)
+                          if (!campaignAssets[camp.id]) {
+                            const asts = await getCampaignAssets(camp.id).catch(() => [])
+                            setCampaignAssets(prev => ({ ...prev, [camp.id]: asts }))
+                          }
+                        }
+                      }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '16px 20px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{camp.title || camp.name}</span>
+                              <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{camp.status}</span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: t.text.muted }}>
+                              {camp.campaign_type && <span style={{ marginRight: '10px' }}>{camp.campaign_type}</span>}
+                              {camp.start_date && <span>{camp.start_date}{camp.end_date ? ` → ${camp.end_date}` : ''}</span>}
+                            </div>
+                          </div>
+                          <span style={{ color: t.text.muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
+                        </div>
+                        {milestones.length > 0 && (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                              <div style={{ fontSize: '11px', color: t.text.muted }}>{completedMs} of {milestones.length} milestones complete</div>
+                              <div style={{ fontSize: '11px', fontWeight: '700', color: msPct === 100 ? t.status.success : accent }}>{msPct}%</div>
+                            </div>
+                            <div style={{ height: '5px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${msPct}%`, backgroundColor: msPct === 100 ? t.status.success : accent, borderRadius: '3px', transition: 'width 400ms ease' }} />
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '16px 20px' }}>
+                          {camp.description && <p style={{ fontSize: '13px', color: t.text.secondary, marginBottom: '16px', lineHeight: 1.6 }}>{camp.description}</p>}
+                          {milestones.length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Milestones</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {milestones.map((m: any) => (
+                                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', backgroundColor: m.completed ? `${t.status.success}0d` : t.bg.elevated, borderRadius: '6px', border: `1px solid ${m.completed ? t.status.success + '22' : t.border.subtle}` }}>
+                                    <div style={{ width: 16, height: 16, borderRadius: '4px', border: `1.5px solid ${m.completed ? t.status.success : t.border.hover}`, backgroundColor: m.completed ? t.status.success : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      {m.completed && <span style={{ fontSize: '9px', color: '#0c0c0a', fontWeight: '900' }}>✓</span>}
+                                    </div>
+                                    <span style={{ fontSize: '12px', color: m.completed ? t.text.muted : t.text.primary, textDecoration: m.completed ? 'line-through' : 'none', flex: 1 }}>{m.title}</span>
+                                    {m.due_date && <span style={{ fontSize: '10px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(m.due_date)}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Assets */}
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Shared Assets</div>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: accent, fontWeight: '600', cursor: 'pointer' }}>
+                                <Upload size={11} /> Share a file
+                                <input type="file" style={{ display: 'none' }} onChange={async e => {
+                                  const file = e.target.files?.[0]; if (!file) return
+                                  setUploadingAsset(true)
+                                  try {
+                                    const sb = getSupabase()
+                                    const path = `${slug}/${camp.id}/${Date.now()}-${file.name}`
+                                    const { error: upErr } = await sb.storage.from('campaign-assets').upload(path, file, { upsert: false })
+                                    if (upErr) throw upErr
+                                    const { data: urlData } = sb.storage.from('campaign-assets').getPublicUrl(path)
+                                    const created = await createCampaignAsset({ campaign_id: camp.id, client_slug: slug, name: file.name, file_url: urlData.publicUrl, file_type: file.type, file_size: file.size, uploaded_by: 'client' })
+                                    setCampaignAssets(prev => ({ ...prev, [camp.id]: [created, ...(prev[camp.id] || [])] }))
+                                  } catch (err) { console.error('Upload failed:', err) }
+                                  setUploadingAsset(false); e.target.value = ''
+                                }} />
+                              </label>
+                            </div>
+                            {assets.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: t.text.muted }}>No assets shared yet.</div>
+                            ) : assets.map((asset: any) => (
+                              <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}`, marginBottom: '4px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '12px', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</div>
+                                  <div style={{ fontSize: '10px', color: t.text.muted }}>{asset.uploaded_by === 'client' ? 'Your upload' : 'From Barley Bros'}</div>
+                                </div>
+                                <a href={asset.file_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: accent, textDecoration: 'none' }}>
+                                  <ExternalLink size={12} /> View
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Upload form */}
-          {showFileUpload && (
-            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${accent}44`, borderRadius: '10px', padding: '16px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>Share a File with Barley Bros</div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                <div>
-                  <label style={labelStyle}>File Type</label>
-                  <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
-                    <option value="logo">Logo</option>
-                    <option value="compliance">Compliance Document</option>
-                    <option value="photo">Photo</option>
-                    <option value="brand_asset">Brand Asset</option>
-                    <option value="other">Other</option>
-                  </select>
+        {/* ══ COMPLIANCE TAB ══ */}
+        {activeTab === 'compliance' && (
+          <div>
+            {/* Expiry alerts */}
+            {(expiredRegs.length > 0 || expiringRegs.length > 0) && (
+              <div style={{ ...card, padding: '14px 18px', marginBottom: '16px', border: `1px solid ${t.status.danger}33`, backgroundColor: `${t.status.danger}07` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <AlertCircle size={15} color={t.status.danger} />
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: t.status.danger }}>Compliance Alerts</span>
                 </div>
-                <div>
-                  <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
-                  <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
+                {expiredRegs.map((r: any) => (
+                  <div key={r.id} style={{ fontSize: '12px', color: t.status.danger, marginBottom: '3px' }}>⚠ {r.state} — Expired {formatShortDateMT(r.expiry_date)}</div>
+                ))}
+                {expiringRegs.filter((r: any) => r.status !== 'expired').map((r: any) => (
+                  <div key={r.id} style={{ fontSize: '12px', color: t.status.warning, marginBottom: '3px' }}>⚠ {r.state} — Expires {formatShortDateMT(r.expiry_date)}</div>
+                ))}
+              </div>
+            )}
+            {registrations.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No state registrations on file yet.</div>
+            ) : (
+              <>
+                {/* Summary counts */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                  {Object.entries(REG_STATUS_LABELS).map(([status, label]) => {
+                    const count = registrations.filter((r: any) => r.status === status).length
+                    if (count === 0) return null
+                    const color = REG_STATUS_COLORS[status]
+                    return (
+                      <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: `${color}14`, border: `1px solid ${color}33`, borderRadius: '8px', padding: '8px 14px' }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color }} />
+                        <span style={{ fontSize: '16px', fontWeight: '800', color }}>{count}</span>
+                        <span style={{ fontSize: '11px', color: t.text.muted }}>{label}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-              </div>
-              <div style={{ marginBottom: '10px' }}>
-                <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
-                <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder="e.g. Updated logo, CO TTB Certificate…" style={inputStyle} />
-              </div>
-              <div style={{ marginBottom: '10px' }}>
-                <label style={labelStyle}>File</label>
-                <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" />
-              </div>
-              {fileUploadErr && (
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: t.status.danger, marginBottom: '10px' }}>
-                  <AlertCircle size={13} /> {fileUploadErr}
+                {/* Registration table */}
+                <div style={{ ...card, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '80px 1fr auto auto', gap: '1px', backgroundColor: t.border.subtle }}>
+                    {/* Header */}
+                    {!isMobile && ['State', 'Details', 'Expiry', 'Status'].map(h => (
+                      <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '10px 14px', backgroundColor: t.bg.elevated }}>{h}</div>
+                    ))}
+                    {isMobile && ['State', 'Status'].map(h => (
+                      <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '10px 14px', backgroundColor: t.bg.elevated }}>{h}</div>
+                    ))}
+                    {/* Rows */}
+                    {registrations.map((r: any) => {
+                      const color = REG_STATUS_COLORS[r.status] || t.text.muted
+                      const isExpired = r.status === 'expired'
+                      const isExpiringSoon = r.expiry_date && !isExpired && (new Date(r.expiry_date).getTime() - Date.now()) < 60 * 86400000
+                      if (isMobile) return (
+                        <>
+                          <div key={`${r.id}-state`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
+                            {r.ttb_number && <span style={{ fontSize: '10px', color: t.text.muted }}>TTB: {r.ttb_number}</span>}
+                          </div>
+                          <div key={`${r.id}-status`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                            {(isExpired || isExpiringSoon) && <AlertCircle size={12} color={isExpired ? t.status.danger : t.status.warning} />}
+                            <span style={{ fontSize: '10px', fontWeight: '700', color, backgroundColor: `${color}22`, padding: '2px 7px', borderRadius: '6px' }}>{REG_STATUS_LABELS[r.status] || r.status}</span>
+                          </div>
+                        </>
+                      )
+                      return (
+                        <>
+                          <div key={`${r.id}-state`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
+                          </div>
+                          <div key={`${r.id}-detail`} style={{ padding: '10px 14px', backgroundColor: t.bg.card }}>
+                            {r.ttb_number && <div style={{ fontSize: '12px', color: t.text.secondary }}>TTB: {r.ttb_number}</div>}
+                            {r.notes && <div style={{ fontSize: '11px', color: t.text.muted }}>{r.notes}</div>}
+                          </div>
+                          <div key={`${r.id}-expiry`} style={{ padding: '10px 14px', backgroundColor: t.bg.card }}>
+                            {r.expiry_date ? (
+                              <span style={{ fontSize: '12px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>
+                                {isExpired ? '⚠ ' : isExpiringSoon ? '⚠ ' : ''}{formatShortDateMT(r.expiry_date)}
+                              </span>
+                            ) : <span style={{ fontSize: '12px', color: t.text.muted }}>—</span>}
+                          </div>
+                          <div key={`${r.id}-status`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: '10px', fontWeight: '700', color, backgroundColor: `${color}22`, padding: '2px 7px', borderRadius: '6px' }}>{REG_STATUS_LABELS[r.status] || r.status}</span>
+                          </div>
+                        </>
+                      )
+                    })}
+                  </div>
                 </div>
-              )}
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button onClick={() => { setShowFileUpload(false); setFileUploadErr('') }} style={{ padding: '8px 14px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: t.text.secondary, cursor: 'pointer' }}>Cancel</button>
-                <button
-                  disabled={fileUploading}
-                  onClick={async () => {
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══ FILES TAB ══ */}
+        {activeTab === 'files' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', color: t.text.muted }}>Logos, compliance docs, photos, and brand assets shared between your team and Barley Bros.</div>
+              <button onClick={() => { setShowFileUpload(v => !v); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                <Upload size={13} /> Share a File
+              </button>
+            </div>
+            {showFileUpload && (
+              <div style={{ ...card, padding: '18px', marginBottom: '16px', border: `1px solid ${accent}44` }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>Share a File with Barley Bros</div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={labelStyle}>File Type</label>
+                    <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
+                      <option value="logo">Logo</option>
+                      <option value="compliance">Compliance Document</option>
+                      <option value="photo">Photo</option>
+                      <option value="brand_asset">Brand Asset</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                    <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                  <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder="e.g. Updated logo, CO TTB Certificate…" style={inputStyle} />
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={labelStyle}>File</label>
+                  <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" />
+                </div>
+                {fileUploadErr && <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: t.status.danger, marginBottom: '10px' }}><AlertCircle size={13} /> {fileUploadErr}</div>}
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setShowFileUpload(false); setFileUploadErr('') }} style={{ padding: '8px 14px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: t.text.secondary, cursor: 'pointer' }}>Cancel</button>
+                  <button disabled={fileUploading} onClick={async () => {
                     const file = portalFileInputRef.current?.files?.[0]
                     if (!file) { setFileUploadErr('Please select a file'); return }
                     setFileUploading(true); setFileUploadErr('')
                     try {
                       const sb = getSupabase()
                       const { data: { user } } = await sb.auth.getUser()
-                      const newFile = await uploadClientFile(slug, file, {
-                        file_type: fileUploadType,
-                        description: fileUploadDesc || undefined,
-                        expiry_date: fileUploadExpiry || undefined,
-                        uploaded_by: user?.id,
-                        uploaded_by_portal: true,
-                      })
+                      const newFile = await uploadClientFile(slug, file, { file_type: fileUploadType, description: fileUploadDesc || undefined, expiry_date: fileUploadExpiry || undefined, uploaded_by: user?.id, uploaded_by_portal: true })
                       setClientFiles(prev => [newFile, ...prev])
-                      setShowFileUpload(false)
-                      setFileUploadType('other'); setFileUploadDesc(''); setFileUploadExpiry('')
+                      setShowFileUpload(false); setFileUploadType('other'); setFileUploadDesc(''); setFileUploadExpiry('')
                       if (portalFileInputRef.current) portalFileInputRef.current.value = ''
-                    } catch (err: any) {
-                      setFileUploadErr(err.message || 'Upload failed')
-                    } finally {
-                      setFileUploading(false)
-                    }
-                  }}
-                  style={{ padding: '8px 16px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <Upload size={13} /> {fileUploading ? 'Uploading…' : 'Upload'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Files list */}
-          {filesLoading ? (
-            <div style={{ fontSize: '13px', color: t.text.muted }}>Loading files…</div>
-          ) : clientFiles.length === 0 ? (
-            <div style={{ fontSize: '13px', color: t.text.muted, padding: '20px 0', textAlign: 'center' }}>
-              <Folder size={28} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.3 }} />
-              No files yet — use the button above to share files with your team
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {clientFiles.map(f => {
-                const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)
-                const isExpired = f.expiry_date ? new Date(f.expiry_date) < new Date() : false
-                const isExpiringSoon = f.expiry_date
-                  ? !isExpired && (new Date(f.expiry_date).getTime() - Date.now()) < 30 * 86400000
-                  : false
-                const ftLabels: Record<string, string> = { logo: 'Logo', compliance: 'Compliance', photo: 'Photo', brand_asset: 'Brand Asset', other: 'File' }
-                return (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', backgroundColor: t.bg.elevated, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
-                    {isImage && (
-                      <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.page }}>
-                        <img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                      </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                        <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '6px', backgroundColor: accent + '22', color: accent, fontWeight: '700', flexShrink: 0 }}>{ftLabels[f.file_type] || 'File'}</span>
-                      </div>
-                      {f.description && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{f.description}</div>}
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '3px', flexWrap: 'wrap' }}>
-                        {f.expiry_date && (
-                          <span style={{ fontSize: '11px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>
-                            {isExpired ? '⚠ Expired' : isExpiringSoon ? '⚠ Expires soon' : 'Expires'} {formatShortDateMT(f.expiry_date)}
-                          </span>
-                        )}
-                        <span style={{ fontSize: '11px', color: t.text.muted }}>
-                          {f.uploaded_by_portal ? 'Your upload' : 'From Barley Bros'} · {formatShortDateMT(f.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                    <a
-                      href={f.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}44`, borderRadius: '7px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', flexShrink: 0 }}
-                    >
-                      <Download size={13} /> View
-                    </a>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ── Suggest an Account ── */}
-        <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px', border: `1px solid ${accent}33` }}>
-          <button onClick={() => setShowSuggest(!showSuggest)} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 0 }}>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Suggest an Account or Contact</div>
-              <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '3px' }}>Know a bar, restaurant, or rep we should be talking to? Tell us.</div>
-            </div>
-            {showSuggest ? <ChevronUp size={16} color={t.text.muted} /> : <ChevronDown size={16} color={t.text.muted} />}
-          </button>
-          {showSuggest && (
-            <div style={{ marginTop: '20px' }}>
-              {submitted ? (
-                <div style={{ padding: '20px', backgroundColor: `${t.status.success}14`, border: `1px solid ${t.status.success}44`, borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <CheckCircle size={18} color={t.status.success} />
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: '600', color: t.status.success }}>Submitted — thank you!</div>
-                    <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Our team will review this and follow up.</div>
-                  </div>
-                  <button onClick={() => setSubmitted(false)} style={{ marginLeft: 'auto', fontSize: '12px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>Add another</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {(['account', 'contact'] as const).map(type => (
-                      <button key={type} onClick={() => setSuggestType(type)} style={{
-                        display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
-                        backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary,
-                        border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}`,
-                      }}>
-                        {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
-                        {type === 'account' ? 'An Account' : 'A Contact'}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
-                      <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie — Bar Manager'} style={inputStyle} />
-                    </div>
-                    {suggestType === 'account' && (
-                      <div>
-                        <label style={labelStyle}>Address (optional)</label>
-                        <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Main St, Denver, CO" style={inputStyle} />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Why are you flagging this? *</label>
-                    <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={{ ...inputStyle, appearance: 'none' as const }}>
-                      <option value="">Select a reason...</option>
-                      {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Additional context</label>
-                    <textarea value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} placeholder="Details that would help our team..." rows={3} style={{ ...inputStyle, resize: 'none' as const }} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={labelStyle}>Your name (optional)</label>
-                      <input value={suggestForm.submitted_by_name} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_name: e.target.value }))} placeholder="So we know who to follow up with" style={inputStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Your email (optional)</label>
-                      <input type="email" value={suggestForm.submitted_by_email} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_email: e.target.value }))} placeholder="we'll let you know what happens" style={inputStyle} />
-                    </div>
-                  </div>
-                  {suggestErr && <div style={{ fontSize: '12px', color: t.status.danger }}>{suggestErr}</div>}
-                  <button onClick={handleSuggest} disabled={submitting || !suggestForm.name.trim() || !suggestForm.reason}
-                    style={{ padding: '11px 20px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', opacity: submitting || !suggestForm.name.trim() || !suggestForm.reason ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <Send size={14} /> {submitting ? 'Sending...' : 'Submit to Barley Bros'}
+                    } catch (err: any) { setFileUploadErr(err.message || 'Upload failed') }
+                    finally { setFileUploading(false) }
+                  }} style={{ padding: '8px 16px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={13} /> {fileUploading ? 'Uploading…' : 'Upload'}
                   </button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '20px 0', borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: 20, height: 20, borderRadius: '4px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>D</div>
-          <div style={{ fontSize: '11px', color: t.text.muted }}>Powered by <strong style={{ color: t.text.secondary }}>Barley Bros</strong> · Fort Collins, CO</div>
-        </div>
+              </div>
+            )}
+            {filesLoading ? (
+              <div style={{ fontSize: '13px', color: t.text.muted }}>Loading files…</div>
+            ) : clientFiles.length === 0 ? (
+              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>
+                <Folder size={28} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.3 }} />
+                No files yet — use the button above to share files with your team
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {clientFiles.map(f => {
+                  const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)
+                  const isExpired = f.expiry_date ? new Date(f.expiry_date) < new Date() : false
+                  const isExpiringSoon = f.expiry_date && !isExpired && (new Date(f.expiry_date).getTime() - Date.now()) < 30 * 86400000
+                  const ftLabels: Record<string, string> = { logo: 'Logo', compliance: 'Compliance', photo: 'Photo', brand_asset: 'Brand Asset', other: 'File' }
+                  return (
+                    <div key={f.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
+                      {isImage && <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.elevated }}><img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></div>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '6px', backgroundColor: accent + '22', color: accent, fontWeight: '700', flexShrink: 0 }}>{ftLabels[f.file_type] || 'File'}</span>
+                        </div>
+                        {f.description && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{f.description}</div>}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
+                          {f.expiry_date && <span style={{ fontSize: '11px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>{isExpired ? '⚠ Expired' : isExpiringSoon ? '⚠ Expires soon' : 'Expires'} {formatShortDateMT(f.expiry_date)}</span>}
+                          <span style={{ fontSize: '11px', color: t.text.muted }}>{f.uploaded_by_portal ? 'Your upload' : 'From Barley Bros'} · {formatShortDateMT(f.created_at)}</span>
+                        </div>
+                      </div>
+                      <a href={f.file_url} target="_blank" rel="noreferrer" download style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}44`, borderRadius: '7px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', flexShrink: 0 }}>
+                        <Download size={13} /> View
+                      </a>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
       </main>
+
+      {/* Footer */}
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: `20px ${isMobile ? '16px' : '40px'}`, borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: 20, height: 20, borderRadius: '4px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>D</div>
+        <div style={{ fontSize: '11px', color: t.text.muted }}>Powered by <strong style={{ color: t.text.secondary }}>Barley Bros</strong> · Fort Collins, CO</div>
+      </div>
+
     </div>
   )
 }
