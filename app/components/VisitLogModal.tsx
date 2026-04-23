@@ -493,6 +493,11 @@ export default function VisitLogModal({
           )}
 
           {/* Placements */}
+          {(form.status === 'New Placement' || form.status === 'Menu Feature Won') && !showPlacements && (
+            <div style={{ marginBottom: '8px', padding: '8px 12px', borderRadius: '8px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, fontSize: '12px', color: t.gold, fontWeight: '600' }}>
+              You selected "{form.status}" — don't forget to log the placement below
+            </div>
+          )}
           <div style={{ marginBottom: '18px' }}>
             <button
               type="button"

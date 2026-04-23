@@ -13,8 +13,9 @@ import type { Contact } from '../lib/types'
 const CONTACT_CATEGORIES = [
   { value: 'general',     label: 'General' },
   { value: 'distributor', label: 'Distributor Rep' },
-  { value: 'buyer',       label: 'Buyer' },
-  { value: 'chef',        label: 'Chef / Bar Manager' },
+  { value: 'buyer',       label: 'Buyer / Purchaser' },
+  { value: 'bar_manager', label: 'Bar Manager' },
+  { value: 'chef',        label: 'Chef' },
   { value: 'gm_owner',   label: 'GM / Owner' },
   { value: 'media',       label: 'Media / Press' },
   { value: 'other',       label: 'Other' },
@@ -23,7 +24,8 @@ const CONTACT_CATEGORIES = [
 const CATEGORY_COLORS: Record<string, string> = {
   distributor: t.status.info,
   buyer:       t.gold,
-  chef:        t.status.success,
+  bar_manager: t.status.success,
+  chef:        '#f97316',
   gm_owner:   t.status.warning,
   media:       '#a78bfa',
   general:     t.text.muted,

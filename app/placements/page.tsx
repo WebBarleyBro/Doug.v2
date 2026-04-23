@@ -1,12 +1,13 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Package, Plus, X } from 'lucide-react'
+import { Package, Plus, X, Pencil } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
 import ConfirmModal from '../components/ConfirmModal'
 import { CardSkeleton } from '../components/LoadingSkeleton'
-import { getPlacements, getClients, getAccounts, getProducts, createPlacement, advancePlacementStatus, revertPlacementStatus, markPlacementLost } from '../lib/data'
+import { getPlacements, getClients, getAccounts, getProducts, createPlacement, updatePlacement, advancePlacementStatus, revertPlacementStatus, markPlacementLost } from '../lib/data'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
+import { useToast } from '../layout-shell'
 import { formatShortDateMT } from '../lib/formatters'
 import { PLACEMENT_STATUS_LABELS, PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, clientLogoUrl } from '../lib/constants'
 import type { Client, PlacementStatus } from '../lib/types'
@@ -14,6 +15,7 @@ import type { Client, PlacementStatus } from '../lib/types'
 const STATUS_TABS: PlacementStatus[] = ['committed', 'ordered', 'on_shelf', 'reordering']
 
 export default function PlacementsPage() {
+  const toast = useToast()
   const [placements, setPlacements] = useState<any[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
@@ -33,6 +35,9 @@ export default function PlacementsPage() {
   const [creating, setCreating] = useState(false)
   const [lostModal, setLostModal] = useState<{ id: string; clientSlug: string; open: boolean }>({ id: '', clientSlug: '', open: false })
   const [lostReason, setLostReason] = useState('')
+  const [editModal, setEditModal] = useState<{ open: boolean; placement?: any }>({ open: false })
+  const [editForm, setEditForm] = useState({ product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     account_id: '',
     client_slug: '',
@@ -67,6 +72,29 @@ export default function PlacementsPage() {
     }
   }, [form.client_slug])
 
+  function openEdit(p: any) {
+    setEditForm({ product_name: p.product_name || '', placement_type: p.placement_type || 'shelf', price_point: p.price_point != null ? String(p.price_point) : '', notes: p.notes || '' })
+    setEditModal({ open: true, placement: p })
+  }
+
+  async function handleEdit() {
+    if (!editModal.placement) return
+    setSaving(true)
+    try {
+      await updatePlacement(editModal.placement.id, {
+        product_name: editForm.product_name,
+        placement_type: editForm.placement_type as any,
+        price_point: editForm.price_point ? parseFloat(editForm.price_point) : undefined,
+        notes: editForm.notes || undefined,
+        client_slug: editModal.placement.client_slug,
+      })
+      setEditModal({ open: false })
+      load()
+      toast('Placement updated')
+    } catch (e) { console.error(e); toast('Failed to save', 'error') }
+    finally { setSaving(false) }
+  }
+
   async function handleCreate() {
     if (!form.account_id || !form.client_slug || !form.product_name) return
     setCreating(true)
@@ -82,7 +110,8 @@ export default function PlacementsPage() {
       setShowCreate(false)
       setForm({ account_id: '', client_slug: '', product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
       load()
-    } catch (e) { console.error(e) }
+      toast('Placement added')
+    } catch (e) { console.error(e); toast('Failed to save', 'error') }
     finally { setCreating(false) }
   }
 
@@ -206,6 +235,13 @@ export default function PlacementsPage() {
                           → {PLACEMENT_STATUS_LABELS[{ committed: 'ordered', ordered: 'on_shelf', on_shelf: 'reordering' }[p.status as string] as PlacementStatus]}
                         </button>
                       )}
+                      <button onClick={() => openEdit(p)} style={{
+                        padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
+                        border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                      }}>
+                        <Pencil size={11} /> Edit
+                      </button>
                       <button onClick={() => { setLostModal({ id: p.id, clientSlug: p.client_slug || '', open: true }); setLostReason('') }} style={{
                         padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
                         border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
@@ -289,6 +325,46 @@ export default function PlacementsPage() {
           </div>
         )}
 
+        {/* Edit placement modal */}
+        {editModal.open && (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '440px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>Edit Placement</h3>
+                <button onClick={() => setEditModal({ open: false })} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Product Name</label>
+                  <input type="text" value={editForm.product_name} onChange={e => setEditForm(f => ({ ...f, product_name: e.target.value }))} style={inputStyle} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={labelStyle}>Placement Type</label>
+                    <select value={editForm.placement_type} onChange={e => setEditForm(f => ({ ...f, placement_type: e.target.value }))} style={selectStyle}>
+                      {PLACEMENT_TYPES.map(pt => <option key={pt} value={pt}>{PLACEMENT_TYPE_LABELS[pt]}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Price Point (optional)</label>
+                    <input type="number" value={editForm.price_point} onChange={e => setEditForm(f => ({ ...f, price_point: e.target.value }))} placeholder="0.00" step="0.01" style={inputStyle} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Notes</label>
+                  <input type="text" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button onClick={() => setEditModal({ open: false })} style={btnSecondary}>Cancel</button>
+                <button onClick={handleEdit} disabled={saving || !editForm.product_name} style={{ ...btnPrimary, opacity: (saving || !editForm.product_name) ? 0.6 : 1 }}>
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Lost modal */}
         {lostModal.open && (
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
@@ -303,6 +379,7 @@ export default function PlacementsPage() {
                   await markPlacementLost(lostModal.id, lostReason, lostModal.clientSlug)
                   setLostModal({ id: '', clientSlug: '', open: false })
                   load()
+                  toast('Placement marked lost')
                 }} style={{ ...btnPrimary, backgroundColor: t.status.danger }}>Confirm Lost</button>
               </div>
             </div>

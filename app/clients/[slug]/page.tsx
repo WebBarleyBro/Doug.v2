@@ -2,9 +2,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2 } from 'lucide-react'
-import LayoutShell from '../../layout-shell'
-import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone } from '../../lib/data'
+import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2, Folder, Upload, AlertCircle } from 'lucide-react'
+import LayoutShell, { useToast } from '../../layout-shell'
+import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone, getClientFiles, uploadClientFile, deleteClientFile } from '../../lib/data'
 import ConfirmModal from '../../components/ConfirmModal'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
@@ -12,7 +12,7 @@ import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle, selec
 import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear, resolveTotal } from '../../lib/formatters'
 import { PLACEMENT_STATUS_LABELS, EVENT_TYPE_LABELS, clientLogoUrl } from '../../lib/constants'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import type { Client } from '../../lib/types'
+import type { Client, ClientFile, ClientFileType } from '../../lib/types'
 
 const TABS = [
   { key: 'overview', label: 'Overview', icon: <BarChart2 size={14} /> },
@@ -25,6 +25,7 @@ const TABS = [
   { key: 'tastings', label: 'Tastings', icon: <Star size={14} /> },
   { key: 'contacts', label: 'Contacts', icon: <Users size={14} /> },
   { key: 'compliance', label: 'Compliance', icon: <Shield size={14} /> },
+  { key: 'files', label: 'Files', icon: <Folder size={14} /> },
   { key: 'report', label: 'Report', icon: <FileText size={14} /> },
 ]
 
@@ -34,6 +35,7 @@ const TAB_GROUP: Record<string, string> = {
   tastings: 'core', report: 'core',
   products: 'products',
   events: 'events', campaigns: 'campaigns', contacts: 'contacts', compliance: 'compliance',
+  files: 'files',
 }
 
 export default function ClientDetailPage() {
@@ -78,6 +80,17 @@ export default function ClientDetailPage() {
   const [showNewCampaign, setShowNewCampaign] = useState(false)
   const [newCampaignForm, setNewCampaignForm] = useState({ title: '', campaign_type: '', start_date: '', end_date: '', budget: '', status: 'draft' as string })
   const [campaignSaving, setCampaignSaving] = useState(false)
+
+  // Files state
+  const [clientFiles, setClientFiles] = useState<ClientFile[]>([])
+  const [fileUploading, setFileUploading] = useState(false)
+  const [fileUploadErr, setFileUploadErr] = useState('')
+  const [showUploadForm, setShowUploadForm] = useState(false)
+  const [uploadForm, setUploadForm] = useState({ file_type: 'other' as ClientFileType, description: '', expiry_date: '' })
+  const [deleteFileTarget, setDeleteFileTarget] = useState<ClientFile | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const toast = useToast()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -136,6 +149,8 @@ export default function ClientDetailPage() {
         setRegistrations(await getStateRegistrations(client.id))
       } else if (group === 'products') {
         setProducts(await getProducts(slug))
+      } else if (group === 'files') {
+        setClientFiles(await getClientFiles(slug))
       }
       loaded.current.add(group)
       setTabLoading(false)
@@ -962,6 +977,208 @@ export default function ClientDetailPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Files Tab */}
+        {tab === 'files' && !tabLoading && (
+          <div>
+            {/* Header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', color: t.text.muted }}>
+                Logos, compliance docs, photos, and brand assets shared between Barley Bros and {client.name}.
+              </div>
+              <button
+                onClick={() => { setShowUploadForm(true); setFileUploadErr('') }}
+                style={btnPrimary}
+              >
+                <Upload size={14} /> Upload File
+              </button>
+            </div>
+
+            {/* Upload form */}
+            {showUploadForm && (
+              <div style={{ ...card, padding: '20px', marginBottom: '20px', border: `1px solid ${t.border.gold}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>Upload File</div>
+                  <button onClick={() => { setShowUploadForm(false); setFileUploadErr('') }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', display: 'flex' }}><X size={16} /></button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>File Type</label>
+                    <select
+                      value={uploadForm.file_type}
+                      onChange={e => setUploadForm(f => ({ ...f, file_type: e.target.value as ClientFileType }))}
+                      style={selectStyle}
+                    >
+                      <option value="logo">Logo</option>
+                      <option value="compliance">Compliance Document</option>
+                      <option value="photo">Photo</option>
+                      <option value="brand_asset">Brand Asset</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional — for compliance docs)</span></label>
+                    <input
+                      type="date"
+                      value={uploadForm.expiry_date}
+                      onChange={e => setUploadForm(f => ({ ...f, expiry_date: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                  <input
+                    type="text"
+                    value={uploadForm.description}
+                    onChange={e => setUploadForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="e.g. Colorado TTB Certificate, Summer Campaign Logo..."
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>File</label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    style={{ display: 'block', fontSize: '13px', color: t.text.secondary }}
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip"
+                  />
+                </div>
+                {fileUploadErr && (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '13px', color: t.status.danger, marginBottom: '12px' }}>
+                    <AlertCircle size={14} /> {fileUploadErr}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setShowUploadForm(false); setFileUploadErr('') }} style={btnSecondary}>Cancel</button>
+                  <button
+                    disabled={fileUploading}
+                    onClick={async () => {
+                      const file = fileInputRef.current?.files?.[0]
+                      if (!file) { setFileUploadErr('Please select a file'); return }
+                      setFileUploading(true)
+                      setFileUploadErr('')
+                      try {
+                        const newFile = await uploadClientFile(slug, file, {
+                          file_type: uploadForm.file_type,
+                          description: uploadForm.description || undefined,
+                          expiry_date: uploadForm.expiry_date || undefined,
+                        })
+                        setClientFiles(prev => [newFile, ...prev])
+                        setShowUploadForm(false)
+                        setUploadForm({ file_type: 'other', description: '', expiry_date: '' })
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                        toast('File uploaded')
+                      } catch (err: any) {
+                        setFileUploadErr(err.message || 'Upload failed')
+                      } finally {
+                        setFileUploading(false)
+                      }
+                    }}
+                    style={{ ...btnPrimary, opacity: fileUploading ? 0.6 : 1 }}
+                  >
+                    {fileUploading ? 'Uploading…' : <><Upload size={14} /> Upload</>}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* File grid */}
+            {clientFiles.length === 0 ? (
+              <div style={{ color: t.text.muted, fontSize: '14px', padding: '60px 0', textAlign: 'center' }}>
+                <Folder size={32} style={{ display: 'block', margin: '0 auto 12px', opacity: 0.3 }} />
+                No files yet — upload logos, compliance documents, or brand assets above
+              </div>
+            ) : (
+              <>
+                {/* Group by type */}
+                {(['logo', 'compliance', 'photo', 'brand_asset', 'other'] as ClientFileType[]).map(ft => {
+                  const group = clientFiles.filter(f => f.file_type === ft)
+                  if (group.length === 0) return null
+                  const labels: Record<ClientFileType, string> = { logo: 'Logos', compliance: 'Compliance Documents', photo: 'Photos', brand_asset: 'Brand Assets', other: 'Other' }
+                  return (
+                    <div key={ft} style={{ marginBottom: '24px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>{labels[ft]}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+                        {group.map(f => {
+                          const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)
+                          const isExpiringSoon = f.expiry_date
+                            ? (new Date(f.expiry_date).getTime() - Date.now()) < 30 * 86400000
+                            : false
+                          const isExpired = f.expiry_date ? new Date(f.expiry_date) < new Date() : false
+                          return (
+                            <div key={f.id} style={{ ...card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {isImage && (
+                                <div style={{ width: '100%', height: '80px', borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.elevated, marginBottom: '4px' }}>
+                                  <img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                                  {f.description && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{f.description}</div>}
+                                </div>
+                                <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                  <a
+                                    href={f.file_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    download
+                                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, color: t.text.secondary, textDecoration: 'none', cursor: 'pointer' }}
+                                    title="Download"
+                                  >
+                                    <Download size={13} />
+                                  </a>
+                                  {(userRole === 'owner' || userRole === 'admin') && (
+                                    <button
+                                      onClick={() => setDeleteFileTarget(f)}
+                                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, color: t.status.danger, cursor: 'pointer' }}
+                                      title="Delete"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                {f.expiry_date && (
+                                  <div style={{ fontSize: '11px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>
+                                    {isExpired ? '⚠ Expired' : isExpiringSoon ? '⚠ Expires soon'  : 'Expires'} {formatShortDateMT(f.expiry_date)}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: '11px', color: t.text.muted, marginLeft: 'auto' }}>
+                                  {f.uploaded_by_portal ? 'Uploaded by client' : f.user_profiles?.name || 'Barley Bros'} · {formatShortDateMT(f.created_at)}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Delete confirmation */}
+            <ConfirmModal
+              isOpen={!!deleteFileTarget}
+              onClose={() => setDeleteFileTarget(null)}
+              onConfirm={async () => {
+                if (!deleteFileTarget) return
+                await deleteClientFile(deleteFileTarget.id)
+                setClientFiles(prev => prev.filter(f => f.id !== deleteFileTarget.id))
+                setDeleteFileTarget(null)
+                toast('File deleted')
+              }}
+              title="Delete File"
+              message={`Delete "${deleteFileTarget?.name}"? This cannot be undone.`}
+              confirmLabel="Delete"
+              danger
+            />
           </div>
         )}
 

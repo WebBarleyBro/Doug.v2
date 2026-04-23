@@ -182,6 +182,7 @@ Barley Bros is a **spirits marketing and sales representation firm** based in Co
 - Tastings — tasting consumer data
 - Contacts — contacts in this brand's account network
 - Compliance — state registrations for this brand
+- Files — logos, compliance docs, photos, brand assets; upload from rep side, grouped by type, expiry alerts on compliance docs
 - Report — printable/exportable activity report
 
 **Missing:**
@@ -391,6 +392,7 @@ Barley Bros is a **spirits marketing and sales representation firm** based in Co
 - Orders/Inquiries
 - Events & Tastings (upcoming + past)
 - Campaigns
+- Files & Assets — portal clients can upload logos/compliance docs/photos; view and download files shared by Barley Bros; expiry warnings on compliance docs
 - Suggest an Account form
 - Print/PDF report button
 
@@ -434,6 +436,8 @@ These are fully defined in the data model and data.ts but have no interface:
 ## Pending Migrations
 
 - **025** — `follow_up_cleared_at`, `follow_up_dismissed_at` on `visits` *(needs to be run in Supabase)*
+- **026** — `client_files` table *(needs to be run in Supabase; see migrations/026_client_files.sql)*
+  - Also requires: create `client-files` storage bucket in Supabase dashboard (public read, authenticated write)
 
 ---
 

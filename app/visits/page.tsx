@@ -41,10 +41,10 @@ export default function VisitsPage() {
       userId: (!isOwner || repFilter !== 'all') ? (repFilter !== 'all' ? repFilter : profile.id) : undefined,
       limit: 300,
     }).then(vs => {
-      // Dedup by date + user
+      // Dedup by date + user + account (collapse multi-brand rows for same account visit)
       const seen = new Set<string>()
       const deduped = vs.filter((v: any) => {
-        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}`
+        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}|${v.account_id}`
         if (seen.has(key)) return false
         seen.add(key)
         return true

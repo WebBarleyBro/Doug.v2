@@ -7,7 +7,7 @@ import type {
   Contact, Task, Event, Campaign, CampaignMilestone, Product,
   StateRegistration, CompetitiveSighting, DepletionEntry,
   TastingConsumer, DateRange, UserProfile,
-  PlacementStatus, VisitStatus, TaskPriority,
+  PlacementStatus, VisitStatus, TaskPriority, ClientFile, ClientFileType,
 } from './types'
 
 // ─── Clients ──────────────────────────────────────────────────────────────
@@ -1718,4 +1718,53 @@ export async function getEmailList(clientSlug?: string): Promise<TastingConsumer
   const { data, error } = await q
   if (error) throw error
   return data || []
+}
+
+// ─── Client Files ──────────────────────────────────────────────────────────
+
+export async function getClientFiles(clientSlug: string): Promise<ClientFile[]> {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('client_files')
+    .select('*, user_profiles(name)')
+    .eq('client_slug', clientSlug)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createClientFile(file: Omit<ClientFile, 'id' | 'created_at' | 'user_profiles'>): Promise<ClientFile> {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('client_files').insert(file).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteClientFile(id: string): Promise<void> {
+  const sb = getSupabase()
+  const { error } = await sb.from('client_files').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function uploadClientFile(
+  clientSlug: string,
+  file: File,
+  meta: { file_type: ClientFileType; description?: string; expiry_date?: string; uploaded_by?: string; uploaded_by_portal?: boolean }
+): Promise<ClientFile> {
+  const sb = getSupabase()
+  const path = `${clientSlug}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+  const { error: upErr } = await sb.storage.from('client-files').upload(path, file, { upsert: false })
+  if (upErr) throw upErr
+  const { data: urlData } = sb.storage.from('client-files').getPublicUrl(path)
+  return createClientFile({
+    client_slug: clientSlug,
+    name: file.name,
+    file_url: urlData.publicUrl,
+    file_type: meta.file_type,
+    file_size: file.size,
+    description: meta.description,
+    expiry_date: meta.expiry_date || undefined,
+    uploaded_by: meta.uploaded_by,
+    uploaded_by_portal: meta.uploaded_by_portal ?? false,
+  })
 }

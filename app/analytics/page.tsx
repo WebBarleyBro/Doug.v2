@@ -4,14 +4,16 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, MapPin, CheckCircle2, MinusCircle } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import StatCard from '../components/StatCard'
+import VisitLogModal from '../components/VisitLogModal'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
 import {
   getVisitTrend, getPlacementFunnel, getCommissionTrend,
-  getClients, getPlacements, getVisits,
+  getClients, getPlacements, getVisits, clearFollowUp, dismissFollowUp,
 } from '../lib/data'
+import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
 import { formatCurrency, formatShortDateMT } from '../lib/formatters'
 import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
@@ -72,8 +74,22 @@ export default function AnalyticsPage() {
   const [visitsByStatusGrouped, setVisitsByStatusGrouped] = useState<Record<string, any[]>>({})
   const [expandedStatus, setExpandedStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<any>(null)
+  const [visitModal, setVisitModal] = useState<{ open: boolean; accountId?: string; accountName?: string }>({ open: false })
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
+    const sb = getSupabase()
+    sb.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
+        if (p) setProfile(p)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    setDismissedIds(new Set())
     setLoading(true)
     setExpandedStatus(null)
     const end = new Date()
@@ -179,6 +195,7 @@ export default function AnalyticsPage() {
   const followUpVisits = Object.entries(visitsByStatusGrouped)
     .filter(([status]) => ACTION_STATUSES.has(status))
     .flatMap(([status, visits]) => visits.map(v => ({ ...v, _status: status })))
+    .filter(v => !dismissedIds.has(v.id))
     .sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime())
 
   return (
@@ -397,6 +414,26 @@ export default function AnalyticsPage() {
                     {v.user_profiles?.name && (
                       <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{v.user_profiles.name}</div>
                     )}
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                      <button onClick={() => setVisitModal({ open: true, accountId: v.account_id, accountName: v.accounts?.name })} style={{
+                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
+                      }}>
+                        <MapPin size={11} /> Log Visit
+                      </button>
+                      <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); clearFollowUp(v.id) }} style={{
+                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78',
+                      }}>
+                        <CheckCircle2 size={11} /> Cleared
+                      </button>
+                      <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); dismissFollowUp(v.id) }} style={{
+                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
+                      }}>
+                        <MinusCircle size={11} /> Disregard
+                      </button>
+                    </div>
                   </div>
                 )
               })}
@@ -405,6 +442,17 @@ export default function AnalyticsPage() {
         )}
 
       </div>
+      {profile && (
+        <VisitLogModal
+          isOpen={visitModal.open}
+          onClose={() => setVisitModal({ open: false })}
+          onSuccess={() => setVisitModal({ open: false })}
+          userId={profile.id}
+          defaultAccountId={visitModal.accountId}
+          defaultAccountName={visitModal.accountName}
+          isMobile={false}
+        />
+      )}
     </LayoutShell>
   )
 }

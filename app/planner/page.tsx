@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, GripVertical, Check, Clock, MapPin, X, Search, UserPlus } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, GripVertical, Check, Clock, MapPin, X, Search, UserPlus, Map } from 'lucide-react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   DragEndEvent,
@@ -109,6 +109,9 @@ export default function PlannerPage() {
   const [stopResults, setStopResults] = useState<any[]>([])
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [stopSearchFocused, setStopSearchFocused] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const mapRef = useRef<HTMLDivElement>(null)
+  const googleMapRef = useRef<any>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -153,7 +156,7 @@ export default function PlannerPage() {
     getVisits({ userId: profile.id, since: date, limit: 50 }).then(vs => {
       const seen = new Set<string>()
       setTodayVisits(vs.filter((v: any) => {
-        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}`
+        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}|${v.account_id}`
         if (seen.has(key) || String(v.visited_at).slice(0, 10) !== date) return false
         seen.add(key); return true
       }))
@@ -274,6 +277,91 @@ export default function PlannerPage() {
   }
 
   const completed = stops.filter(s => s.completed).length
+  const mappableStops = stops.filter(s => s.address)
+
+  // Initialise / refresh Google Map when showMap toggles or stops change
+  useEffect(() => {
+    if (!showMap || !mapRef.current) return
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    if (!apiKey) return
+
+    function initMap() {
+      if (!mapRef.current) return
+      const google = (window as any).google
+      if (!google?.maps) return
+
+      const map = new google.maps.Map(mapRef.current, {
+        zoom: mappableStops.length ? 12 : 11,
+        center: { lat: 40.5853, lng: -105.0844 }, // Fort Collins default
+        mapTypeId: 'roadmap',
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#1a1a17' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#a09880' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a17' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d2d28' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1a17' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d0d0b' }] },
+        ],
+      })
+      googleMapRef.current = map
+
+      if (mappableStops.length === 0) return
+
+      const geocoder = new google.maps.Geocoder()
+      const bounds = new google.maps.LatLngBounds()
+
+      mappableStops.forEach((stop, i) => {
+        geocoder.geocode({ address: stop.address }, (results: any, status: string) => {
+          if (status !== 'OK' || !results?.[0]) return
+          const pos = results[0].geometry.location
+          bounds.extend(pos)
+
+          const marker = new google.maps.Marker({
+            position: pos,
+            map,
+            label: { text: String(i + 1), color: '#0c0c0a', fontWeight: '700', fontSize: '12px' },
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 16,
+              fillColor: stop.completed ? '#3dbc76' : '#d4a843',
+              fillOpacity: 1,
+              strokeWeight: 0,
+            },
+            title: stop.title,
+          })
+
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<div style="color:#111;font-family:sans-serif;padding:2px"><b>${stop.title}</b><br/><span style="font-size:11px">${stop.address}</span></div>`,
+          })
+          marker.addListener('click', () => infoWindow.open(map, marker))
+
+          if (mappableStops.length === 1) {
+            map.setCenter(pos)
+            map.setZoom(15)
+          } else {
+            map.fitBounds(bounds)
+          }
+        })
+      })
+    }
+
+    if ((window as any).google?.maps) {
+      initMap()
+    } else {
+      const existing = document.getElementById('google-maps-script')
+      if (!existing) {
+        const script = document.createElement('script')
+        script.id = 'google-maps-script'
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
+        script.async = true
+        script.onload = initMap
+        document.head.appendChild(script)
+      } else {
+        existing.addEventListener('load', initMap)
+        return () => existing.removeEventListener('load', initMap)
+      }
+    }
+  }, [showMap, stops]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <LayoutShell>
@@ -286,12 +374,27 @@ export default function PlannerPage() {
               {stops.length > 0 ? `${completed} / ${stops.length} stops complete` : 'Build your route for today'}
             </p>
           </div>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            style={{
-              backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`,
-              borderRadius: '8px', padding: '8px 12px', color: t.text.primary,
-              fontSize: '13px', outline: 'none', cursor: 'pointer', flexShrink: 0,
-            }} />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowMap(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
+                cursor: 'pointer', flexShrink: 0,
+                backgroundColor: showMap ? t.goldDim : t.bg.card,
+                color: showMap ? t.gold : t.text.secondary,
+                border: `1px solid ${showMap ? t.border.gold : t.border.default}`,
+              }}
+            >
+              <Map size={14} /> {showMap ? 'Hide Map' : 'Map View'}
+            </button>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              style={{
+                backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`,
+                borderRadius: '8px', padding: '8px 12px', color: t.text.primary,
+                fontSize: '13px', outline: 'none', cursor: 'pointer', flexShrink: 0,
+              }} />
+          </div>
         </div>
 
         {/* Progress bar */}
@@ -305,6 +408,19 @@ export default function PlannerPage() {
               transition: 'width 400ms ease',
               boxShadow: `0 0 8px ${completed === stops.length ? t.status.success : t.gold}`,
             }} />
+          </div>
+        )}
+
+        {/* Map panel */}
+        {showMap && (
+          <div style={{ marginBottom: '20px', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
+            <div ref={mapRef} style={{ width: '100%', height: isMobile ? '260px' : '380px' }} />
+            {mappableStops.length === 0 && (
+              <div style={{ padding: '20px', backgroundColor: t.bg.elevated, textAlign: 'center', fontSize: '13px', color: t.text.muted }}>
+                <MapPin size={20} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.4 }} />
+                No stops with addresses yet — add accounts from the list below
+              </div>
+            )}
           </div>
         )}
 

@@ -14,6 +14,7 @@ const RESOURCES = [
 
 export default function InternPage() {
   const [tasks, setTasks] = useState<any[]>([])
+  const [doneThisWeek, setDoneThisWeek] = useState<number | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -24,8 +25,14 @@ export default function InternPage() {
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       setProfile(p)
       try {
-        const allTasks = await getTasks({ userId: user.id, completed: false })
-        setTasks(allTasks)
+        const [openTasks, completedTasks] = await Promise.all([
+          getTasks({ userId: user.id, completed: false }),
+          getTasks({ userId: user.id, completed: true }),
+        ])
+        setTasks(openTasks)
+        const weekAgo = new Date()
+        weekAgo.setDate(weekAgo.getDate() - 7)
+        setDoneThisWeek(completedTasks.filter((t: any) => t.completed_at && new Date(t.completed_at) >= weekAgo).length)
       } catch { /* RLS may block — show empty state */ }
       setLoading(false)
     }).catch(() => setLoading(false))
@@ -55,7 +62,7 @@ export default function InternPage() {
           {[
             { label: 'Open Tasks', value: openTasks.length, color: openTasks.length > 0 ? t.gold : '#3dba78' },
             { label: 'Overdue', value: overdue.length, color: overdue.length > 0 ? '#e05252' : '#3dba78' },
-            { label: 'Done This Week', value: '—', color: t.text.muted },
+            { label: 'Done This Week', value: doneThisWeek ?? '—', color: doneThisWeek != null && doneThisWeek > 0 ? '#3dba78' : t.text.muted },
           ].map(s => (
             <div key={s.label} style={{ ...card, padding: '16px 18px' }}>
               <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>{s.label}</div>

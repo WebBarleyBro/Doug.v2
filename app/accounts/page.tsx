@@ -6,6 +6,7 @@ import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
 import AddAccountModal from '../components/AddAccountModal'
 import EmptyState from '../components/EmptyState'
+import ConfirmModal from '../components/ConfirmModal'
 import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getAccounts, getClients, deleteAccount } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
@@ -15,21 +16,15 @@ import { overdueColor, overdueColorBg } from '../lib/theme'
 import { clientLogoUrl } from '../lib/constants'
 import type { Account, Client, UserProfile } from '../lib/types'
 
-function AccountCard({ account, clients, onClick }: { account: any; clients: Client[]; onClick?: () => void }) {
+function AccountCard({ account, clients }: { account: any; clients: Client[] }) {
   const days = daysAgoMT(account.last_visited)
   const color = overdueColor(days)
   const slugs = account.account_clients?.map((ac: any) => ac.client_slug) || []
   const accountClients = clients.filter(c => slugs.includes(c.slug))
 
   return (
-    <Link href={`/accounts/${account.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-      <div style={{
-        ...card,
-        padding: '16px 20px',
-        borderLeft: `3px solid ${color}`,
-        cursor: 'pointer',
-        transition: 'all 150ms ease',
-      }}>
+    <div style={{ ...card, padding: '16px 20px', borderLeft: `3px solid ${color}`, position: 'relative' }}>
+      <Link href={`/accounts/${account.id}`} style={{ textDecoration: 'none', display: 'block' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -65,8 +60,25 @@ function AccountCard({ account, clients, onClick }: { account: any; clients: Cli
           </div>
           <ChevronRight size={16} color={t.text.muted} style={{ flexShrink: 0, marginTop: '2px' }} />
         </div>
-      </div>
-    </Link>
+      </Link>
+      {account.address && (
+        <a
+          href={`https://maps.google.com/?q=${encodeURIComponent(account.address)}`}
+          target="_blank" rel="noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute', top: '12px', right: '36px',
+            display: 'flex', alignItems: 'center', gap: '4px',
+            fontSize: '11px', color: t.text.muted, textDecoration: 'none',
+            padding: '3px 7px', borderRadius: '5px', border: `1px solid ${t.border.subtle}`,
+            backgroundColor: t.bg.elevated, opacity: 0.8,
+          }}
+          title="Get directions"
+        >
+          <MapPin size={10} /> Directions
+        </a>
+      )}
+    </div>
   )
 }
 
@@ -84,6 +96,7 @@ export default function AccountsPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [showDupes, setShowDupes] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -225,11 +238,11 @@ export default function AccountsPage() {
                                 View
                               </Link>
                               <button
-                                onClick={() => handleDelete(a.id)}
+                                onClick={() => setConfirmDelete({ id: a.id, name: a.name })}
                                 disabled={deletingId === a.id}
                                 style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', backgroundColor: 'rgba(224,82,82,0.1)', border: '1px solid rgba(224,82,82,0.3)', color: '#e05252', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', opacity: deletingId === a.id ? 0.5 : 1 }}
                               >
-                                <Trash2 size={12} /> {deletingId === a.id ? '…' : 'Delete'}
+                                <Trash2 size={12} /> Delete
                               </button>
                             </div>
                           </div>
@@ -345,6 +358,20 @@ export default function AccountsPage() {
             isMobile={isMobile}
           />
         )}
+        <ConfirmModal
+          isOpen={!!confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={async () => {
+            if (!confirmDelete) return
+            await handleDelete(confirmDelete.id)
+            setConfirmDelete(null)
+          }}
+          title="Delete Account"
+          message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          loading={deletingId === confirmDelete?.id}
+        />
       </div>
     </LayoutShell>
   )

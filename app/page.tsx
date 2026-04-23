@@ -6,7 +6,7 @@ import {
   ChevronRight, Plus, Search, X, Calendar, Users, BarChart3,
   TrendingUp, Star, ArrowRight,
 } from 'lucide-react'
-import LayoutShell, { useApp } from './layout-shell'
+import LayoutShell, { useApp, useToast } from './layout-shell'
 import VisitLogModal from './components/VisitLogModal'
 import StatCard from './components/StatCard'
 import EmptyState from './components/EmptyState'
@@ -25,6 +25,7 @@ import type { UserProfile, Task } from './lib/types'
 // ─── Desktop Dashboard ────────────────────────────────────────────────────
 
 function DesktopDashboard({ profile }: { profile: UserProfile }) {
+  const toast = useToast()
   const [stats, setStats] = useState<any>(null)
   const [commission, setCommission] = useState(0)
   const [schedule, setSchedule] = useState<any>(null)
@@ -40,6 +41,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState<any>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [showAllFollowUps, setShowAllFollowUps] = useState(false)
 
   const isOwner = profile.role === 'owner'
 
@@ -356,13 +358,13 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                   .map(v => {
                     const days = daysAgoMT(v.visited_at) ?? 0
                     const statusScore = v.status === 'Will Order Soon' ? 40 : v.status === 'Needs Follow Up' ? 30 : 0
-                    const weeksScore = Math.floor(days / 7) * 20
+                    const daysScore = days * 5
                     const placementScore = activePlacementAccountIds.has(v.account_id) ? 10 : 0
                     const freqScore = v.accounts?.visit_frequency_days && v.accounts.visit_frequency_days <= 14 ? 10 : 0
-                    return { ...v, _urgency: statusScore + weeksScore + placementScore + freqScore }
+                    return { ...v, _urgency: statusScore + daysScore + placementScore + freqScore }
                   })
                   .sort((a, b) => b._urgency - a._urgency)
-                  .slice(0, 8)
+                  .slice(0, showAllFollowUps ? undefined : 8)
                   .map(v => {
                     const days = daysAgoMT(v.visited_at) ?? 0
                     const isHigh = v._urgency >= 60
@@ -406,6 +408,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                                 onClick={async () => {
                                   setFollowups(prev => prev.filter(f => f.id !== v.id))
                                   await clearFollowUp(v.id)
+                                  toast('Follow-up cleared')
                                 }}
                                 style={{
                                   flex: 1, fontSize: '10px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -420,6 +423,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                                 onClick={async () => {
                                   setFollowups(prev => prev.filter(f => f.id !== v.id))
                                   await dismissFollowUp(v.id)
+                                  toast('Follow-up disregarded', 'info')
                                 }}
                                 style={{
                                   flex: 1, fontSize: '10px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
@@ -436,6 +440,15 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                       </div>
                     )
                   })}
+                {followups.length > 8 && (
+                  <button onClick={() => setShowAllFollowUps(v => !v)} style={{
+                    marginTop: '4px', width: '100%', padding: '8px', background: 'none',
+                    border: `1px solid ${t.border.default}`, borderRadius: '7px',
+                    color: t.text.muted, fontSize: '12px', cursor: 'pointer',
+                  }}>
+                    {showAllFollowUps ? `Show less` : `Show all ${followups.length} follow-ups`}
+                  </button>
+                )}
               </div>
             )}
           </div>

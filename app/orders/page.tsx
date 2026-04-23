@@ -1100,7 +1100,7 @@ export default function OrdersPage() {
                           <input
                             type="text" value={li.product_name}
                             onChange={e => updateLineItem(i, 'product_name', e.target.value)}
-                            placeholder="Product name"
+                            placeholder={!form.client_slug ? 'Select a brand above to load products' : 'Product name'}
                             style={{ ...inputStyle, fontSize: '13px', flex: 1 }}
                           />
                         )}

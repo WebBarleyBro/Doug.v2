@@ -10,13 +10,14 @@ import type { Client } from '../lib/types'
 declare global { interface Window { google: any } }
 
 export const CONTACT_CATEGORIES = [
-  { value: 'buyer', label: 'Buyer' },
-  { value: 'manager', label: 'Manager / GM' },
-  { value: 'owner', label: 'Owner' },
-  { value: 'bartender', label: 'Bartender' },
+  { value: 'buyer',       label: 'Buyer / Purchaser' },
+  { value: 'bar_manager', label: 'Bar Manager' },
+  { value: 'gm_owner',   label: 'GM / Owner' },
+  { value: 'chef',        label: 'Chef' },
   { value: 'distributor', label: 'Distributor Rep' },
-  { value: 'sommelier', label: 'Sommelier' },
-  { value: 'other', label: 'Other' },
+  { value: 'media',       label: 'Media / Press' },
+  { value: 'general',     label: 'General' },
+  { value: 'other',       label: 'Other' },
 ]
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -118,7 +119,14 @@ export default function AddAccountModal({
       if (window.google?.maps?.places) { clearInterval(interval); initAC() }
     }, 100)
 
-    return () => { alive = false; clearInterval(interval) }
+    return () => {
+      alive = false
+      clearInterval(interval)
+      if (acRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(acRef.current)
+      }
+      acRef.current = null
+    }
   }, [])
 
   // Duplicate name detection

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  MapPin, Phone, Plus, ChevronLeft, Edit2, Trash2,
+  MapPin, Phone, Plus, ChevronLeft, Edit2, Trash2, ChevronRight,
   Package, ShoppingCart, Users, Activity, X, Globe, Instagram,
 } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
@@ -30,8 +30,9 @@ declare global { interface Window { google: any } }
 const CONTACT_CATEGORIES = [
   { value: 'general',     label: 'General' },
   { value: 'distributor', label: 'Distributor Rep' },
-  { value: 'buyer',       label: 'Buyer' },
-  { value: 'chef',        label: 'Chef / Bar Manager' },
+  { value: 'buyer',       label: 'Buyer / Purchaser' },
+  { value: 'bar_manager', label: 'Bar Manager' },
+  { value: 'chef',        label: 'Chef' },
   { value: 'gm_owner',   label: 'GM / Owner' },
   { value: 'media',       label: 'Media / Press' },
   { value: 'other',       label: 'Other' },
@@ -40,7 +41,8 @@ const CONTACT_CATEGORIES = [
 const CATEGORY_COLORS: Record<string, string> = {
   distributor: t.status.info,
   buyer:       t.gold,
-  chef:        t.status.success,
+  bar_manager: t.status.success,
+  chef:        '#f97316',
   gm_owner:   t.status.warning,
   media:       '#a78bfa',
   general:     t.text.muted,
@@ -122,7 +124,13 @@ export default function AccountDetailPage() {
 
   // Set up Google Places autocomplete on edit name field when modal opens
   useEffect(() => {
-    if (!showEdit) { editAcRef.current = null; return }
+    if (!showEdit) {
+      if (editAcRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(editAcRef.current)
+      }
+      editAcRef.current = null
+      return
+    }
     let alive = true
     function initAC() {
       if (!alive || !editAddressRef.current || editAcRef.current) return
@@ -452,7 +460,7 @@ export default function AccountDetailPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {timeline.slice(0, activityLimit).map((item: any) => (
-                  <TimelineItem key={item.id} item={item} />
+                  <TimelineItem key={item.id} item={item} accountId={id} />
                 ))}
                 {timeline.length > activityLimit && (
                   <button onClick={() => setActivityLimit(n => n + 20)}
@@ -707,9 +715,8 @@ export default function AccountDetailPage() {
                 <div>
                   <label style={labelStyle}>Account Type</label>
                   <select value={editForm.account_type} onChange={e => setEditForm(f => ({ ...f, account_type: e.target.value }))} style={selectStyle}>
-                    <option value="on_premise">On-Premise</option>
-                    <option value="off_premise">Off-Premise</option>
-                    <option value="both">Both</option>
+                    <option value="on_premise">On-Premise (bar, restaurant, hotel)</option>
+                    <option value="off_premise">Off-Premise (liquor store, grocery)</option>
                   </select>
                 </div>
               </div>
@@ -904,28 +911,39 @@ export default function AccountDetailPage() {
   )
 }
 
-function TimelineItem({ item }: { item: any }) {
+function TimelineItem({ item, accountId }: { item: any; accountId: string }) {
   const typeColors: Record<string, string> = { visit: t.gold, placement: t.status.success, order: t.status.info }
   const typeLabels: Record<string, string> = { visit: 'Visit', placement: 'Placement', order: 'Order' }
-  return (
-    <div style={{ ...card, padding: '12px 16px', borderLeft: `3px solid ${typeColors[item._type]}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontSize: '10px', fontWeight: '700', color: typeColors[item._type], textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              {typeLabels[item._type]}
-            </span>
-            {item.status && <span style={badge.visitStatus(item.status)}>{item.status}</span>}
-            {item.product_name && <span style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500' }}>{item.product_name}</span>}
-            {item.po_number && <span style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500' }}>{item.po_number}</span>}
-          </div>
-          {item.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{item.notes}</p>}
-          {item.user_profiles?.name && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>by {item.user_profiles.name}</div>}
+  const navHref = item._type === 'order' ? `/orders` : item._type === 'placement' ? `/placements` : null
+  const inner = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <span style={{ fontSize: '10px', fontWeight: '700', color: typeColors[item._type], textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {typeLabels[item._type]}
+          </span>
+          {item.status && <span style={badge.visitStatus(item.status)}>{item.status}</span>}
+          {item.product_name && <span style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500' }}>{item.product_name}</span>}
+          {item.po_number && <span style={{ fontSize: '13px', color: t.text.primary, fontWeight: '500' }}>{item.po_number}</span>}
         </div>
-        <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0, marginLeft: '12px' }}>
-          {formatShortDateMT(item._date)}
-        </div>
+        {item.notes && <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5, margin: 0 }}>{item.notes}</p>}
+        {item.user_profiles?.name && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>by {item.user_profiles.name}</div>}
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
+        <div style={{ fontSize: '11px', color: t.text.muted }}>{formatShortDateMT(item._date)}</div>
+        {navHref && <ChevronRight size={13} color={t.text.muted} />}
+      </div>
+    </div>
+  )
+  return navHref ? (
+    <Link href={navHref} style={{ textDecoration: 'none', display: 'block' }}>
+      <div style={{ ...card, padding: '12px 16px', borderLeft: `3px solid ${typeColors[item._type]}`, cursor: 'pointer' }}>
+        {inner}
+      </div>
+    </Link>
+  ) : (
+    <div style={{ ...card, padding: '12px 16px', borderLeft: `3px solid ${typeColors[item._type]}` }}>
+      {inner}
     </div>
   )
 }

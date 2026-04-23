@@ -16,19 +16,24 @@ import type { UserProfile } from './lib/types'
 
 // ─── App Context ─────────────────────────────────────────────────────────
 
+export interface ToastMessage { id: string; message: string; type: 'success' | 'error' | 'info' }
+
 interface AppCtx {
   profile: UserProfile | null
   isMobile: boolean
   showVisitLog: boolean
   setShowVisitLog: (v: boolean) => void
+  toast: (message: string, type?: ToastMessage['type']) => void
 }
 const AppContext = createContext<AppCtx>({
   profile: null,
   isMobile: false,
   showVisitLog: false,
   setShowVisitLog: () => {},
+  toast: () => {},
 })
 export const useApp = () => useContext(AppContext)
+export const useToast = () => useContext(AppContext).toast
 
 // ─── Nav items ────────────────────────────────────────────────────────────
 
@@ -70,10 +75,10 @@ const internNav = [
 
 // Mobile bottom nav (4 tabs + center FAB)
 const mobileBottomNav = [
-  { href: '/',          label: 'Home',     icon: Home },
-  { href: '/accounts',  label: 'Accounts', icon: MapPin },
-  { href: '/planner',   label: 'Planner',  icon: Map },
-  { href: '/clients',   label: 'Clients',  icon: Users },
+  { href: '/',        label: 'Home',     icon: Home },
+  { href: '/accounts', label: 'Accounts', icon: MapPin },
+  { href: '/orders',   label: 'Orders',   icon: ShoppingCart },
+  { href: '/clients',  label: 'Clients',  icon: Users },
 ]
 
 // Grouped nav for desktop sidebar
@@ -324,7 +329,7 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
   )
 }
 
-function MobileBottomNav({ onFabPress }: { onFabPress: () => void }) {
+function MobileBottomNav({ onFabPress: _onFabPress }: { onFabPress: () => void }) {
   const pathname = usePathname()
   const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href)
   const left = mobileBottomNav.slice(0, 2)
@@ -353,18 +358,18 @@ function MobileBottomNav({ onFabPress }: { onFabPress: () => void }) {
         )
       })}
 
-      {/* Center FAB */}
+      {/* Center FAB — Planner */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-        <button onClick={onFabPress} style={{
+        <Link href="/planner" style={{
           width: 52, height: 52, borderRadius: '50%',
-          backgroundColor: t.gold, border: 'none',
+          backgroundColor: t.gold,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', boxShadow: `0 4px 16px ${t.gold}55`,
+          boxShadow: `0 4px 16px ${t.gold}55`,
           position: 'absolute', bottom: '10px',
-          transition: 'transform 100ms ease, box-shadow 100ms ease',
+          textDecoration: 'none',
         }}>
-          <Plus size={24} color="#0c0c0a" strokeWidth={2.5} />
-        </button>
+          <Map size={22} color="#0c0c0a" strokeWidth={2.5} />
+        </Link>
       </div>
 
       {right.map((item) => {
@@ -490,6 +495,13 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showVisitLog, setShowVisitLog] = useState(false)
   const [collapsed, setCollapsedState] = useState(false)
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
+
+  function toast(message: string, type: ToastMessage['type'] = 'success') {
+    const id = Math.random().toString(36).slice(2)
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000)
+  }
 
   function setCollapsed(val: boolean) {
     setCollapsedState(val)
@@ -552,7 +564,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     : repNavGroups
 
   return (
-    <AppContext.Provider value={{ profile, isMobile, showVisitLog, setShowVisitLog }}>
+    <AppContext.Provider value={{ profile, isMobile, showVisitLog, setShowVisitLog, toast }}>
       {isMobile ? (
         // ── MOBILE LAYOUT ──
         <div style={{ backgroundColor: t.bg.page, minHeight: '100vh' }}>
@@ -583,6 +595,26 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           }}>
             {children}
           </main>
+        </div>
+      )}
+
+      {/* Toast overlay */}
+      {toasts.length > 0 && (
+        <div style={{ position: 'fixed', bottom: isMobile ? '90px' : '24px', right: '24px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '8px', pointerEvents: 'none' }}>
+          {toasts.map(tn => {
+            const bg = tn.type === 'success' ? '#3dba78' : tn.type === 'error' ? '#e05252' : t.status.info
+            return (
+              <div key={tn.id} style={{
+                backgroundColor: bg, color: '#fff', padding: '10px 16px',
+                borderRadius: '10px', fontSize: '13px', fontWeight: '600',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                animation: 'fade-in 150ms ease',
+                pointerEvents: 'auto',
+              }}>
+                {tn.message}
+              </div>
+            )
+          })}
         </div>
       )}
     </AppContext.Provider>

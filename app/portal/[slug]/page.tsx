@@ -1,16 +1,17 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
-import { getPortalData, submitClientSuggestion, getCampaignExpenses, getCampaignAssets, createCampaignAsset } from '../../lib/data'
-import { t, card, badge, inputStyle, labelStyle } from '../../lib/theme'
+import { getPortalData, submitClientSuggestion, getCampaignExpenses, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile } from '../../lib/data'
+import { t, card, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
 import { formatShortDateMT, startOfMonthMT, formatCurrency } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   MapPin, Package, TrendingUp, LogOut, ChevronDown, ChevronUp,
   CheckCircle, Send, Building2, User, ExternalLink, Upload, FileDown,
-  Calendar, Star, AlertCircle,
+  Calendar, Star, AlertCircle, Folder, Download,
 } from 'lucide-react'
+import type { ClientFile, ClientFileType } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
 
 const SUGGESTION_REASONS = [
@@ -89,6 +90,17 @@ export default function ClientPortalPage() {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
 
+  // Files state
+  const [clientFiles, setClientFiles] = useState<ClientFile[]>([])
+  const [filesLoading, setFilesLoading] = useState(false)
+  const [fileUploading, setFileUploading] = useState(false)
+  const [fileUploadErr, setFileUploadErr] = useState('')
+  const [showFileUpload, setShowFileUpload] = useState(false)
+  const [fileUploadType, setFileUploadType] = useState<ClientFileType>('other')
+  const [fileUploadDesc, setFileUploadDesc] = useState('')
+  const [fileUploadExpiry, setFileUploadExpiry] = useState('')
+  const portalFileInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -125,6 +137,8 @@ export default function ClientPortalPage() {
           .order('start_time')
           .limit(6)
           .then(({ data: ev }) => setUpcomingEvents(ev || []))
+        setFilesLoading(true)
+        getClientFiles(slug).then(f => { setClientFiles(f); setFilesLoading(false) }).catch(() => setFilesLoading(false))
       } catch { setError('Failed to load data') }
       finally { setLoading(false) }
     })
@@ -784,6 +798,148 @@ ${vs.length > 0 ? `<h2>Recent Field Activity</h2><table><thead><tr><th>Account</
             </div>
           </div>
         )}
+
+        {/* ── Files & Assets ── */}
+        <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px' }}>
+          <SectionHeader action={
+            <button
+              onClick={() => { setShowFileUpload(v => !v); setFileUploadErr('') }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              <Upload size={13} /> Share a File
+            </button>
+          }>
+            Files & Assets
+          </SectionHeader>
+          <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '16px', lineHeight: 1.5 }}>
+            Logos, compliance documents, brand photos, and other assets shared between your team and Barley Bros.
+          </p>
+
+          {/* Upload form */}
+          {showFileUpload && (
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${accent}44`, borderRadius: '10px', padding: '16px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>Share a File with Barley Bros</div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div>
+                  <label style={labelStyle}>File Type</label>
+                  <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
+                    <option value="logo">Logo</option>
+                    <option value="compliance">Compliance Document</option>
+                    <option value="photo">Photo</option>
+                    <option value="brand_asset">Brand Asset</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                  <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder="e.g. Updated logo, CO TTB Certificate…" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={labelStyle}>File</label>
+                <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" />
+              </div>
+              {fileUploadErr && (
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: t.status.danger, marginBottom: '10px' }}>
+                  <AlertCircle size={13} /> {fileUploadErr}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button onClick={() => { setShowFileUpload(false); setFileUploadErr('') }} style={{ padding: '8px 14px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: t.text.secondary, cursor: 'pointer' }}>Cancel</button>
+                <button
+                  disabled={fileUploading}
+                  onClick={async () => {
+                    const file = portalFileInputRef.current?.files?.[0]
+                    if (!file) { setFileUploadErr('Please select a file'); return }
+                    setFileUploading(true); setFileUploadErr('')
+                    try {
+                      const sb = getSupabase()
+                      const { data: { user } } = await sb.auth.getUser()
+                      const newFile = await uploadClientFile(slug, file, {
+                        file_type: fileUploadType,
+                        description: fileUploadDesc || undefined,
+                        expiry_date: fileUploadExpiry || undefined,
+                        uploaded_by: user?.id,
+                        uploaded_by_portal: true,
+                      })
+                      setClientFiles(prev => [newFile, ...prev])
+                      setShowFileUpload(false)
+                      setFileUploadType('other'); setFileUploadDesc(''); setFileUploadExpiry('')
+                      if (portalFileInputRef.current) portalFileInputRef.current.value = ''
+                    } catch (err: any) {
+                      setFileUploadErr(err.message || 'Upload failed')
+                    } finally {
+                      setFileUploading(false)
+                    }
+                  }}
+                  style={{ padding: '8px 16px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Upload size={13} /> {fileUploading ? 'Uploading…' : 'Upload'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Files list */}
+          {filesLoading ? (
+            <div style={{ fontSize: '13px', color: t.text.muted }}>Loading files…</div>
+          ) : clientFiles.length === 0 ? (
+            <div style={{ fontSize: '13px', color: t.text.muted, padding: '20px 0', textAlign: 'center' }}>
+              <Folder size={28} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.3 }} />
+              No files yet — use the button above to share files with your team
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {clientFiles.map(f => {
+                const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)
+                const isExpired = f.expiry_date ? new Date(f.expiry_date) < new Date() : false
+                const isExpiringSoon = f.expiry_date
+                  ? !isExpired && (new Date(f.expiry_date).getTime() - Date.now()) < 30 * 86400000
+                  : false
+                const ftLabels: Record<string, string> = { logo: 'Logo', compliance: 'Compliance', photo: 'Photo', brand_asset: 'Brand Asset', other: 'File' }
+                return (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', backgroundColor: t.bg.elevated, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
+                    {isImage && (
+                      <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.page }}>
+                        <img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '6px', backgroundColor: accent + '22', color: accent, fontWeight: '700', flexShrink: 0 }}>{ftLabels[f.file_type] || 'File'}</span>
+                      </div>
+                      {f.description && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{f.description}</div>}
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '3px', flexWrap: 'wrap' }}>
+                        {f.expiry_date && (
+                          <span style={{ fontSize: '11px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>
+                            {isExpired ? '⚠ Expired' : isExpiringSoon ? '⚠ Expires soon' : 'Expires'} {formatShortDateMT(f.expiry_date)}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '11px', color: t.text.muted }}>
+                          {f.uploaded_by_portal ? 'Your upload' : 'From Barley Bros'} · {formatShortDateMT(f.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <a
+                      href={f.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}44`, borderRadius: '7px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', flexShrink: 0 }}
+                    >
+                      <Download size={13} /> View
+                    </a>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
 
         {/* ── Suggest an Account ── */}
         <div style={{ ...card, marginBottom: '24px', padding: isMobile ? '16px' : '22px 28px', border: `1px solid ${accent}33` }}>

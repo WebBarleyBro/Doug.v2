@@ -359,6 +359,26 @@ export interface AgencyPipeline {
   updated_at: string
 }
 
+// ─── Client Files ────────────────────────────────────────────────────────
+
+export type ClientFileType = 'logo' | 'compliance' | 'photo' | 'brand_asset' | 'other'
+
+export interface ClientFile {
+  id: string
+  client_slug: string
+  name: string
+  file_url: string
+  file_type: ClientFileType
+  file_size?: number
+  description?: string
+  expiry_date?: string
+  uploaded_by?: string
+  uploaded_by_portal: boolean
+  created_at: string
+  // joined
+  user_profiles?: { name: string }
+}
+
 // ─── Analytics types ────────────────────────────────────────────────────
 
 export interface DateRange {

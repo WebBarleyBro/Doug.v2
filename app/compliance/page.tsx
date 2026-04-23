@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Shield, AlertTriangle, Plus, X } from 'lucide-react'
+import { Shield, AlertTriangle, Plus, X, Pencil } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import EmptyState from '../components/EmptyState'
 import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getClients, getStateRegistrations, upsertStateRegistration } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
+import { useToast } from '../layout-shell'
 import { formatShortDateMT, daysAgoMT } from '../lib/formatters'
 import { US_STATES } from '../lib/constants'
 import type { Client } from '../lib/types'
@@ -15,10 +16,11 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function CompliancePage() {
+  const toast = useToast()
   const [clients, setClients] = useState<Client[]>([])
   const [registrations, setRegistrations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [addModal, setAddModal] = useState<{ open: boolean; clientId?: string }>({ open: false })
+  const [addModal, setAddModal] = useState<{ open: boolean; clientId?: string; editing?: any }>({ open: false })
   const [form, setForm] = useState({ state: '', status: 'pending', ttb_number: '', expiry_date: '', notes: '' })
 
   useEffect(() => {
@@ -41,11 +43,19 @@ export default function CompliancePage() {
   async function handleSave() {
     if (!form.state || !addModal.clientId) return
     const client = clients.find(c => c.slug === addModal.clientId || c.id === addModal.clientId)
-    await upsertStateRegistration({ ...form, status: form.status as any, client_id: client?.id || addModal.clientId })
+    const payload: any = { ...form, status: form.status as any, client_id: client?.id || addModal.clientId }
+    if (addModal.editing?.id) payload.id = addModal.editing.id
+    await upsertStateRegistration(payload)
     const regs = await getStateRegistrations()
     setRegistrations(regs)
     setAddModal({ open: false })
     setForm({ state: '', status: 'pending', ttb_number: '', expiry_date: '', notes: '' })
+    toast(addModal.editing ? 'Registration updated' : 'Registration added')
+  }
+
+  function openEdit(r: any, clientId: string) {
+    setForm({ state: r.state || '', status: r.status || 'pending', ttb_number: r.ttb_number || '', expiry_date: r.expiry_date || '', notes: r.notes || '' })
+    setAddModal({ open: true, clientId, editing: r })
   }
 
   return (
@@ -65,7 +75,7 @@ export default function CompliancePage() {
             </span>
           </div>
         )}
-        {expiringSoon.length > 0 && !urgent.length && (
+        {expiringSoon.length > 0 && (
           <div style={{ backgroundColor: t.status.warningBg, border: `1px solid rgba(232,154,46,0.3)`, borderRadius: '10px', padding: '14px 18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <AlertTriangle size={18} color={t.status.warning} />
             <span style={{ color: t.status.warning, fontSize: '14px', fontWeight: '600' }}>
@@ -106,16 +116,22 @@ export default function CompliancePage() {
                         border: `1px solid ${isExpiringSoon ? STATUS_COLORS[r.status] + '60' : t.border.default}`,
                         borderRadius: '8px',
                         padding: '10px 12px',
+                        position: 'relative',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
-                          <span style={{
-                            fontSize: '9px', padding: '2px 6px', borderRadius: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em',
-                            backgroundColor: STATUS_COLORS[r.status] + '20',
-                            color: STATUS_COLORS[r.status],
-                          }}>
-                            {r.status.replace('_', ' ')}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              fontSize: '9px', padding: '2px 6px', borderRadius: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em',
+                              backgroundColor: STATUS_COLORS[r.status] + '20',
+                              color: STATUS_COLORS[r.status],
+                            }}>
+                              {r.status.replace('_', ' ')}
+                            </span>
+                            <button onClick={() => openEdit(r, client.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: t.text.muted, display: 'flex', alignItems: 'center' }} title="Edit">
+                              <Pencil size={11} />
+                            </button>
+                          </div>
                         </div>
                         {r.ttb_number && <div style={{ fontSize: '11px', color: t.text.muted }}>TTB: {r.ttb_number}</div>}
                         {r.expiry_date && (
@@ -123,6 +139,7 @@ export default function CompliancePage() {
                             Expires {formatShortDateMT(r.expiry_date)}
                           </div>
                         )}
+                        {r.notes && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', fontStyle: 'italic' }}>{r.notes}</div>}
                       </div>
                     )
                   })}
@@ -137,7 +154,7 @@ export default function CompliancePage() {
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
             <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '440px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>Add State Registration</h3>
+                <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>{addModal.editing ? 'Edit Registration' : 'Add State Registration'}</h3>
                 <button onClick={() => setAddModal({ open: false })} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

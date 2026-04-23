@@ -63,7 +63,7 @@ export default function FinancePage() {
         }
         const rateMapTrend = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
         trend.forEach((o: any) => {
-          const key = o.created_at.slice(0, 7)
+          const key = (o.sent_at || o.created_at).slice(0, 7)
           if (months[key]) {
             const stored = Number(o.commission_amount) || 0
             const rev = Number(o.total_amount) || resolveTotal(o)
@@ -86,22 +86,23 @@ export default function FinancePage() {
   }
 
   const monthStart = startOfMonthMT()
-  const monthOrders = orders.filter(o => o.created_at >= monthStart)
+  const effectiveDate = (o: any) => o.sent_at || o.created_at
+  const monthOrders = orders.filter(o => effectiveDate(o) >= monthStart)
   const thisMonthCommission = monthOrders.reduce((s, o) => s + resolveCommission(o), 0)
   const thisMonthRevenue = monthOrders.reduce((s, o) => s + resolveTotal(o), 0)
   const mtYear = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).slice(0, 4)
   const ytdStart = `${mtYear}-01-01`
-  const ytdOrders = orders.filter(o => o.created_at >= ytdStart)
+  const ytdOrders = orders.filter(o => effectiveDate(o) >= ytdStart)
   const ytdCommission = ytdOrders.reduce((s, o) => s + resolveCommission(o), 0)
   const ytdRevenue = ytdOrders.reduce((s, o) => s + resolveTotal(o), 0)
 
   // Per-client breakdown — show all active clients
   const perClient = clients.map(c => {
     const clientOrders = monthOrders.filter(o => o.client_slug === c.slug)
-    const commission = clientOrders.reduce((s, o) => s + resolveCommission(o), 0)
-    const revenue = clientOrders.reduce((s, o) => s + resolveTotal(o), 0)
-    const ytdComm = ytdOrders.filter(o => o.client_slug === c.slug).reduce((s, o) => s + resolveCommission(o), 0)
-    const ytdRev = ytdOrders.filter(o => o.client_slug === c.slug).reduce((s, o) => s + resolveTotal(o), 0)
+    const commission = clientOrders.reduce((s: number, o: any) => s + resolveCommission(o), 0)
+    const revenue = clientOrders.reduce((s: number, o: any) => s + resolveTotal(o), 0)
+    const ytdComm = ytdOrders.filter((o: any) => o.client_slug === c.slug).reduce((s: number, o: any) => s + resolveCommission(o), 0)
+    const ytdRev = ytdOrders.filter((o: any) => o.client_slug === c.slug).reduce((s: number, o: any) => s + resolveTotal(o), 0)
     return { ...c, commission, revenue, ytdCommission: ytdComm, ytdRevenue: ytdRev, orderCount: clientOrders.length }
   })
 
