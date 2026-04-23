@@ -1,10 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   MapPin, Package, DollarSign, CheckSquare, Clock, AlertCircle,
   ChevronRight, Plus, Search, X, Calendar, Users, BarChart3,
-  TrendingUp, Star, ArrowRight,
+  TrendingUp, Star, ArrowRight, Navigation,
 } from 'lucide-react'
 import LayoutShell, { useApp, useToast } from './layout-shell'
 import VisitLogModal from './components/VisitLogModal'
@@ -701,9 +702,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
 
       {/* Today's Route Progress */}
       {plannerStops.length > 0 && (
-        <div style={{ marginTop: '4px', marginBottom: '16px' }}>
-          <DailyProgressBar stops={plannerStops} />
-        </div>
+        <DailyProgressBar stops={plannerStops} />
       )}
 
       <VisitLogModal
@@ -720,9 +719,11 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
 // ─── Daily Progress Bar ──────────────────────────────────────────────────
 
 function DailyProgressBar({ stops }: { stops: PlannerStop[] }) {
+  const router = useRouter()
   const total = stops.length
   const done = stops.filter(s => s.completed).length
   const pct = total === 0 ? 0 : Math.round((done / total) * 100)
+  const nextStop = stops.filter(s => !s.completed)[0] ?? null
 
   const getMessage = () => {
     if (total === 0) return ''
@@ -738,58 +739,83 @@ function DailyProgressBar({ stops }: { stops: PlannerStop[] }) {
   const glowColor = done === total ? 'rgba(61,188,118,0.4)' : 'rgba(212,168,67,0.35)'
 
   return (
-    <Link href="/planner" style={{ textDecoration: 'none', display: 'block', marginBottom: '20px' }}>
-      <div style={{
+    <div
+      onClick={() => router.push('/planner')}
+      style={{
         ...card,
         padding: '14px 18px',
         background: `linear-gradient(135deg, ${t.bg.elevated} 0%, ${t.bg.card} 100%)`,
         border: `1px solid ${done === total ? 'rgba(61,188,118,0.3)' : t.goldBorder}`,
         cursor: 'pointer',
         transition: 'border-color 0.15s',
+        marginBottom: '20px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          Today's Route
+        </span>
+        <span style={{ fontSize: '13px', fontWeight: '700', color: barColor }}>
+          {done}/{total}
+        </span>
+      </div>
+      {/* XP bar track */}
+      <div style={{
+        height: '10px',
+        borderRadius: '99px',
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        overflow: 'hidden',
+        marginBottom: '10px',
+        position: 'relative',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-          <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Today's Route
-          </span>
-          <span style={{ fontSize: '13px', fontWeight: '700', color: barColor }}>
-            {done}/{total}
-          </span>
-        </div>
-        {/* XP bar track */}
         <div style={{
-          height: '10px',
+          height: '100%',
+          width: `${pct}%`,
           borderRadius: '99px',
-          backgroundColor: 'rgba(255,255,255,0.07)',
-          overflow: 'hidden',
-          marginBottom: '10px',
-          position: 'relative',
-        }}>
+          background: done === total
+            ? `linear-gradient(90deg, #2da85e, ${t.status.success})`
+            : `linear-gradient(90deg, #b8891e, ${t.gold})`,
+          boxShadow: pct > 0 ? `0 0 10px ${glowColor}` : 'none',
+          transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }} />
+        {pct > 0 && pct < 100 && (
           <div style={{
-            height: '100%',
-            width: `${pct}%`,
-            borderRadius: '99px',
-            background: done === total
-              ? `linear-gradient(90deg, #2da85e, ${t.status.success})`
-              : `linear-gradient(90deg, #b8891e, ${t.gold})`,
-            boxShadow: pct > 0 ? `0 0 10px ${glowColor}` : 'none',
-            transition: 'width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
+            backgroundSize: '200% 100%',
+            animation: 'shimmer 2s infinite',
           }} />
-          {/* Shimmer effect */}
-          {pct > 0 && pct < 100 && (
-            <div style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)',
-              backgroundSize: '200% 100%',
-              animation: 'shimmer 2s infinite',
-            }} />
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <div style={{ fontSize: '12px', color: t.text.secondary, fontWeight: '500', flex: 1, minWidth: 0 }}>
+          {getMessage()}
+          {nextStop && done < total && (
+            <span style={{ display: 'block', fontSize: '11px', color: t.text.muted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Next: {nextStop.title}
+            </span>
           )}
         </div>
-        <div style={{ fontSize: '12px', color: t.text.secondary, fontWeight: '500' }}>
-          {getMessage()}
-        </div>
+        {nextStop?.address && done < total && (
+          <a
+            href={`https://maps.google.com/?q=${encodeURIComponent(nextStop.address)}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              padding: '6px 12px', borderRadius: '8px',
+              backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`,
+              color: t.gold, fontSize: '12px', fontWeight: '700',
+              textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap',
+            }}
+          >
+            <Navigation size={12} /> Directions
+          </a>
+        )}
       </div>
-    </Link>
+    </div>
   )
 }
 

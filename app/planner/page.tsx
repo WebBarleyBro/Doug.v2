@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, GripVertical, Check, Clock, MapPin, X, Search, UserPlus, Map } from 'lucide-react'
+import { Plus, GripVertical, Check, Clock, MapPin, X, Search, UserPlus, Map, Navigation } from 'lucide-react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   DragEndEvent,
@@ -74,6 +74,22 @@ function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
         </div>
       </div>
 
+      {stop.address && !stop.completed && (
+        <a
+          href={`https://maps.google.com/?q=${encodeURIComponent(stop.address)}`}
+          target="_blank" rel="noreferrer"
+          onClick={e => e.stopPropagation()}
+          title="Directions"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28, borderRadius: '5px', flexShrink: 0,
+            border: `1px solid ${t.border.subtle}`, backgroundColor: t.bg.elevated,
+            color: t.text.muted, textDecoration: 'none',
+          }}
+        >
+          <Navigation size={12} />
+        </a>
+      )}
       {stop.account_id && !stop.completed && (
         <button onClick={() => onLogVisit(stop.account_id!)} style={{
           padding: '4px 9px', fontSize: '11px', borderRadius: '5px',
@@ -110,8 +126,10 @@ export default function PlannerPage() {
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [stopSearchFocused, setStopSearchFocused] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [insertAfterIndex, setInsertAfterIndex] = useState<number | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const googleMapRef = useRef<any>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -200,6 +218,9 @@ export default function PlannerPage() {
 
   async function addStop(account: any) {
     if (!profile) return
+    const insertAt = insertAfterIndex !== null ? insertAfterIndex + 1 : stops.length
+    // Shift existing stops at or after insertAt
+    const shifted = stops.map((s, i) => i >= insertAt ? { ...s, stop_order: s.stop_order + 1 } : s)
     const stop = await upsertPlannerStop({
       user_id: profile.id,
       plan_date: date,
@@ -208,15 +229,23 @@ export default function PlannerPage() {
       subtitle: account.address || null,
       address: account.address || null,
       scheduled_time: null,
-      stop_order: stops.length,
+      stop_order: insertAt,
       completed: false,
       stop_type: 'account',
     })
-    setStops(prev => [...prev, stop])
+    if (insertAfterIndex !== null && insertAt < stops.length) {
+      await savePlannerOrder(shifted.map(s => ({ id: s.id, stop_order: s.stop_order })))
+      setStops([...shifted.slice(0, insertAt), stop, ...shifted.slice(insertAt)])
+    } else {
+      setStops(prev => [...prev, stop])
+    }
+    setInsertAfterIndex(null)
   }
 
   async function addCustomStop() {
     if (!customStop.trim() || !profile) return
+    const insertAt = insertAfterIndex !== null ? insertAfterIndex + 1 : stops.length
+    const shifted = stops.map((s, i) => i >= insertAt ? { ...s, stop_order: s.stop_order + 1 } : s)
     const stop = await upsertPlannerStop({
       user_id: profile.id,
       plan_date: date,
@@ -225,12 +254,18 @@ export default function PlannerPage() {
       subtitle: null,
       address: null,
       scheduled_time: null,
-      stop_order: stops.length,
+      stop_order: insertAt,
       completed: false,
       stop_type: 'task',
     })
-    setStops(prev => [...prev, stop])
+    if (insertAfterIndex !== null && insertAt < stops.length) {
+      await savePlannerOrder(shifted.map(s => ({ id: s.id, stop_order: s.stop_order })))
+      setStops([...shifted.slice(0, insertAt), stop, ...shifted.slice(insertAt)])
+    } else {
+      setStops(prev => [...prev, stop])
+    }
     setCustomStop('')
+    setInsertAfterIndex(null)
   }
 
   async function toggleComplete(id: string) {
@@ -259,6 +294,11 @@ export default function PlannerPage() {
     setStopResults([])
     setStopSearchFocused(false)
     await addStop(acc)
+  }
+
+  function triggerInsertAt(index: number) {
+    setInsertAfterIndex(index)
+    setTimeout(() => searchInputRef.current?.focus(), 50)
   }
 
   async function handleAccountAdded(account: any) {
@@ -442,12 +482,39 @@ export default function PlannerPage() {
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                    {stops.map(stop => (
-                      <SortableStop key={stop.id} stop={stop} onComplete={toggleComplete}
-                        onLogVisit={(accountId) => setVisitModal({ open: true, accountId })}
-                        onRemove={removeStop}
-                      />
+                  <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '12px' }}>
+                    {stops.map((stop, i) => (
+                      <div key={stop.id}>
+                        <div style={{ marginBottom: '4px' }}>
+                          <SortableStop stop={stop} onComplete={toggleComplete}
+                            onLogVisit={(accountId) => setVisitModal({ open: true, accountId })}
+                            onRemove={removeStop}
+                          />
+                        </div>
+                        {/* Insert-between button */}
+                        {i < stops.length - 1 && (
+                          <button
+                            onClick={() => triggerInsertAt(i)}
+                            title="Insert stop here"
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                              width: '100%', padding: '2px 0', marginBottom: '4px',
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: insertAfterIndex === i ? t.gold : t.text.muted,
+                              fontSize: '10px', fontWeight: insertAfterIndex === i ? '700' : '400',
+                              opacity: insertAfterIndex === i ? 1 : 0.35,
+                              transition: 'opacity 150ms, color 150ms',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+                            onMouseLeave={e => (e.currentTarget.style.opacity = insertAfterIndex === i ? '1' : '0.35')}
+                          >
+                            <div style={{ flex: 1, height: '1px', backgroundColor: insertAfterIndex === i ? t.gold : t.border.subtle, maxWidth: '60px' }} />
+                            <Plus size={10} />
+                            <span>{insertAfterIndex === i ? 'inserting here' : 'insert'}</span>
+                            <div style={{ flex: 1, height: '1px', backgroundColor: insertAfterIndex === i ? t.gold : t.border.subtle, maxWidth: '60px' }} />
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </SortableContext>
@@ -458,18 +525,28 @@ export default function PlannerPage() {
             <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {/* Account search */}
               <div style={{ position: 'relative' }}>
+                {insertAfterIndex !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', padding: '5px 10px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, borderRadius: '7px', fontSize: '11px', color: t.gold, fontWeight: '600' }}>
+                    <Plus size={10} /> Inserting after stop {insertAfterIndex + 1}
+                    <button onClick={() => setInsertAfterIndex(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: t.gold, cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center' }}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <div style={{ position: 'relative', flex: 1 }}>
                     <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: t.text.muted, pointerEvents: 'none' }} />
                     <input
+                      ref={searchInputRef}
                       type="text"
                       value={stopSearch}
                       onChange={e => setStopSearch(e.target.value)}
                       onFocus={() => setStopSearchFocused(true)}
                       onBlur={() => setTimeout(() => setStopSearchFocused(false), 150)}
-                      placeholder="Search accounts to add..."
+                      placeholder={insertAfterIndex !== null ? `Search account to insert at stop ${insertAfterIndex + 2}...` : 'Search accounts to add...'}
                       style={{
-                        width: '100%', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
+                        width: '100%', backgroundColor: t.bg.input,
+                        border: `1px solid ${insertAfterIndex !== null ? t.goldBorder : t.border.default}`,
                         borderRadius: '8px', padding: '10px 12px 10px 32px',
                         color: t.text.primary, fontSize: '13px', outline: 'none',
                       }}
