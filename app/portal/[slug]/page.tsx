@@ -57,6 +57,7 @@ export default function ClientPortalPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [isPreview, setIsPreview] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('90d')
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
   const [visitFilter, setVisitFilter] = useState<'all' | 'action' | 'wins' | 'general'>('all')
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
@@ -196,6 +197,26 @@ export default function ClientPortalPage() {
       acc[v.account_id] = v; return acc
     }, {})
   ) as any[]
+
+  // Date range filtering
+  const drDays = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : null
+  const drStart = drDays ? new Date(Date.now() - drDays * 86400000).toISOString().slice(0, 10) : null
+  const drVisits = drStart ? visits.filter((v: any) => String(v.visited_at).slice(0, 10) >= drStart) : visits
+  const drOrders = drStart ? orders.filter((o: any) => String(o.created_at || '').slice(0, 10) >= drStart) : orders
+  const drNonDraftOrders = drOrders.filter((o: any) => o.status !== 'draft')
+  const drActionVisits = drVisits.filter((v: any) => ACTION_STATUSES.includes(v.status))
+  const drWinVisits = drVisits.filter((v: any) => WIN_STATUSES.includes(v.status))
+  const drInProgressCount = new Set(drActionVisits.map((v: any) => v.account_id).filter(Boolean)).size
+  const drInProgress = Object.values(
+    drActionVisits.reduce((acc: any, v: any) => {
+      if (!v.account_id || acc[v.account_id]) return acc
+      acc[v.account_id] = v; return acc
+    }, {})
+  ) as any[]
+  const outcomeData = Object.entries(
+    drVisits.reduce((acc: any, v: any) => { acc[v.status] = (acc[v.status] || 0) + 1; return acc }, {} as Record<string, number>)
+  ).sort(([, a], [, b]) => (b as number) - (a as number))
+    .map(([status, count]) => ({ status, count: count as number, fill: STATUS_ACCENT[status] || '#4a4a45' }))
   const placementBreakdown = ['committed', 'ordered', 'on_shelf', 'reordering'].map(status => ({
     status, label: PLACEMENT_STATUS_LABELS[status], color: PLACEMENT_STATUS_COLORS[status],
     count: activePlacements.filter((p: any) => p.status === status).length,
@@ -211,8 +232,8 @@ export default function ClientPortalPage() {
     { key: 'activity', label: 'Field Activity', icon: <MapPin size={13} />, count: visits.length },
     { key: 'placements', label: 'Placements', icon: <Package size={13} />, count: activePlacements.length },
     { key: 'orders', label: isDistributorClient ? 'Inquiries' : 'Orders', icon: <Send size={13} />, count: nonDraftOrders.length },
-    ...(campaigns?.length > 0 ? [{ key: 'campaigns', label: 'Campaigns', icon: <TrendingUp size={13} />, count: campaigns.length }] : []),
-    ...(registrations?.length > 0 ? [{ key: 'compliance', label: 'Compliance', icon: <Shield size={13} />, count: (expiringRegs.length + expiredRegs.length) || undefined, countDanger: true }] : []),
+    { key: 'campaigns', label: 'Campaigns', icon: <TrendingUp size={13} />, count: campaigns?.length || undefined },
+    { key: 'compliance', label: 'Compliance', icon: <Shield size={13} />, count: (expiringRegs.length + expiredRegs.length) || undefined, countDanger: expiringRegs.length > 0 || expiredRegs.length > 0 },
     { key: 'files', label: 'Files', icon: <Folder size={13} />, count: clientFiles.length || undefined },
   ]
 
@@ -254,35 +275,6 @@ export default function ClientPortalPage() {
         </div>
       </header>
 
-      {/* KPI strip — always visible */}
-      <div style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${t.border.subtle}`, padding: `12px ${isMobile ? '16px' : '32px'}` }}>
-        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px' }}>
-          {/* Visits */}
-          <button onClick={() => setActiveTab('activity')} style={{ background: 'none', border: `1px solid ${activeTab === 'activity' ? accent : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'activity' ? `${accent}0d` : t.bg.card }}>
-            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Visits This Month</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'activity' ? accent : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{monthVisits}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{visits.length} total in 90 days</div>
-          </button>
-          {/* Placements */}
-          <button onClick={() => setActiveTab('placements')} style={{ background: 'none', border: `1px solid ${activeTab === 'placements' ? t.status.success : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'placements' ? `${t.status.success}0d` : t.bg.card }}>
-            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Active Placements</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'placements' ? t.status.success : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{activePlacements.length}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{placements.length} total tracked</div>
-          </button>
-          {/* Orders / Inquiries */}
-          <button onClick={() => setActiveTab('orders')} style={{ background: 'none', border: `1px solid ${activeTab === 'orders' ? t.status.info : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: activeTab === 'orders' ? `${t.status.info}0d` : t.bg.card }}>
-            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>{isDistributorClient ? 'Distributor Inquiries' : 'Direct Orders'}</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: activeTab === 'orders' ? t.status.info : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{nonDraftOrders.length}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>{isDistributorClient ? 'sent to distributor on your behalf' : 'purchase orders placed'}</div>
-          </button>
-          {/* Warm accounts */}
-          <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ background: 'none', border: `1px solid ${(activeTab === 'activity' && visitFilter === 'action') ? '#6aaee0' : t.border.default}`, borderRadius: '10px', padding: '12px 16px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms', backgroundColor: (activeTab === 'activity' && visitFilter === 'action') ? '#6aaee00d' : t.bg.card }}>
-            <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '6px' }}>Warm Accounts</div>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: (activeTab === 'activity' && visitFilter === 'action') ? '#6aaee0' : t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>{warmAccountCount}</div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>accounts likely to order soon</div>
-          </button>
-        </div>
-      </div>
 
       {/* Tab navigation */}
       <div style={{ backgroundColor: t.bg.elevated, borderBottom: `1px solid ${t.border.default}`, position: 'sticky', top: '60px', zIndex: 15, overflowX: 'auto' }}>
@@ -323,43 +315,114 @@ export default function ClientPortalPage() {
         {/* ══ OVERVIEW TAB ══ */}
         {activeTab === 'overview' && (
           <div>
-            {/* Visit trend */}
-            {visitTrend.some((w: any) => w.visits > 0) && (
-              <div style={{ ...card, padding: isMobile ? '16px' : '22px 28px', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>Account Visits — Last 12 Weeks</div>
-                  <button onClick={() => setActiveTab('activity')} style={{ fontSize: '11px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>
+            {/* Date range + KPI row */}
+            <div style={{ marginBottom: '20px' }}>
+              {/* Date range selector */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Overview</div>
+                <div style={{ display: 'flex', gap: '4px', backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '3px' }}>
+                  {([['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['all', 'All time']] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setDateRange(key)} style={{
+                      padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: dateRange === key ? '700' : '500',
+                      border: 'none', cursor: 'pointer',
+                      backgroundColor: dateRange === key ? accent : 'transparent',
+                      color: dateRange === key ? '#0c0c0a' : t.text.muted,
+                      transition: 'all 150ms',
+                    }}>{label}</button>
+                  ))}
                 </div>
-                <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '14px' }}>Each bar = accounts our team visited that week on your behalf.</div>
-                <ResponsiveContainer width="100%" height={isMobile ? 110 : 150}>
-                  <BarChart data={visitTrend} barCategoryGap="35%">
-                    <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
-                    <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 10 }} axisLine={false} tickLine={false} interval={isMobile ? 2 : 1} />
-                    <YAxis tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} width={20} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '8px', fontSize: '12px' }}
-                      labelStyle={{ color: t.text.muted }} itemStyle={{ color: accent }}
-                      cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                      formatter={(value: any) => [value, 'visits']}
-                      labelFormatter={(label: any, payload: any) => { const wE = payload?.[0]?.payload?.weekEnd; return wE ? `${label} – ${wE}` : label }}
-                    />
-                    <Bar dataKey="visits" fill={accent} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
               </div>
-            )}
 
-            {/* 2-col: recent wins + warm accounts */}
+              {/* KPI grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px' }}>
+                <button onClick={() => setActiveTab('activity')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${accent}44` }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Visits</div>
+                  <div style={{ fontSize: '26px', fontWeight: '800', color: accent, letterSpacing: '-0.03em', lineHeight: 1 }}>{drVisits.length}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{dateRange === 'all' ? 'all time' : dateRange === '7d' ? 'last 7 days' : dateRange === '30d' ? 'last 30 days' : 'last 90 days'}</div>
+                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: accent, marginTop: '10px', opacity: 0.6 }} />
+                </button>
+                <button onClick={() => setActiveTab('placements')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${t.status.success}44` }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Placements</div>
+                  <div style={{ fontSize: '26px', fontWeight: '800', color: t.status.success, letterSpacing: '-0.03em', lineHeight: 1 }}>{activePlacements.length}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>active on shelf / menu</div>
+                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: t.status.success, marginTop: '10px', opacity: 0.6 }} />
+                </button>
+                <button onClick={() => setActiveTab('orders')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${t.status.info}44` }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{isDistributorClient ? 'Inquiries' : 'Orders'}</div>
+                  <div style={{ fontSize: '26px', fontWeight: '800', color: t.status.info, letterSpacing: '-0.03em', lineHeight: 1 }}>{drNonDraftOrders.length}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{isDistributorClient ? 'sent to distributor' : 'purchase orders'}</div>
+                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: t.status.info, marginTop: '10px', opacity: 0.6 }} />
+                </button>
+                <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ ...card, padding: '14px 16px', cursor: 'pointer', border: `1px solid ${'#6aaee0' + '66'}`, backgroundColor: `${'#6aaee0'}0d`, textAlign: 'left' }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>In Progress</div>
+                  <div style={{ fontSize: '26px', fontWeight: '800', color: '#6aaee0', letterSpacing: '-0.03em', lineHeight: 1 }}>{drInProgressCount}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>accounts being followed up</div>
+                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: '#6aaee0', marginTop: '10px', opacity: 0.6 }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Charts row */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', marginBottom: '20px' }}>
+              {/* Visit trend chart */}
+              {visitTrend.some((w: any) => w.visits > 0) && (
+                <div style={{ ...card, padding: isMobile ? '14px' : '18px 22px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Visit Trend — Last 12 Weeks</div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts visited per week by our team</div>
+                    </div>
+                    <button onClick={() => setActiveTab('activity')} style={{ fontSize: '11px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600', flexShrink: 0 }}>See all →</button>
+                  </div>
+                  <ResponsiveContainer width="100%" height={isMobile ? 100 : 130}>
+                    <BarChart data={visitTrend} barCategoryGap="40%">
+                      <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
+                      <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 9 }} axisLine={false} tickLine={false} interval={isMobile ? 3 : 1} />
+                      <YAxis tick={{ fill: t.text.muted, fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={18} />
+                      <Tooltip contentStyle={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '8px', fontSize: '12px' }} labelStyle={{ color: t.text.muted }} itemStyle={{ color: accent }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(v: any) => [v, 'visits']} labelFormatter={(lbl: any, pl: any) => { const wE = pl?.[0]?.payload?.weekEnd; return wE ? `${lbl} – ${wE}` : lbl }} />
+                      <Bar dataKey="visits" fill={accent} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              {/* Visit outcome breakdown */}
+              {outcomeData.length > 0 && (
+                <div style={{ ...card, padding: isMobile ? '14px' : '18px 22px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Visit Outcomes</div>
+                  <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '14px' }}>
+                    {dateRange === 'all' ? 'All time' : dateRange === '7d' ? 'Last 7 days' : dateRange === '30d' ? 'Last 30 days' : 'Last 90 days'}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {outcomeData.slice(0, 6).map(({ status, count, fill }) => {
+                      const pct = drVisits.length > 0 ? Math.round((count / drVisits.length) * 100) : 0
+                      return (
+                        <div key={status}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '11px', color: t.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>{status}</span>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color: fill, flexShrink: 0, marginLeft: '6px' }}>{count}</span>
+                          </div>
+                          <div style={{ height: '5px', borderRadius: '3px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, backgroundColor: fill, borderRadius: '3px', transition: 'width 400ms ease' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2-col: recent wins + in progress */}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
               {/* Recent wins */}
               <div style={{ ...card, padding: '18px 20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Recent Wins</div>
-                  {winVisits.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('wins') }} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
+                  {drWinVisits.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('wins') }} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
                 </div>
-                {winVisits.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No wins recorded yet in the last 90 days.</div>
-                ) : winVisits.slice(0, 5).map((v: any) => (
+                {drWinVisits.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No wins in this period.</div>
+                ) : drWinVisits.slice(0, 5).map((v: any) => (
                   <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
                     <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: t.status.success, flexShrink: 0, marginTop: '5px', boxShadow: `0 0 4px ${t.status.success}88` }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -371,18 +434,18 @@ export default function ClientPortalPage() {
                 ))}
               </div>
 
-              {/* Warm accounts */}
+              {/* In Progress */}
               <div style={{ ...card, padding: '18px 20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <div>
-                    <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Warm Accounts</div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>In Progress</div>
                     <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts our team is actively following up with</div>
                   </div>
-                  {warmAccounts.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ fontSize: '11px', color: '#6aaee0', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
+                  {drInProgress.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ fontSize: '11px', color: '#6aaee0', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
                 </div>
-                {warmAccounts.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No active follow-ups at the moment.</div>
-                ) : warmAccounts.slice(0, 5).map((v: any) => (
+                {drInProgress.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No active follow-ups in this period.</div>
+                ) : drInProgress.slice(0, 5).map((v: any) => (
                   <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
                     <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: STATUS_ACCENT[v.status] || '#6aaee0', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -530,23 +593,33 @@ export default function ClientPortalPage() {
         {/* ══ ACTIVITY TAB ══ */}
         {activeTab === 'activity' && (
           <div>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              {([
-                { key: 'all', label: `All (${visits.length})` },
-                { key: 'wins', label: `Wins (${winVisits.length})`, color: t.status.success },
-                { key: 'action', label: `Needs Attention (${actionVisits.length})`, color: '#6aaee0' },
-                { key: 'general', label: `General (${generalVisits.length})` },
-              ] as { key: string; label: string; color?: string }[]).map(f => (
-                <button key={f.key} onClick={() => setVisitFilter(f.key as any)} style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: visitFilter === f.key ? '700' : '500', border: `1px solid ${visitFilter === f.key ? (f.color || accent) : t.border.default}`, backgroundColor: visitFilter === f.key ? `${(f.color || accent)}22` : 'transparent', color: visitFilter === f.key ? (f.color || accent) : t.text.muted }}>
-                  {f.label}
-                </button>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {([
+                  { key: 'all', label: `All (${drVisits.length})` },
+                  { key: 'wins', label: `Wins (${drWinVisits.length})`, color: t.status.success },
+                  { key: 'action', label: `In Progress (${drActionVisits.length})`, color: '#6aaee0' },
+                  { key: 'general', label: `General (${drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status)).length})` },
+                ] as { key: string; label: string; color?: string }[]).map(f => (
+                  <button key={f.key} onClick={() => setVisitFilter(f.key as any)} style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: visitFilter === f.key ? '700' : '500', border: `1px solid ${visitFilter === f.key ? (f.color || accent) : t.border.default}`, backgroundColor: visitFilter === f.key ? `${(f.color || accent)}22` : 'transparent', color: visitFilter === f.key ? (f.color || accent) : t.text.muted }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              {/* Date range mini selector in activity tab */}
+              <div style={{ display: 'flex', gap: '3px', backgroundColor: t.bg.elevated, borderRadius: '7px', padding: '2px' }}>
+                {(['7d', '30d', '90d', 'all'] as const).map(k => (
+                  <button key={k} onClick={() => setDateRange(k)} style={{ padding: '4px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: dateRange === k ? '700' : '500', border: 'none', cursor: 'pointer', backgroundColor: dateRange === k ? accent : 'transparent', color: dateRange === k ? '#0c0c0a' : t.text.muted }}>
+                    {k === 'all' ? 'All' : k}
+                  </button>
+                ))}
+              </div>
             </div>
-            {filteredVisits.length === 0 ? (
+            {(visitFilter === 'all' ? drVisits : visitFilter === 'wins' ? drWinVisits : visitFilter === 'action' ? drActionVisits : drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))).length === 0 ? (
               <div style={{ fontSize: '13px', color: t.text.muted, padding: '40px 0', textAlign: 'center' }}>No visits in this category.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {filteredVisits.map((v: any) => {
+                {(visitFilter === 'all' ? drVisits : visitFilter === 'wins' ? drWinVisits : visitFilter === 'action' ? drActionVisits : drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))).map((v: any) => {
                   const ac = STATUS_ACCENT[v.status] || t.text.muted
                   return (
                     <div key={v.id} style={{ ...card, padding: '12px 14px 12px 16px', boxShadow: `inset 3px 0 0 ${ac}` }}>

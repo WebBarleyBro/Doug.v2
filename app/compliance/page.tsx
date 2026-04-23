@@ -62,7 +62,7 @@ export default function CompliancePage() {
     <LayoutShell>
       <div style={{ padding: '32px 48px', maxWidth: '1300px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '24px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Compliance</h1>
+          <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Compliance</h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>State registrations, TTB approvals, label expiry tracking</p>
         </div>
 

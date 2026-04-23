@@ -129,7 +129,7 @@ export default function PlacementsPage() {
       <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Placements</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Placements</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{placements.length} active placements</p>
           </div>
           <button onClick={() => setShowCreate(true)} style={btnPrimary}><Plus size={16} /> New Placement</button>

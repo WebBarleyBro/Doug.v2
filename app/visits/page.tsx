@@ -74,7 +74,7 @@ export default function VisitsPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: '12px', flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Visit Log</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Visit Log</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
               {loading ? 'Loading...' : `${visits.length} visit${visits.length !== 1 ? 's' : ''}`}
             </p>

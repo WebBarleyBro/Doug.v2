@@ -1031,8 +1031,16 @@ export function getVisitStreak(userId: string) {
     const since = nDaysAgoMT(60)
     const { data: myVisits } = await sb.from('visits').select('visited_at, user_id')
       .eq('user_id', userId).gte('visited_at', since).order('visited_at', { ascending: false })
-    const { data: teamVisits } = await sb.from('visits').select('visited_at, user_id')
+    const { data: teamVisitsRaw } = await sb.from('visits').select('visited_at, user_id, account_id')
       .gte('visited_at', nDaysAgoMT(7)).order('visited_at', { ascending: false })
+    // Deduplicate by date|user|account (same as visit log display)
+    const teamVisits = Object.values(
+      (teamVisitsRaw || []).reduce((acc: any, v: any) => {
+        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}|${v.account_id}`
+        if (!acc[key]) acc[key] = v
+        return acc
+      }, {})
+    )
 
     // Build set of unique MT calendar days user visited
     const visitedDays = new Set((myVisits || []).map((v: any) => {

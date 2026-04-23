@@ -206,7 +206,7 @@ export default function MarketingPage() {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Marketing</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Marketing</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
               {activeCampaigns > 0 ? `${activeCampaigns} active campaign${activeCampaigns !== 1 ? 's' : ''}` : 'Campaigns and email contacts'}
               {totalBudget > 0 && ` · ${formatCurrency(totalBudget)} total budget`}

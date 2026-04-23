@@ -150,7 +150,7 @@ export default function ContactsPage() {
       <div style={{ padding: '32px 48px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Contacts</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Contacts</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{contacts.length} contacts across all accounts</p>
           </div>
           <button onClick={openAdd} style={{ ...btnPrimary, fontSize: '13px' }}>

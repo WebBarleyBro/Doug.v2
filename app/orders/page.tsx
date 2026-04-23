@@ -569,7 +569,7 @@ export default function OrdersPage() {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Orders</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Orders</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{directOrders.length} direct · {inquiryOrders.length} inquiries</p>
           </div>
           <button onClick={() => { setShowCreate(true); setOrderType(activeTab === 'inquiries' ? 'distributor' : 'direct') }} style={btnPrimary}>

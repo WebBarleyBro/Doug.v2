@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', gap: '16px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Analytics</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Analytics</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Field activity and performance data</p>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>

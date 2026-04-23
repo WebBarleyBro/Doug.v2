@@ -31,7 +31,7 @@ export default function ClientsPage() {
     <LayoutShell>
       <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Clients</h1>
+          <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Clients</h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Your brand portfolio</p>
         </div>
 

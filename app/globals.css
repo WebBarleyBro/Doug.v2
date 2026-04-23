@@ -177,6 +177,11 @@ body {
 /* ─── Utility classes ─────────────────────────────────────────────────────── */
 
 .skeleton { background: rgba(255,255,255,0.06); border-radius: 6px; animation: skeleton-pulse 1.2s ease-in-out infinite; }
+
+/* Mobile nav header already shows the page title — hide in-page h1 on small screens */
+@media (max-width: 767px) {
+  .page-h1 { display: none !important; }
+}
 .slide-up       { animation: slide-up 280ms cubic-bezier(0.32,0.72,0,1) both; }
 .fade-in        { animation: fade-in 200ms ease both; }
 .spin           { animation: spin 700ms linear infinite; }

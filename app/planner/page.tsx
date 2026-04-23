@@ -370,7 +370,7 @@ export default function PlannerPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Day Planner</h1>
+            <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Day Planner</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
               {stops.length > 0 ? `${completed} / ${stops.length} stops complete` : 'Build your route for today'}
             </p>
