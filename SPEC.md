@@ -427,7 +427,7 @@ These are fully defined in the data model and data.ts but have no interface:
 | Competitive sightings | `CompetitiveSighting` | `logVisit()` saves them but no view |
 | Depletion tracking | `DepletionEntry` | No UI |
 | Tasting consumer data | `TastingConsumer` | `saveTastingConsumer()` exists, no analysis view |
-| Agency pipeline | `AgencyPipeline` | `getAgencyPipeline()` exists, no page |
+| Tasting consumer follow-up analysis | `TastingConsumer` | Data captured at events, no analysis view |
 
 ---
 
@@ -455,7 +455,6 @@ These are fully defined in the data model and data.ts but have no interface:
 ### Sprint 2 (owner/admin power)
 - Goals / quota tracking per client per quarter
 - Depletions entry UI (per placement per month)
-- Agency pipeline page (new client prospects)
 - Per-rep activity breakdown on analytics
 - Commission invoice / statement PDF generation
 

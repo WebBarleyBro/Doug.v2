@@ -6,7 +6,7 @@ import type {
   Account, Client, Visit, Placement, PurchaseOrder, POLineItem,
   Contact, Task, Event, Campaign, CampaignMilestone, Product,
   StateRegistration, CompetitiveSighting, DepletionEntry,
-  TastingConsumer, AgencyPipeline, DateRange, UserProfile,
+  TastingConsumer, DateRange, UserProfile,
   PlacementStatus, VisitStatus, TaskPriority,
 } from './types'
 
@@ -911,31 +911,6 @@ export async function getCompetitiveSightings(accountId?: string): Promise<Compe
   return data || []
 }
 
-// ─── Agency Pipeline ──────────────────────────────────────────────────────
-
-export async function getAgencyPipeline(): Promise<AgencyPipeline[]> {
-  const sb = getSupabase()
-  const { data, error } = await sb
-    .from('agency_pipeline')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data || []
-}
-
-export async function upsertPipelineDeal(deal: Partial<AgencyPipeline>) {
-  const sb = getSupabase()
-  const { error } = await sb
-    .from('agency_pipeline')
-    .upsert({ ...deal, updated_at: new Date().toISOString() })
-  if (error) throw error
-}
-
-export async function deletePipelineDeal(id: string) {
-  const sb = getSupabase()
-  await sb.from('agency_pipeline').delete().eq('id', id)
-}
-
 // ─── Tasting Consumers ────────────────────────────────────────────────────
 
 export async function getTastingConsumers(eventId: string): Promise<TastingConsumer[]> {
@@ -1603,15 +1578,6 @@ export async function createCampaign(campaign: Partial<Campaign>): Promise<Campa
     .single()
   if (error) throw error
   return data
-}
-
-export async function upsertPipelineStage(id: string, stage: string) {
-  const sb = getSupabase()
-  const { error } = await sb
-    .from('agency_pipeline')
-    .update({ stage, updated_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) throw error
 }
 
 export async function createMilestone(campaignId: string, title: string, dueDate?: string) {

@@ -20,7 +20,7 @@ import { invalidate } from '../../lib/cache'
 import { clientLogoUrl } from '../../lib/constants'
 import { getSupabase } from '../../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, btnIcon, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, daysAgoMT, formatCurrency, accountHealth, resolveTotal } from '../../lib/formatters'
+import { formatShortDateMT, daysAgoMT, formatCurrency, resolveTotal } from '../../lib/formatters'
 import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client } from '../../lib/types'
@@ -300,7 +300,6 @@ export default function AccountDetailPage() {
 
   const days = daysAgoMT(account.last_visited)
   const overdueClr = overdueColor(days)
-  const health = accountHealth(account, placements)
   const pad = isMobile ? '16px' : '32px 36px'
 
   const dedupedVisits = Object.values(
@@ -334,15 +333,6 @@ export default function AccountDetailPage() {
                 </h1>
                 <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: t.status.neutralBg, color: t.text.muted, textTransform: 'capitalize' }}>
                   {account.account_type?.replace('_', '-')}
-                </span>
-                <span title={health.reason} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px',
-                  backgroundColor: `${health.color}18`, color: health.color,
-                  border: `1px solid ${health.color}44`,
-                }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: health.color, display: 'inline-block', boxShadow: `0 0 4px ${health.color}88` }} />
-                  {health.label} · {health.reason}
                 </span>
                 {account.priority && (() => {
                   const colors: Record<string, string> = { A: '#ef4444', B: t.gold, C: '#22c55e' }

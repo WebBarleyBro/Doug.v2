@@ -10,7 +10,7 @@ import { CardSkeleton } from '../components/LoadingSkeleton'
 import { getAccounts, getClients, deleteAccount } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, badge } from '../lib/theme'
-import { daysAgoMT, relativeTimeStr, accountHealth } from '../lib/formatters'
+import { daysAgoMT, relativeTimeStr } from '../lib/formatters'
 import { overdueColor, overdueColorBg } from '../lib/theme'
 import { clientLogoUrl } from '../lib/constants'
 import type { Account, Client, UserProfile } from '../lib/types'
@@ -18,7 +18,6 @@ import type { Account, Client, UserProfile } from '../lib/types'
 function AccountCard({ account, clients, onClick }: { account: any; clients: Client[]; onClick?: () => void }) {
   const days = daysAgoMT(account.last_visited)
   const color = overdueColor(days)
-  const health = accountHealth(account)
   const slugs = account.account_clients?.map((ac: any) => ac.client_slug) || []
   const accountClients = clients.filter(c => slugs.includes(c.slug))
 
@@ -34,11 +33,6 @@ function AccountCard({ account, clients, onClick }: { account: any; clients: Cli
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <span title={`${health.label}: ${health.reason}`} style={{
-                width: '8px', height: '8px', borderRadius: '50%',
-                backgroundColor: health.color, flexShrink: 0,
-                boxShadow: `0 0 4px ${health.color}88`,
-              }} />
               <div style={{ fontSize: '15px', fontWeight: '600', color: t.text.primary }}>
                 {account.name}
               </div>
