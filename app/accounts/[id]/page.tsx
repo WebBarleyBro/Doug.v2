@@ -66,6 +66,7 @@ export default function AccountDetailPage() {
   const loadedTabsRef = useRef<Set<string>>(new Set())
   const accountNameRef = useRef<string>('')
   const [isMobile, setIsMobile] = useState(false)
+  const [activityLimit, setActivityLimit] = useState(20)
 
   // Edit account modal
   const [showEdit, setShowEdit] = useState(false)
@@ -171,7 +172,7 @@ export default function AccountDetailPage() {
       setClients(cls)
       // Fetch all tab data together so orders get the correct account name
       const [vs, ps, os] = await Promise.all([
-        getVisits({ accountId: id, limit: 50 }),
+        getVisits({ accountId: id, limit: 200 }),
         getPlacements({ accountId: id }),
         getOrders({ accountId: id, accountName: acc?.name || '' }),
       ])
@@ -304,7 +305,7 @@ export default function AccountDetailPage() {
 
   const dedupedVisits = Object.values(
     visits.reduce((acc: Record<string, any>, v: any) => {
-      const key = `${v.visited_at}|${v.user_id}`
+      const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}`
       if (!acc[key]) acc[key] = v
       return acc
     }, {})
@@ -460,9 +461,15 @@ export default function AccountDetailPage() {
               <EmptyState icon={<Activity size={32} />} title="No activity yet" subtitle="Log a visit to get started" />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {timeline.slice(0, 20).map((item: any) => (
+                {timeline.slice(0, activityLimit).map((item: any) => (
                   <TimelineItem key={item.id} item={item} />
                 ))}
+                {timeline.length > activityLimit && (
+                  <button onClick={() => setActivityLimit(n => n + 20)}
+                    style={{ padding: '10px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', color: t.text.muted, cursor: 'pointer', fontSize: '13px' }}>
+                    Show more ({timeline.length - activityLimit} remaining)
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -476,7 +483,7 @@ export default function AccountDetailPage() {
               // Group rows by visited_at — same timestamp = one physical visit
               const groups: Record<string, any[]> = {}
               visits.forEach((v: any) => {
-                const key = v.visited_at
+                const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}`
                 if (!groups[key]) groups[key] = []
                 groups[key].push(v)
               })
