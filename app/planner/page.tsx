@@ -194,8 +194,9 @@ export default function PlannerPage() {
   }, [profile?.id, date, loading, stops.length])
 
   useEffect(() => {
+    if (!profile?.id) return
     getOverdueAccounts().then(accs => setSuggestions(accs.slice(0, 10))).catch(() => {})
-  }, [])
+  }, [profile?.id])
 
   async function addStop(account: any) {
     if (!profile) return

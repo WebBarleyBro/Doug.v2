@@ -958,19 +958,31 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
     const monthStart = startOfMonthMT()
     const monthEnd = endOfMonthMT()
 
-    const [teamVisits, myVisits, activePlacements, openTasks] = await Promise.all([
+    // Fetch visit rows then deduplicate by date+user+account to match the visit log display
+    function countDistinctVisits(rows: any[]): number {
+      const seen = new Set<string>()
+      return rows.filter(v => {
+        const key = `${String(v.visited_at).slice(0, 10)}|${v.user_id}|${v.account_id}`
+        if (seen.has(key)) return false
+        seen.add(key); return true
+      }).length
+    }
+
+    const [teamVisitRows, myVisitRows, activePlacements, openTasks] = await Promise.all([
       isOwner
-        ? sb.from('visits').select('id', { count: 'exact', head: true })
+        ? sb.from('visits').select('visited_at, user_id, account_id')
             .gte('visited_at', monthStart).lte('visited_at', monthEnd)
-        : sb.from('visits').select('id', { count: 'exact', head: true })
+        : sb.from('visits').select('visited_at, user_id, account_id')
             .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
-      sb.from('visits').select('id', { count: 'exact', head: true })
+      sb.from('visits').select('visited_at, user_id, account_id')
         .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
       sb.from('placements').select('id', { count: 'exact', head: true }).is('lost_at', null),
       sb.from('tasks').select('id', { count: 'exact', head: true })
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
     ])
+    const teamVisits = { count: countDistinctVisits(teamVisitRows.data || []) }
+    const myVisits = { count: countDistinctVisits(myVisitRows.data || []) }
 
     // Only count sent/fulfilled orders for commission — drafts and cancelled don't earn commission
     const [sentOrders, fulfilledOrders, clients] = await Promise.all([
