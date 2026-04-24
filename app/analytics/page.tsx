@@ -77,6 +77,7 @@ export default function AnalyticsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [visitModal, setVisitModal] = useState<{ open: boolean; accountId?: string; accountName?: string }>({ open: false })
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  const [showAllFollowUps, setShowAllFollowUps] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     setDismissedIds(new Set())
+    setShowAllFollowUps(false)
     setLoading(true)
     setExpandedStatus(null)
     const end = new Date()
@@ -115,8 +117,8 @@ export default function AnalyticsPage() {
       setClients(cls)
       setFunnel(funnelData)
 
-      // Visit activity buckets
-      const buckets = Math.max(1, Math.ceil(rangeDays / (rangeDays <= 14 ? 1 : 7)))
+      // Visit activity buckets — daily for ≤30D, weekly for ≤90D, monthly for 1Y
+      const buckets = rangeDays <= 30 ? rangeDays : rangeDays <= 90 ? Math.ceil(rangeDays / 7) : Math.ceil(rangeDays / 30)
       const bucketMs = (rangeDays * 24 * 60 * 60 * 1000) / buckets
       const bucketData: { label: string; visits: number }[] = []
       for (let i = 0; i < buckets; i++) {
@@ -199,12 +201,20 @@ export default function AnalyticsPage() {
     reordering: t.gold,
   }
 
-  // Derive follow-up list from visit data
-  const followUpVisits = Object.entries(visitsByStatusGrouped)
-    .filter(([status]) => ACTION_STATUSES.has(status))
-    .flatMap(([status, visits]) => visits.map(v => ({ ...v, _status: status })))
-    .filter(v => !dismissedIds.has(v.id))
-    .sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime())
+  // Derive follow-up list — deduplicated by account (most recent visit per account)
+  const followUpVisits = (() => {
+    const all = Object.entries(visitsByStatusGrouped)
+      .filter(([status]) => ACTION_STATUSES.has(status))
+      .flatMap(([status, visits]) => visits.map(v => ({ ...v, _status: status })))
+      .filter(v => !dismissedIds.has(v.id))
+      .sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime())
+    const seen = new Set<string>()
+    return all.filter(v => {
+      if (seen.has(v.account_id)) return false
+      seen.add(v.account_id)
+      return true
+    })
+  })()
 
   return (
     <LayoutShell>
@@ -254,7 +264,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={visitData} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="label" tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} interval={visitData.length <= 14 ? 0 : Math.floor(visitData.length / 7)} />
                 <YAxis tick={{ fill: t.text.muted, fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Bar dataKey="visits" name="Visits" fill={t.gold} radius={[3, 3, 0, 0]} />
@@ -401,11 +411,18 @@ export default function AnalyticsPage() {
         {/* Follow-up action list */}
         {followUpVisits.length > 0 && (
           <div style={{ ...card, padding: '22px 24px' }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
-              Needs Action — {followUpVisits.length} account{followUpVisits.length !== 1 ? 's' : ''} from last {rangeDays} days
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Needs Action — {followUpVisits.length} account{followUpVisits.length !== 1 ? 's' : ''}
+              </div>
+              {followUpVisits.length > 8 && (
+                <button onClick={() => setShowAllFollowUps(v => !v)} style={{ fontSize: '11px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+                  {showAllFollowUps ? 'Show less' : `Show all ${followUpVisits.length}`}
+                </button>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-              {followUpVisits.map((v: any) => {
+              {(showAllFollowUps ? followUpVisits : followUpVisits.slice(0, 8)).map((v: any) => {
                 const color = VISIT_STATUS_COLORS[v._status] || t.text.muted
                 return (
                   <div key={v.id} style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderLeft: `3px solid ${color}` }}>
@@ -446,6 +463,14 @@ export default function AnalyticsPage() {
                 )
               })}
             </div>
+            {!showAllFollowUps && followUpVisits.length > 8 && (
+              <button onClick={() => setShowAllFollowUps(true)} style={{
+                marginTop: '14px', width: '100%', padding: '9px', borderRadius: '8px', fontSize: '12px',
+                border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted, cursor: 'pointer',
+              }}>
+                + {followUpVisits.length - 8} more accounts
+              </button>
+            )}
           </div>
         )}
 

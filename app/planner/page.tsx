@@ -56,7 +56,7 @@ function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
         {stop.completed && <Check size={11} color="#0c0c0a" strokeWidth={3} />}
       </button>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <div style={{
           fontSize: '13px', fontWeight: '500', color: stop.completed ? t.text.muted : t.text.primary,
           textDecoration: stop.completed ? 'line-through' : 'none',
@@ -64,8 +64,8 @@ function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
         }}>
           {stop.title}
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
-          {stop.subtitle && <div style={{ fontSize: '11px', color: t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.subtitle}</div>}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px', overflow: 'hidden' }}>
+          {stop.subtitle && <div style={{ fontSize: '11px', color: t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{stop.subtitle}</div>}
           {stop.scheduled_time && (
             <div style={{ fontSize: '11px', color: t.status.info, display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
               <Clock size={9} /> {stop.scheduled_time}
@@ -406,34 +406,37 @@ export default function PlannerPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: isMobile ? '16px' : '28px 40px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '28px 40px', maxWidth: '1100px', margin: '0 auto', width: '100%', overflowX: 'hidden' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
-          <div>
+        <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: '20px', gap: '12px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+          <div style={{ minWidth: 0 }}>
             <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Day Planner</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
               {stops.length > 0 ? `${completed} / ${stops.length} stops complete` : 'Build your route for today'}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              onClick={() => setShowMap(v => !v)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
-                cursor: 'pointer', flexShrink: 0,
-                backgroundColor: showMap ? t.goldDim : t.bg.card,
-                color: showMap ? t.gold : t.text.secondary,
-                border: `1px solid ${showMap ? t.border.gold : t.border.default}`,
-              }}
-            >
-              <Map size={14} /> {showMap ? 'Hide Map' : 'Map View'}
-            </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+            {!isMobile && (
+              <button
+                onClick={() => setShowMap(v => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
+                  cursor: 'pointer',
+                  backgroundColor: showMap ? t.goldDim : t.bg.card,
+                  color: showMap ? t.gold : t.text.secondary,
+                  border: `1px solid ${showMap ? t.border.gold : t.border.default}`,
+                }}
+              >
+                <Map size={14} /> {showMap ? 'Hide Map' : 'Map View'}
+              </button>
+            )}
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               style={{
                 backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`,
                 borderRadius: '8px', padding: '8px 12px', color: t.text.primary,
-                fontSize: '13px', outline: 'none', cursor: 'pointer', flexShrink: 0,
+                fontSize: '13px', outline: 'none', cursor: 'pointer',
+                maxWidth: isMobile ? '160px' : 'none',
               }} />
           </div>
         </div>

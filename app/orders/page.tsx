@@ -1003,7 +1003,7 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
                   <label style={labelStyle}>{orderType === 'distributor' ? 'Ship To' : 'Deliver To'}</label>
                   <input type="text" value={form.deliver_to_name} onChange={e => setForm(f => ({ ...f, deliver_to_name: e.target.value }))} placeholder="Business name" style={inputStyle} />
@@ -1046,7 +1046,7 @@ export default function OrdersPage() {
                         </select>
                       </div>
                     )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                       <input type="text" value={form.distributor_rep_name} onChange={e => setForm(f => ({ ...f, distributor_rep_name: e.target.value }))} placeholder="Rep name" style={{ ...inputStyle, fontSize: '13px' }} />
                       <input type="email" value={form.distributor_email} onChange={e => setForm(f => ({ ...f, distributor_email: e.target.value }))} placeholder="rep@distributor.com" style={{ ...inputStyle, fontSize: '13px' }} />
                     </div>
