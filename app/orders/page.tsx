@@ -550,7 +550,7 @@ export default function OrdersPage() {
         commission_rate: selectedClient?.commission_rate || 0,
         ...extra,
       })
-      await updateOrder(newOrder.id, { status: 'sent' })
+      if (orderType === 'direct') await updateOrder(newOrder.id, { status: 'sent' })
       invalidatePrefix('dashboard-stats')
       setShowCreate(false)
       resetForm()

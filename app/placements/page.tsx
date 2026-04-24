@@ -48,10 +48,15 @@ export default function PlacementsPage() {
   })
 
   const load = useCallback(async () => {
-    const [ps, cls] = await Promise.all([getPlacements(), getClients()])
-    setPlacements(ps)
-    setClients(cls)
-    setLoading(false)
+    try {
+      const [ps, cls] = await Promise.all([getPlacements(), getClients()])
+      setPlacements(ps)
+      setClients(cls)
+    } catch {
+      // data load failed — leave state empty
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])

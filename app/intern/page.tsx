@@ -66,7 +66,7 @@ export default function InternPage() {
         </div>
 
         {/* Task summary */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '14px', marginBottom: '28px' }}>
           {[
             { label: 'Open Tasks', value: openTasks.length, color: openTasks.length > 0 ? t.gold : '#3dba78' },
             { label: 'Overdue', value: overdue.length, color: overdue.length > 0 ? '#e05252' : '#3dba78' },

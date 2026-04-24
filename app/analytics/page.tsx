@@ -112,7 +112,7 @@ export default function AnalyticsPage() {
       getPlacementFunnel({ start, end }),
       getCommissionTrend(start, end),
       getPlacements(),
-      getVisits({ since: start.toISOString(), limit: 2000 }),
+      getVisits({ since: start.toISOString(), limit: 500 }),
     ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)

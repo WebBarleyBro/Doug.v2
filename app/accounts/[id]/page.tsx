@@ -248,7 +248,7 @@ export default function AccountDetailPage() {
       })
       await updateAccountClients(id, editForm.client_slugs)
       setShowEdit(false)
-      reloadAll()
+      await reloadAll()
     } catch (e: any) {
       setEditErr(e.message || 'Failed to save')
     } finally { setEditSaving(false) }

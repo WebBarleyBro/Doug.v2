@@ -4,7 +4,7 @@ import { Users, ClipboardList, Plus, X, Check } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import { getTasks, createTask } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
-import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle, badge } from '../lib/theme'
+import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
 
 export default function InternHubPage() {

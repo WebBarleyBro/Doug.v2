@@ -51,14 +51,14 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
   const load = useCallback(async () => {
     try {
-      const [s, sched, fu, od, t] = await Promise.all([
+      const [s, sched, fu, od, taskData] = await Promise.all([
         getDashboardStats(profile.id, isOwner).catch(e => { console.error('stats err', e); return null }),
         getTodaySchedule(profile.id).catch(e => { console.error('schedule err', e); return null }),
         getFollowUpVisits().catch(e => { console.error('followup err', e); return [] }),
         getOverdueAccounts().catch(e => { console.error('overdue err', e); return [] }),
         getTasks({ userId: profile.id, completed: false }).catch(e => { console.error('tasks err', e); return [] }),
       ])
-      setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(t ?? [])
+      setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(taskData ?? [])
       if (isOwner) {
         getClientSuggestions('new').then(setSuggestions).catch(() => {})
       }

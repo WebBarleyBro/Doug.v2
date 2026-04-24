@@ -563,8 +563,10 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       if (!user) { window.location.replace('/login'); return }
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       if (!p) { window.location.replace('/login'); return }
-      const INTERN_ALLOWED = ['/intern', '/marketing']
-      if (p.role === 'intern' && !INTERN_ALLOWED.some(prefix => window.location.pathname.startsWith(prefix))) {
+      const INTERN_ALLOWED = ['/intern/', '/marketing']
+      const path = window.location.pathname
+      const internAllowed = path === '/intern' || INTERN_ALLOWED.some(prefix => path.startsWith(prefix))
+      if (p.role === 'intern' && !internAllowed) {
         window.location.replace('/intern'); return
       }
       if (p.role === 'portal' && p.client_slug) { window.location.replace(`/portal/${p.client_slug}`); return }
