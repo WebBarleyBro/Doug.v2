@@ -70,6 +70,7 @@ export default function ClientPortalPage() {
   const [fileUploading, setFileUploading] = useState(false)
   const [fileUploadErr, setFileUploadErr] = useState('')
   const [showFileUpload, setShowFileUpload] = useState(false)
+  const [fileUploadMode, setFileUploadMode] = useState<'asset' | 'compliance'>('asset')
   const [fileUploadType, setFileUploadType] = useState<ClientFileType>('other')
   const [fileUploadDesc, setFileUploadDesc] = useState('')
   const [fileUploadExpiry, setFileUploadExpiry] = useState('')
@@ -1020,38 +1021,52 @@ export default function ClientPortalPage() {
         {/* ══ FILES TAB ══ */}
         {activeTab === 'files' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', color: t.text.muted }}>Logos, compliance docs, photos, and brand assets shared between your team and Barley Bros.</div>
-              <button onClick={() => { setShowFileUpload(v => !v); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                <Upload size={13} /> Share a File
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ fontSize: '13px', color: t.text.muted }}>Logos, photos, brand assets, and compliance documents shared between your team and Barley Bros.</div>
+              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                <button onClick={() => { setFileUploadMode('asset'); setFileUploadType('logo'); setFileUploadExpiry(''); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                  <Upload size={13} /> Share Asset
+                </button>
+                <button onClick={() => { setFileUploadMode('compliance'); setFileUploadType('compliance'); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: t.bg.elevated, color: t.text.secondary, border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                  <Upload size={13} /> Upload Compliance Doc
+                </button>
+              </div>
             </div>
             {showFileUpload && (
-              <div style={{ ...card, padding: '18px', marginBottom: '16px', border: `1px solid ${accent}44` }}>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>Share a File with Barley Bros</div>
+              <div style={{ ...card, padding: '18px', marginBottom: '16px', border: `1px solid ${fileUploadMode === 'compliance' ? t.status.warning + '55' : accent + '44'}` }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>
+                  {fileUploadMode === 'compliance' ? 'Upload a Compliance Document' : 'Share a Brand Asset'}
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                  <div>
-                    <label style={labelStyle}>File Type</label>
-                    <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
-                      <option value="logo">Logo</option>
-                      <option value="compliance">Compliance Document</option>
-                      <option value="photo">Photo</option>
-                      <option value="brand_asset">Brand Asset</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
-                    <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
-                  </div>
+                  {fileUploadMode === 'asset' ? (
+                    <div>
+                      <label style={labelStyle}>Asset Type</label>
+                      <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
+                        <option value="logo">Logo</option>
+                        <option value="photo">Photo</option>
+                        <option value="brand_asset">Brand Asset</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label style={labelStyle}>Expiry Date <span style={{ color: t.status.warning, fontWeight: '600' }}>(important)</span></label>
+                      <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
+                    </div>
+                  )}
+                  {fileUploadMode === 'asset' && (
+                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                      <div style={{ fontSize: '11px', color: t.text.muted, paddingBottom: '10px' }}>Logos, photos, and brand materials</div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ marginBottom: '10px' }}>
                   <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
-                  <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder="e.g. Updated logo, CO TTB Certificate…" style={inputStyle} />
+                  <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder={fileUploadMode === 'compliance' ? 'e.g. CO TTB Certificate, State Registration…' : 'e.g. Primary logo — white on dark, Summer campaign photo…'} style={inputStyle} />
                 </div>
                 <div style={{ marginBottom: '10px' }}>
                   <label style={labelStyle}>File</label>
-                  <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.zip" />
+                  <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept={fileUploadMode === 'compliance' ? '.pdf,.doc,.docx,.xls,.xlsx,.csv' : 'image/*,.pdf,.doc,.docx,.zip'} />
                 </div>
                 {fileUploadErr && <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: t.status.danger, marginBottom: '10px' }}><AlertCircle size={13} /> {fileUploadErr}</div>}
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -1069,7 +1084,7 @@ export default function ClientPortalPage() {
                       if (portalFileInputRef.current) portalFileInputRef.current.value = ''
                     } catch (err: any) { setFileUploadErr(err.message || 'Upload failed') }
                     finally { setFileUploading(false) }
-                  }} style={{ padding: '8px 16px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  }} style={{ padding: '8px 16px', backgroundColor: fileUploadMode === 'compliance' ? t.status.warning : accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Upload size={13} /> {fileUploading ? 'Uploading…' : 'Upload'}
                   </button>
                 </div>
