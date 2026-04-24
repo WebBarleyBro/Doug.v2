@@ -100,12 +100,14 @@ export default function VisitLogModal({
 
   useEffect(() => {
     form.client_slugs.forEach(ensureProducts)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.client_slugs])
 
   // Load products for all clients when the placement panel opens
   useEffect(() => {
     if (!showPlacements) return
     clients.forEach(c => ensureProducts(c.slug))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPlacements, clients])
 
   useEffect(() => {

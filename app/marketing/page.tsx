@@ -116,6 +116,7 @@ export default function MarketingPage() {
     if (tab === 'email_list' && emailList.length === 0) {
       getEmailList().then(setEmailList).catch(() => {})
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
   async function handleCreateCampaign() {
@@ -157,7 +158,7 @@ export default function MarketingPage() {
   }
 
   function toggleExpand(id: string) {
-    setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    setExpanded(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   }
 
   function toggleChannel(ch: string, arr: string[], set: (v: string[]) => void) {

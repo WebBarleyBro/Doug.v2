@@ -1198,7 +1198,8 @@ export default function ClientPortalPage() {
               </div>
             ))}
 
-            {/* Depletion submission — hidden in staff preview mode */}
+            {/* Depletion submission + history — only for clients with track_depletions enabled */}
+            {client.track_depletions && (<>
             <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDepletionForm ? '16px' : '0' }}>
                 <div>
@@ -1298,6 +1299,7 @@ export default function ClientPortalPage() {
                 </div>
               </div>
             )}
+            </>)} {/* end track_depletions */}
 
             {/* Invoice history */}
             {billingInvoices.filter(i => i.status === 'paid' || i.status === 'void').length > 0 && (

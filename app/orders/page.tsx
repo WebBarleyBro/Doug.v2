@@ -353,12 +353,13 @@ export default function OrdersPage() {
     }))
   }, [orderType, nextPONum, nextOINum])
 
-  // Keep selected order in sync
+  // Keep selected order in sync when orders reload
   useEffect(() => {
     if (selectedOrder) {
       const updated = orders.find(o => o.id === selectedOrder.id)
       if (updated) setSelectedOrder(updated)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders])
 
   const monthStart = startOfMonthMT()
