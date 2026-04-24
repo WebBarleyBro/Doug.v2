@@ -1130,7 +1130,7 @@ export async function getVisitTrend(range: DateRange) {
   const sb = getSupabase()
   const { data, error } = await sb
     .from('visits')
-    .select('visited_at, client_slug')
+    .select('visited_at, client_slug, account_id, user_id')
     .gte('visited_at', range.start.toISOString())
     .lte('visited_at', range.end.toISOString())
     .order('visited_at')

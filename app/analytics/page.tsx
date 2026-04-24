@@ -77,7 +77,8 @@ export default function AnalyticsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [visitModal, setVisitModal] = useState<{ open: boolean; accountId?: string; accountName?: string }>({ open: false })
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
-  const [showAllFollowUps, setShowAllFollowUps] = useState(false)
+  const [showAllByStatus, setShowAllByStatus] = useState<Record<string, boolean>>({})
+  const [visitCounts, setVisitCounts] = useState<{ total: number; unique: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -99,7 +100,8 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     setDismissedIds(new Set())
-    setShowAllFollowUps(false)
+    setShowAllByStatus({})
+    setVisitCounts(null)
     setLoading(true)
     setExpandedStatus(null)
     const end = new Date()
@@ -117,6 +119,15 @@ export default function AnalyticsPage() {
       setClients(cls)
       setFunnel(funnelData)
 
+      // Deduplicate visitTrend by (account_id, user_id, date) — one physical visit per account per day
+      const visitSeen = new Set<string>()
+      const dedupedVisits = visitTrend.filter((v: any) => {
+        const key = `${v.account_id}|${v.user_id}|${String(v.visited_at).slice(0, 10)}`
+        if (visitSeen.has(key)) return false
+        visitSeen.add(key)
+        return true
+      })
+
       // Visit activity buckets — daily for ≤30D, weekly for ≤90D, monthly for 1Y
       const buckets = rangeDays <= 30 ? rangeDays : rangeDays <= 90 ? Math.ceil(rangeDays / 7) : Math.ceil(rangeDays / 30)
       const bucketMs = (rangeDays * 24 * 60 * 60 * 1000) / buckets
@@ -125,12 +136,16 @@ export default function AnalyticsPage() {
         const d = new Date(start.getTime() + i * bucketMs)
         bucketData.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), visits: 0 })
       }
-      visitTrend.forEach((v: any) => {
+      dedupedVisits.forEach((v: any) => {
         const vt = new Date(v.visited_at).getTime()
         const idx = Math.min(buckets - 1, Math.floor((vt - start.getTime()) / bucketMs))
         if (idx >= 0) bucketData[idx].visits++
       })
       setVisitData(bucketData)
+      setVisitCounts({
+        total: dedupedVisits.length,
+        unique: new Set(dedupedVisits.map((v: any) => v.account_id).filter(Boolean)).size,
+      })
 
       // Commission — bucket by day/week/month depending on range
       const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number; orders: any[] }[] = []
@@ -201,20 +216,19 @@ export default function AnalyticsPage() {
     reordering: t.gold,
   }
 
-  // Derive follow-up list — deduplicated by account (most recent visit per account)
-  const followUpVisits = (() => {
-    const all = Object.entries(visitsByStatusGrouped)
-      .filter(([status]) => ACTION_STATUSES.has(status))
-      .flatMap(([status, visits]) => visits.map(v => ({ ...v, _status: status })))
-      .filter(v => !dismissedIds.has(v.id))
-      .sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime())
+  // Derive follow-up groups — deduplicated by account per status group
+  const followUpGroups = (['Will Order Soon', 'Needs Follow Up'] as const).map(status => {
+    const visits = (visitsByStatusGrouped[status] || [])
+      .filter((v: any) => !dismissedIds.has(v.id))
+      .map((v: any) => ({ ...v, _status: status }))
     const seen = new Set<string>()
-    return all.filter(v => {
+    const deduped = visits.filter((v: any) => {
       if (seen.has(v.account_id)) return false
       seen.add(v.account_id)
       return true
     })
-  })()
+    return { status, color: VISIT_STATUS_COLORS[status], visits: deduped }
+  }).filter(g => g.visits.length > 0)
 
   return (
     <LayoutShell>
@@ -246,10 +260,10 @@ export default function AnalyticsPage() {
         {/* Funnel stats */}
         {loading ? <StatsSkeleton /> : funnel && (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
-            <StatCard label="Total Visits" value={funnel.totalVisits} color={t.gold} />
+            <StatCard label="Total Visits" value={visitCounts?.total ?? '—'} color={t.gold} />
             <StatCard label="Placements Created" value={funnel.placementsCreated} color={t.status.success} />
             <StatCard label="Active On Shelf" value={funnel.activeOnShelf} color={t.status.info} subtext="all active placements" />
-            <StatCard label="Unique Accounts Visited" value={funnel.uniqueAccounts ?? '—'} color={t.text.secondary} />
+            <StatCard label="Unique Accounts Visited" value={visitCounts?.unique ?? '—'} color={t.text.secondary} />
           </div>
         )}
 
@@ -408,69 +422,73 @@ export default function AnalyticsPage() {
           )}
         </div>
 
-        {/* Follow-up action list */}
-        {followUpVisits.length > 0 && (
+        {/* Follow-up action list — grouped by status */}
+        {followUpGroups.length > 0 && (
           <div style={{ ...card, padding: '22px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Needs Action — {followUpVisits.length} account{followUpVisits.length !== 1 ? 's' : ''}
-              </div>
-              {followUpVisits.length > 8 && (
-                <button onClick={() => setShowAllFollowUps(v => !v)} style={{ fontSize: '11px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>
-                  {showAllFollowUps ? 'Show less' : `Show all ${followUpVisits.length}`}
-                </button>
-              )}
+            <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '20px' }}>
+              Needs Action
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-              {(showAllFollowUps ? followUpVisits : followUpVisits.slice(0, 8)).map((v: any) => {
-                const color = VISIT_STATUS_COLORS[v._status] || t.text.muted
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {followUpGroups.map(({ status, color, visits }) => {
+                const showAll = showAllByStatus[status] ?? false
+                const visible = showAll ? visits : visits.slice(0, 4)
                 return (
-                  <div key={v.id} style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderLeft: `3px solid ${color}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{v.accounts?.name || '—'}</div>
-                      <div style={{ fontSize: '10px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</div>
+                  <div key={status}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', fontWeight: '700', color }}>{status}</span>
+                      <span style={{ fontSize: '11px', color: t.text.muted }}>{visits.length} account{visits.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <div style={{ fontSize: '11px', color, marginBottom: '4px' }}>{v._status}</div>
-                    {v.notes && (
-                      <div style={{ fontSize: '11px', color: t.text.secondary, lineHeight: 1.4 }}>
-                        {v.notes.length > 80 ? v.notes.slice(0, 80) + '…' : v.notes}
-                      </div>
-                    )}
-                    {v.user_profiles?.name && (
-                      <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{v.user_profiles.name}</div>
-                    )}
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                      <button onClick={() => setVisitModal({ open: true, accountId: v.account_id, accountName: v.accounts?.name })} style={{
-                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                        border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
-                      }}>
-                        <MapPin size={11} /> Log Visit
-                      </button>
-                      <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); clearFollowUp(v.id) }} style={{
-                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                        border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78',
-                      }}>
-                        <CheckCircle2 size={11} /> Cleared
-                      </button>
-                      <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); dismissFollowUp(v.id) }} style={{
-                        flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                        border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
-                      }}>
-                        <MinusCircle size={11} /> Disregard
-                      </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                      {visible.map((v: any) => (
+                        <div key={v.id} style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderLeft: `3px solid ${color}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '4px' }}>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{v.accounts?.name || '—'}</div>
+                            <div style={{ fontSize: '10px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</div>
+                          </div>
+                          {v.notes && (
+                            <div style={{ fontSize: '11px', color: t.text.secondary, lineHeight: 1.4, marginBottom: '4px' }}>
+                              {v.notes.length > 80 ? v.notes.slice(0, 80) + '…' : v.notes}
+                            </div>
+                          )}
+                          {v.user_profiles?.name && (
+                            <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '8px' }}>{v.user_profiles.name}</div>
+                          )}
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={() => setVisitModal({ open: true, accountId: v.account_id, accountName: v.accounts?.name })} style={{
+                              flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                              border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
+                            }}>
+                              <MapPin size={11} /> Log Visit
+                            </button>
+                            <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); clearFollowUp(v.id) }} style={{
+                              flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                              border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78',
+                            }}>
+                              <CheckCircle2 size={11} /> Cleared
+                            </button>
+                            <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); dismissFollowUp(v.id) }} style={{
+                              flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                              border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
+                            }}>
+                              <MinusCircle size={11} /> Disregard
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                    {visits.length > 4 && (
+                      <button
+                        onClick={() => setShowAllByStatus(prev => ({ ...prev, [status]: !showAll }))}
+                        style={{ marginTop: '10px', width: '100%', padding: '8px', borderRadius: '8px', fontSize: '12px', border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted, cursor: 'pointer' }}
+                      >
+                        {showAll ? 'Show less' : `+ ${visits.length - 4} more`}
+                      </button>
+                    )}
                   </div>
                 )
               })}
             </div>
-            {!showAllFollowUps && followUpVisits.length > 8 && (
-              <button onClick={() => setShowAllFollowUps(true)} style={{
-                marginTop: '14px', width: '100%', padding: '9px', borderRadius: '8px', fontSize: '12px',
-                border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted, cursor: 'pointer',
-              }}>
-                + {followUpVisits.length - 8} more accounts
-              </button>
-            )}
           </div>
         )}
 

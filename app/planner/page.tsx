@@ -22,11 +22,12 @@ import { todayMT, formatShortDateMT, daysAgoMT } from '../lib/formatters'
 import { overdueColor } from '../lib/theme'
 import type { UserProfile } from '../lib/types'
 
-function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
+function SortableStop({ stop, onComplete, onLogVisit, onRemove, isMobile }: {
   stop: PlannerStop
   onComplete: (id: string) => void
   onLogVisit: (accountId: string) => void
   onRemove: (id: string) => void
+  isMobile?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id })
 
@@ -74,7 +75,7 @@ function SortableStop({ stop, onComplete, onLogVisit, onRemove }: {
         </div>
       </div>
 
-      {stop.address && !stop.completed && (
+      {stop.address && !stop.completed && !isMobile && (
         <a
           href={`https://maps.google.com/?q=${encodeURIComponent(stop.address)}`}
           target="_blank" rel="noreferrer"
@@ -492,6 +493,7 @@ export default function PlannerPage() {
                           <SortableStop stop={stop} onComplete={toggleComplete}
                             onLogVisit={(accountId) => setVisitModal({ open: true, accountId })}
                             onRemove={removeStop}
+                            isMobile={isMobile}
                           />
                         </div>
                         {/* Insert-between button */}
