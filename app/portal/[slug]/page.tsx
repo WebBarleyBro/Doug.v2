@@ -9,9 +9,10 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import {
   MapPin, Package, LogOut, ChevronDown, ChevronUp, CheckCircle, Send,
   Building2, User, ExternalLink, Upload, FileDown, Calendar, Star,
-  AlertCircle, Folder, Download, Shield, TrendingUp, BarChart2,
+  AlertCircle, Folder, Download, Shield, TrendingUp, BarChart2, Receipt,
+  CreditCard, Plus, X, Check,
 } from 'lucide-react'
-import type { ClientFile, ClientFileType } from '../../lib/types'
+import type { ClientFile, ClientFileType, ClientInvoice, BillingDepletion } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
 
 const SUGGESTION_REASONS = [
@@ -75,6 +76,15 @@ export default function ClientPortalPage() {
   const [fileUploadDesc, setFileUploadDesc] = useState('')
   const [fileUploadExpiry, setFileUploadExpiry] = useState('')
   const portalFileInputRef = useRef<HTMLInputElement>(null)
+  const [billingInvoices, setBillingInvoices] = useState<ClientInvoice[]>([])
+  const [billingDepletions, setBillingDepletions] = useState<BillingDepletion[]>([])
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [showDepletionForm, setShowDepletionForm] = useState(false)
+  const [depForm, setDepForm] = useState({ product_name: '', period_month: '', cases_sold: '', sale_value: '', notes: '' })
+  const [depSubmitting, setDepSubmitting] = useState(false)
+  const [depErr, setDepErr] = useState('')
+  const [depSuccess, setDepSuccess] = useState(false)
+  const [billingToast, setBillingToast] = useState('')
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
   const [suggestForm, setSuggestForm] = useState({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
@@ -112,6 +122,15 @@ export default function ClientPortalPage() {
           .then(({ data: ev }) => setUpcomingEvents(ev || []))
         setFilesLoading(true)
         getClientFiles(slug).then(f => { setClientFiles(f); setFilesLoading(false) }).catch(() => setFilesLoading(false))
+        // Load billing data
+        setBillingLoading(true)
+        const { data: { session: sess } } = await sb.auth.getSession()
+        const bToken = sess?.access_token
+        Promise.all([
+          fetch(`/api/billing/invoices?client_slug=${slug}`, { headers: { Authorization: `Bearer ${bToken}` } }).then(r => r.ok ? r.json() : []),
+          fetch(`/api/billing/depletions?client_slug=${slug}`, { headers: { Authorization: `Bearer ${bToken}` } }).then(r => r.ok ? r.json() : []),
+        ]).then(([invs, deps]) => { setBillingInvoices(invs || []); setBillingDepletions(deps || []) })
+          .catch(() => {}).finally(() => setBillingLoading(false))
       } catch { setError('Failed to load data') }
       finally { setLoading(false) }
     })
@@ -280,6 +299,7 @@ export default function ClientPortalPage() {
     { key: 'campaigns', label: 'Campaigns', icon: <TrendingUp size={13} />, count: campaigns?.length || undefined },
     { key: 'compliance', label: 'Compliance', icon: <Shield size={13} />, count: (expiringRegs.length + expiredRegs.length) || undefined, countDanger: expiringRegs.length > 0 || expiredRegs.length > 0 },
     { key: 'files', label: 'Files', icon: <Folder size={13} />, count: clientFiles.length || undefined },
+    { key: 'billing', label: 'Billing', icon: <Receipt size={13} />, count: billingInvoices.filter(i => i.status === 'sent' || i.status === 'overdue').length || undefined, countDanger: billingInvoices.some(i => i.status === 'overdue') },
   ]
 
   const pad = isMobile ? '16px' : '28px 40px'
@@ -1124,6 +1144,190 @@ export default function ClientPortalPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Billing Tab */}
+        {activeTab === 'billing' && (
+          <div style={{ padding: pad }}>
+            <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Billing</h2>
+            <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '24px' }}>Invoices, depletion reports, and commission tracking</p>
+
+            {/* Toast */}
+            {billingToast && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: t.status.success + '20', border: `1px solid ${t.status.success}44`, borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: t.status.success }}>
+                <Check size={14} /> {billingToast}
+              </div>
+            )}
+
+            {/* Outstanding invoice alert */}
+            {billingInvoices.filter(i => i.status === 'sent' || i.status === 'overdue').map(inv => (
+              <div key={inv.id} style={{ ...card, padding: '18px 20px', marginBottom: '16px', border: `1px solid ${inv.status === 'overdue' ? t.status.danger + '55' : accent + '55'}`, backgroundColor: inv.status === 'overdue' ? t.status.danger + '08' : accent + '08' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      {inv.status === 'overdue' ? <AlertCircle size={16} color={t.status.danger} /> : <CreditCard size={16} color={accent} />}
+                      <span style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary }}>
+                        {inv.status === 'overdue' ? 'Payment Overdue' : 'Invoice Ready'}
+                      </span>
+                      <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '6px', backgroundColor: (inv.status === 'overdue' ? t.status.danger : t.status.info) + '20', color: inv.status === 'overdue' ? t.status.danger : t.status.info }}>{inv.status}</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: t.text.secondary }}>
+                      {inv.period_month} · Retainer {formatCurrency(inv.retainer_amount || 0)}{(inv.commission_amount || 0) > 0 ? ` + Commission ${formatCurrency(inv.commission_amount)}` : ''}
+                    </div>
+                    {inv.due_date && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '4px' }}>Due {formatShortDateMT(inv.due_date)}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div className="mono" style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary }}>{formatCurrency((inv.retainer_amount || 0) + (inv.commission_amount || 0))}</div>
+                    {inv.stripe_invoice_url && (
+                      <a href={inv.stripe_invoice_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', textDecoration: 'none' }}>
+                        <CreditCard size={14} /> Pay Now
+                      </a>
+                    )}
+                    {inv.stripe_pdf_url && (
+                      <a href={inv.stripe_pdf_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 12px', backgroundColor: t.bg.elevated, color: t.text.secondary, border: `1px solid ${t.border.default}`, borderRadius: '9px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
+                        <Download size={12} /> PDF
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Depletion submission */}
+            <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDepletionForm ? '16px' : '0' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>Submit Depletion Report</div>
+                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Enter distributor sell-through data so we can calculate commission accurately</div>
+                </div>
+                <button onClick={() => { setShowDepletionForm(v => !v); setDepErr(''); setDepSuccess(false) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', backgroundColor: showDepletionForm ? t.bg.card : accent + '20', color: showDepletionForm ? t.text.muted : accent, border: `1px solid ${showDepletionForm ? t.border.default : accent + '44'}`, cursor: 'pointer' }}>
+                  {showDepletionForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> Add Report</>}
+                </button>
+              </div>
+
+              {showDepletionForm && (
+                <div>
+                  {depErr && <div style={{ fontSize: '12px', color: t.status.danger, marginBottom: '12px', padding: '8px 12px', backgroundColor: t.status.danger + '15', borderRadius: '8px' }}>{depErr}</div>}
+                  {depSuccess && <div style={{ fontSize: '12px', color: t.status.success, marginBottom: '12px', padding: '8px 12px', backgroundColor: t.status.success + '15', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}><Check size={13} /> Report submitted successfully</div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={labelStyle}>Product Name</label>
+                        <input type="text" value={depForm.product_name} onChange={e => setDepForm(f => ({ ...f, product_name: e.target.value }))} placeholder="e.g. Reserve Bourbon 750ml" style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Month</label>
+                        <input type="month" value={depForm.period_month} onChange={e => setDepForm(f => ({ ...f, period_month: e.target.value }))} style={inputStyle} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={labelStyle}>Cases Sold</label>
+                        <input type="number" min="0" step="1" value={depForm.cases_sold} onChange={e => setDepForm(f => ({ ...f, cases_sold: e.target.value }))} placeholder="0" style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Total Sale Value ($)</label>
+                        <input type="number" min="0" step="0.01" value={depForm.sale_value} onChange={e => setDepForm(f => ({ ...f, sale_value: e.target.value }))} placeholder="0.00" style={inputStyle} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Notes (optional)</label>
+                      <input type="text" value={depForm.notes} onChange={e => setDepForm(f => ({ ...f, notes: e.target.value }))} placeholder="e.g. From March distributor statement" style={inputStyle} />
+                    </div>
+                    <div style={{ fontSize: '11px', color: t.text.muted, padding: '8px 12px', backgroundColor: t.bg.card, borderRadius: '8px' }}>
+                      Commission will be calculated from your total sale value and added to your next invoice for Barley Bros to review.
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        disabled={depSubmitting || !depForm.product_name || !depForm.period_month}
+                        onClick={async () => {
+                          setDepSubmitting(true); setDepErr(''); setDepSuccess(false)
+                          try {
+                            const sb2 = getSupabase()
+                            const { data: { session: s2 } } = await sb2.auth.getSession()
+                            const res = await fetch('/api/billing/depletions', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s2?.access_token}` },
+                              body: JSON.stringify({ client_slug: slug, product_name: depForm.product_name, period_month: depForm.period_month, cases_sold: Number(depForm.cases_sold) || 0, sale_value: Number(depForm.sale_value) || 0, notes: depForm.notes || undefined }),
+                            })
+                            const json = await res.json()
+                            if (!res.ok) { setDepErr(json.error || 'Failed to submit'); return }
+                            setBillingDepletions(prev => [json, ...prev])
+                            setDepForm({ product_name: '', period_month: '', cases_sold: '', sale_value: '', notes: '' })
+                            setDepSuccess(true)
+                            setBillingToast('Depletion report submitted')
+                            setTimeout(() => setBillingToast(''), 3000)
+                          } catch { setDepErr('Network error') }
+                          finally { setDepSubmitting(false) }
+                        }}
+                        style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', backgroundColor: accent, color: '#0c0c0a', border: 'none', cursor: 'pointer', opacity: depSubmitting || !depForm.product_name || !depForm.period_month ? 0.6 : 1 }}
+                      >
+                        {depSubmitting ? 'Submitting…' : 'Submit Report'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Depletion history */}
+            {billingDepletions.length > 0 && (
+              <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Depletion History</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {billingDepletions.map((d, i) => (
+                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: i < billingDepletions.length - 1 ? `1px solid ${t.border.subtle}` : 'none' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{d.product_name}</div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{d.period_month} · {d.cases_sold} cases</div>
+                      </div>
+                      <div className="mono" style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, flexShrink: 0 }}>{formatCurrency(d.sale_value)}</div>
+                      {d.invoice_id
+                        ? <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 7px', borderRadius: '6px', backgroundColor: t.status.success + '20', color: t.status.success }}>Invoiced</span>
+                        : <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 7px', borderRadius: '6px', backgroundColor: t.status.warning + '20', color: t.status.warning }}>Pending</span>
+                      }
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Invoice history */}
+            {billingInvoices.filter(i => i.status === 'paid' || i.status === 'void').length > 0 && (
+              <div style={{ ...card, padding: '18px 20px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '14px' }}>Payment History</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {billingInvoices.filter(i => i.status === 'paid' || i.status === 'void').map((inv, i, arr) => (
+                    <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: i < arr.length - 1 ? `1px solid ${t.border.subtle}` : 'none' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{inv.period_month}</div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
+                          {inv.paid_at ? `Paid ${formatShortDateMT(inv.paid_at)}` : inv.status}
+                        </div>
+                      </div>
+                      <div className="mono" style={{ fontSize: '13px', fontWeight: '600', color: inv.status === 'paid' ? t.text.primary : t.text.muted }}>
+                        {formatCurrency((inv.retainer_amount || 0) + (inv.commission_amount || 0))}
+                      </div>
+                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 7px', borderRadius: '6px', backgroundColor: (inv.status === 'paid' ? t.status.success : t.text.muted) + '20', color: inv.status === 'paid' ? t.status.success : t.text.muted }}>{inv.status}</span>
+                      {inv.stripe_pdf_url && (
+                        <a href={inv.stripe_pdf_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '7px', fontSize: '11px', color: t.text.muted, border: `1px solid ${t.border.default}`, textDecoration: 'none' }}>
+                          <Download size={11} /> PDF
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {billingLoading && <div style={{ fontSize: '13px', color: t.text.muted }}>Loading billing data…</div>}
+            {!billingLoading && billingInvoices.length === 0 && billingDepletions.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '48px 0', color: t.text.muted, fontSize: '13px' }}>
+                <Receipt size={28} style={{ display: 'block', margin: '0 auto 10px', opacity: 0.25 }} />
+                No billing activity yet
               </div>
             )}
           </div>

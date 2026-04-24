@@ -35,6 +35,8 @@ export interface Client {
   state?: string
   instagram?: string
   website?: string
+  stripe_customer_id?: string
+  monthly_retainer_fee?: number
   created_at: string
 }
 
@@ -421,4 +423,50 @@ export interface CommissionForecast {
   avg_order_value: number
   commission_rate: number
   forecast_90d: number
+}
+
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void' | 'overdue'
+
+export interface ClientInvoice {
+  id: string
+  client_slug: string
+  stripe_invoice_id?: string
+  stripe_invoice_url?: string
+  stripe_pdf_url?: string
+  period_month: string // 'YYYY-MM'
+  status: InvoiceStatus
+  retainer_amount: number
+  commission_amount: number
+  admin_notes?: string
+  due_date?: string
+  sent_at?: string
+  paid_at?: string
+  created_at: string
+  updated_at: string
+  client_invoice_line_items?: ClientInvoiceLineItem[]
+}
+
+export interface ClientInvoiceLineItem {
+  id: string
+  invoice_id: string
+  description: string
+  amount: number
+  type: 'retainer' | 'commission' | 'other'
+  created_at: string
+}
+
+export interface BillingDepletion {
+  id: string
+  client_slug: string
+  product_name: string
+  period_month: string // 'YYYY-MM'
+  cases_sold: number
+  sale_value: number
+  notes?: string
+  invoice_id?: string
+  submitted_by?: string
+  submitted_by_portal: boolean
+  created_at: string
 }
