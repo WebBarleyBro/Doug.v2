@@ -1200,8 +1200,8 @@ export default function ClientPortalPage() {
             <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDepletionForm ? '16px' : '0' }}>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>Submit Depletion Report</div>
-                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Enter distributor sell-through data so we can calculate commission accurately</div>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>Monthly Depletion Report</div>
+                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Submit your distributor sell-through numbers for the month</div>
                 </div>
                 {!isPreview && (
                   <button onClick={() => { setShowDepletionForm(v => !v); setDepErr(''); setDepSuccess(false) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', backgroundColor: showDepletionForm ? t.bg.card : accent + '20', color: showDepletionForm ? t.text.muted : accent, border: `1px solid ${showDepletionForm ? t.border.default : accent + '44'}`, cursor: 'pointer' }}>
@@ -1240,7 +1240,7 @@ export default function ClientPortalPage() {
                       <input type="text" value={depForm.notes} onChange={e => setDepForm(f => ({ ...f, notes: e.target.value }))} placeholder="e.g. From March distributor statement" style={inputStyle} />
                     </div>
                     <div style={{ fontSize: '11px', color: t.text.muted, padding: '8px 12px', backgroundColor: t.bg.card, borderRadius: '8px' }}>
-                      Commission will be calculated from your total sale value and added to your next invoice for Barley Bros to review.
+                      Numbers submitted here are included in your next monthly invoice.
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button
