@@ -4,13 +4,13 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2, Folder, Upload, AlertCircle } from 'lucide-react'
 import LayoutShell, { useToast } from '../../layout-shell'
-import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone, getClientFiles, uploadClientFile, deleteClientFile } from '../../lib/data'
+import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, upsertStateRegistration, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone, getClientFiles, uploadClientFile, deleteClientFile } from '../../lib/data'
 import ConfirmModal from '../../components/ConfirmModal'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
 import { t, card, btnPrimary, btnSecondary, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
 import { formatShortDateMT, formatCurrency, relativeTimeStr, formatMonthYear, resolveTotal } from '../../lib/formatters'
-import { PLACEMENT_STATUS_LABELS, EVENT_TYPE_LABELS, clientLogoUrl } from '../../lib/constants'
+import { PLACEMENT_STATUS_LABELS, EVENT_TYPE_LABELS, clientLogoUrl, US_STATES } from '../../lib/constants'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import type { Client, ClientFile, ClientFileType } from '../../lib/types'
 
@@ -51,6 +51,10 @@ export default function ClientDetailPage() {
   const [events, setEvents] = useState<any[]>([])
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [registrations, setRegistrations] = useState<any[]>([])
+  const [showRegForm, setShowRegForm] = useState(false)
+  const [editingReg, setEditingReg] = useState<any | null>(null)
+  const [regForm, setRegForm] = useState({ state: '', status: 'pending', ttb_number: '', expiry_date: '', notes: '' })
+  const [regSaving, setRegSaving] = useState(false)
   const [tastings, setTastings] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
@@ -957,21 +961,90 @@ export default function ClientDetailPage() {
         {/* Compliance Tab */}
         {tab === 'compliance' && !tabLoading && (
           <div>
+            {/* Header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '13px', color: t.text.muted }}>State registrations and TTB compliance for {client.name}.</div>
+              <button onClick={() => { setEditingReg(null); setRegForm({ state: '', status: 'pending', ttb_number: '', expiry_date: '', notes: '' }); setShowRegForm(true) }} style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={14} /> Add Registration
+              </button>
+            </div>
+
+            {/* Add / edit form */}
+            {showRegForm && (
+              <div style={{ ...card, padding: '20px', marginBottom: '20px', border: `1px solid ${t.border.gold}` }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary, marginBottom: '14px' }}>{editingReg ? 'Edit Registration' : 'Add State Registration'}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>State</label>
+                    <select value={regForm.state} onChange={e => setRegForm(f => ({ ...f, state: e.target.value }))} style={selectStyle}>
+                      <option value="">Select state…</option>
+                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Status</label>
+                    <select value={regForm.status} onChange={e => setRegForm(f => ({ ...f, status: e.target.value }))} style={selectStyle}>
+                      <option value="active">Active</option>
+                      <option value="pending">Pending</option>
+                      <option value="expired">Expired</option>
+                      <option value="not_registered">Not Registered</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>TTB Number <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                    <input type="text" value={regForm.ttb_number} onChange={e => setRegForm(f => ({ ...f, ttb_number: e.target.value }))} placeholder="e.g. 12345678" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Expiry Date <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                    <input type="date" value={regForm.expiry_date} onChange={e => setRegForm(f => ({ ...f, expiry_date: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={labelStyle}>Notes <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
+                  <input type="text" value={regForm.notes} onChange={e => setRegForm(f => ({ ...f, notes: e.target.value }))} placeholder="Label approval status, renewal contact, etc." style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowRegForm(false)} style={btnSecondary}>Cancel</button>
+                  <button
+                    disabled={regSaving || !regForm.state}
+                    onClick={async () => {
+                      if (!regForm.state) return
+                      setRegSaving(true)
+                      try {
+                        const payload: any = { ...regForm, client_id: client.id }
+                        if (editingReg?.id) payload.id = editingReg.id
+                        await upsertStateRegistration(payload)
+                        setRegistrations(await getStateRegistrations(client.id))
+                        setShowRegForm(false)
+                        setEditingReg(null)
+                      } catch { /* silently fail */ }
+                      finally { setRegSaving(false) }
+                    }}
+                    style={{ ...btnPrimary, opacity: regSaving || !regForm.state ? 0.6 : 1 }}
+                  >
+                    {regSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {registrations.length === 0 ? (
-              <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No state registrations tracked — go to Compliance to add them</div>
+              <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No state registrations yet — use the button above to add one.</div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                 {registrations.map(r => {
                   const statusColors: Record<string, string> = { active: '#3dba78', pending: '#e89a2e', expired: '#e05252', not_registered: '#6b6966' }
                   const color = statusColors[r.status] || '#6b6966'
                   return (
-                    <div key={r.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '10px 12px' }}>
+                    <div key={r.id} style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer' }}
+                      onClick={() => { setEditingReg(r); setRegForm({ state: r.state, status: r.status, ttb_number: r.ttb_number || '', expiry_date: r.expiry_date || '', notes: r.notes || '' }); setShowRegForm(true) }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                         <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
                         <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '8px', backgroundColor: color + '20', color, fontWeight: '700', textTransform: 'uppercase' }}>{r.status.replace('_', ' ')}</span>
                       </div>
                       {r.ttb_number && <div style={{ fontSize: '11px', color: t.text.muted }}>TTB: {r.ttb_number}</div>}
                       {r.expiry_date && <div style={{ fontSize: '11px', color: t.text.muted }}>Expires {formatShortDateMT(r.expiry_date)}</div>}
+                      <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>Click to edit</div>
                     </div>
                   )
                 })}

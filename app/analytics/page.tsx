@@ -188,14 +188,20 @@ export default function AnalyticsPage() {
       setPlacementsByStatus(STATUS_ORDER.filter(s => statusMap2[s]).map(s => ({ name: s, value: statusMap2[s] })))
       setPlacementsByBrand(brandMap)
 
-      // Visits by status — grouped for drill-down
+      // Visits by status — grouped for drill-down, deduplicated by account
       const statusCount: Record<string, number> = {}
       const grouped: Record<string, any[]> = {}
       recentVisits.forEach((v: any) => {
         if (!v.status) return
-        statusCount[v.status] = (statusCount[v.status] || 0) + 1
         if (!grouped[v.status]) grouped[v.status] = []
-        grouped[v.status].push(v)
+        // One entry per account per status — keep most-recent visit row
+        const existing = grouped[v.status].findIndex((x: any) => x.account_id === v.account_id)
+        if (existing === -1) {
+          grouped[v.status].push(v)
+          statusCount[v.status] = (statusCount[v.status] || 0) + 1
+        } else if (new Date(v.visited_at) > new Date(grouped[v.status][existing].visited_at)) {
+          grouped[v.status][existing] = v
+        }
       })
       // Sort each group by most recent first
       Object.values(grouped).forEach(arr => arr.sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime()))

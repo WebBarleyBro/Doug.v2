@@ -1045,14 +1045,9 @@ export default function ClientPortalPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ fontSize: '13px', color: t.text.muted }}>Logos, photos, brand assets, and compliance documents shared between your team and Barley Bros.</div>
-              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                <button onClick={() => { setFileUploadMode('asset'); setFileUploadType('logo'); setFileUploadExpiry(''); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                  <Upload size={13} /> Share Asset
-                </button>
-                <button onClick={() => { setFileUploadMode('compliance'); setFileUploadType('compliance'); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: t.bg.elevated, color: t.text.secondary, border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                  <Upload size={13} /> Upload Compliance Doc
-                </button>
-              </div>
+              <button onClick={() => { setFileUploadMode('asset'); setFileUploadType('logo'); setFileUploadExpiry(''); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}>
+                <Upload size={13} /> Share Asset
+              </button>
             </div>
             {showFileUpload && (
               <div style={{ ...card, padding: '18px', marginBottom: '16px', border: `1px solid ${fileUploadMode === 'compliance' ? t.status.warning + '55' : accent + '44'}` }}>
@@ -1155,7 +1150,7 @@ export default function ClientPortalPage() {
         {activeTab === 'billing' && (
           <div style={{ padding: pad }}>
             <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Billing</h2>
-            <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '24px' }}>Invoices, depletion reports, and commission tracking</p>
+            <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '24px' }}>Invoices and monthly reports</p>
 
             {/* Toast */}
             {billingToast && (
@@ -1177,7 +1172,7 @@ export default function ClientPortalPage() {
                       <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '6px', backgroundColor: (inv.status === 'overdue' ? t.status.danger : t.status.info) + '20', color: inv.status === 'overdue' ? t.status.danger : t.status.info }}>{inv.status}</span>
                     </div>
                     <div style={{ fontSize: '13px', color: t.text.secondary }}>
-                      {inv.period_month} · Retainer {formatCurrency(inv.retainer_amount || 0)}{(inv.commission_amount || 0) > 0 ? ` + Commission ${formatCurrency(inv.commission_amount)}` : ''}
+                      {inv.period_month}
                     </div>
                     {inv.due_date && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '4px' }}>Due {formatShortDateMT(inv.due_date)}</div>}
                   </div>
