@@ -47,11 +47,12 @@ export const PLACEMENT_TYPE_LABELS: Record<PlacementType, string> = {
 export const TASK_PRIORITIES: TaskPriority[] = ['urgent', 'high', 'medium', 'low']
 
 export const EVENT_TYPES: EventType[] = [
-  'tasting', 'meeting', 'planned_stop', 'milestone', 'training', 'other',
+  'tasting', 'brand_dinner', 'meeting', 'planned_stop', 'milestone', 'training', 'other',
 ]
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   tasting: 'Tasting Event',
+  brand_dinner: 'Brand Dinner',
   meeting: 'Meeting',
   planned_stop: 'Planned Stop',
   milestone: 'Milestone',

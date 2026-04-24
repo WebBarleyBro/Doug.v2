@@ -77,6 +77,14 @@ export default function AnalyticsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [visitModal, setVisitModal] = useState<{ open: boolean; accountId?: string; accountName?: string }>({ open: false })
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
@@ -200,15 +208,15 @@ export default function AnalyticsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', gap: '12px', flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Analytics</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Field activity and performance data</p>
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {DATE_RANGES.map(r => (
               <button key={r.days} onClick={() => setRangeDays(r.days)} style={{
                 padding: '7px 14px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
@@ -227,7 +235,7 @@ export default function AnalyticsPage() {
 
         {/* Funnel stats */}
         {loading ? <StatsSkeleton /> : funnel && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
             <StatCard label="Total Visits" value={funnel.totalVisits} color={t.gold} />
             <StatCard label="Placements Created" value={funnel.placementsCreated} color={t.status.success} />
             <StatCard label="Active On Shelf" value={funnel.activeOnShelf} color={t.status.info} subtext="all active placements" />
@@ -236,7 +244,7 @@ export default function AnalyticsPage() {
         )}
 
         {/* Charts row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
 
           {/* Visit trend */}
           <div style={{ ...card, padding: '22px 24px' }}>
@@ -276,7 +284,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Bottom row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
 
           {/* Visit outcomes — with drill-down */}
           {visitsByStatus.length > 0 && (
@@ -396,7 +404,7 @@ export default function AnalyticsPage() {
             <div style={{ fontSize: '11px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '16px' }}>
               Needs Action — {followUpVisits.length} account{followUpVisits.length !== 1 ? 's' : ''} from last {rangeDays} days
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
               {followUpVisits.map((v: any) => {
                 const color = VISIT_STATUS_COLORS[v._status] || t.text.muted
                 return (

@@ -181,6 +181,8 @@ body {
 /* Mobile nav header already shows the page title — hide in-page h1 on small screens */
 @media (max-width: 767px) {
   .page-h1 { display: none !important; }
+  /* Responsive page wrapper — replaces fixed 32px 48px padding */
+  .page-wrap { padding: 16px !important; }
 }
 .slide-up       { animation: slide-up 280ms cubic-bezier(0.32,0.72,0,1) both; }
 .fade-in        { animation: fade-in 200ms ease both; }

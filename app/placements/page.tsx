@@ -297,7 +297,7 @@ export default function PlacementsPage() {
                     <input type="text" value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="e.g. Barley Bros Wheat Whiskey 750ml" style={inputStyle} />
                   )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Placement Type</label>
                     <select value={form.placement_type} onChange={e => setForm(f => ({ ...f, placement_type: e.target.value }))} style={selectStyle}>
@@ -338,7 +338,7 @@ export default function PlacementsPage() {
                   <label style={labelStyle}>Product Name</label>
                   <input type="text" value={editForm.product_name} onChange={e => setEditForm(f => ({ ...f, product_name: e.target.value }))} style={inputStyle} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Placement Type</label>
                     <select value={editForm.placement_type} onChange={e => setEditForm(f => ({ ...f, placement_type: e.target.value }))} style={selectStyle}>

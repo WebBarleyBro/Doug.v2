@@ -16,7 +16,8 @@ const CONTACT_CATEGORIES = [
   { value: 'buyer',       label: 'Buyer / Purchaser' },
   { value: 'bar_manager', label: 'Bar Manager' },
   { value: 'chef',        label: 'Chef' },
-  { value: 'gm_owner',   label: 'GM / Owner' },
+  { value: 'gm',          label: 'General Manager' },
+  { value: 'owner',       label: 'Owner' },
   { value: 'media',       label: 'Media / Press' },
   { value: 'other',       label: 'Other' },
 ]
@@ -26,7 +27,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   buyer:       t.gold,
   bar_manager: t.status.success,
   chef:        '#f97316',
-  gm_owner:   t.status.warning,
+  gm:          t.status.warning,
+  owner:       '#f43f5e',
+  gm_owner:    t.status.warning,
   media:       '#a78bfa',
   general:     t.text.muted,
   other:       t.text.muted,
@@ -94,8 +97,16 @@ export default function ContactsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [deleteTarget, setDeleteTarget] = useState('')
-  const [form, setForm] = useState({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '', birthday: '' })
   const [saving, setSaving] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   async function loadAll() {
     const [cs, accs] = await Promise.all([getContacts(), getAccounts({ limit: 500 })])
@@ -114,13 +125,13 @@ export default function ContactsPage() {
 
   function openAdd() {
     setEditingContact(null)
-    setForm({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '' })
+    setForm({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '', birthday: '' })
     setShowModal(true)
   }
 
   function openEdit(c: Contact) {
     setEditingContact(c)
-    setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', account_id: c.account_id || '', role: c.role || '', category: (c as any).category || 'general', notes: (c as any).notes || '' })
+    setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', account_id: c.account_id || '', role: c.role || '', category: (c as any).category || 'general', notes: (c as any).notes || '', birthday: (c as any).birthday || '' })
     setShowModal(true)
   }
 
@@ -128,10 +139,11 @@ export default function ContactsPage() {
     if (!form.name.trim()) return
     setSaving(true)
     try {
+      const payload: any = { name: form.name, email: form.email || undefined, phone: form.phone || undefined, account_id: form.account_id || undefined, role: form.role || undefined, category: form.category, notes: form.notes || undefined, birthday: form.birthday || undefined }
       if (editingContact) {
-        await updateContact(editingContact.id, { name: form.name, email: form.email || undefined, phone: form.phone || undefined, account_id: form.account_id || undefined, role: form.role || undefined, category: form.category, notes: form.notes || undefined } as any)
+        await updateContact(editingContact.id, payload)
       } else {
-        await createContact({ name: form.name, email: form.email || undefined, phone: form.phone || undefined, account_id: form.account_id || undefined, role: form.role || undefined, category: form.category, notes: form.notes || undefined } as any)
+        await createContact(payload)
       }
       setShowModal(false)
       loadAll()
@@ -147,7 +159,7 @@ export default function ContactsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
           <div>
             <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Contacts</h1>
@@ -211,6 +223,7 @@ export default function ContactsPage() {
                           : (c as any).accounts.name}
                       </div>
                     )}
+                    {(c as any).birthday && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>🎂 {new Date((c as any).birthday + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</div>}
                     {(c as any).notes && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '3px', fontStyle: 'italic' }}>{(c as any).notes}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -236,7 +249,7 @@ export default function ContactsPage() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Name *</label>
                   <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" style={inputStyle} autoFocus />
@@ -258,6 +271,10 @@ export default function ContactsPage() {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={labelStyle}>Email</label>
                   <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@example.com" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Birthday</label>
+                  <input type="date" value={form.birthday} onChange={e => setForm(f => ({ ...f, birthday: e.target.value }))} style={inputStyle} />
                 </div>
               </div>
 

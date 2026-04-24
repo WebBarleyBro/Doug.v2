@@ -393,7 +393,7 @@ export default function VisitLogModal({
 
           {/* Outcome */}
           <Section label="Outcome">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px' }}>
               {statusOptions.map(s => (
                 <button key={s.value} type="button" onClick={() => setForm(f => ({ ...f, status: s.value }))}
                   style={{
@@ -577,7 +577,7 @@ export default function VisitLogModal({
                     </div>
 
                     {/* Type + Status */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                       <div>
                         <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Type</div>
                         <select value={pl.placement_type}
@@ -605,7 +605,7 @@ export default function VisitLogModal({
                     </div>
 
                     {/* Shelf count + Price */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                       <div>
                         <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Units on Shelf</div>
                         <input type="number" placeholder="e.g. 6" min="0" value={pl.shelf_count}

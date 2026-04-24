@@ -11,7 +11,7 @@ import { EVENT_TYPE_LABELS } from '../lib/constants'
 import type { Client } from '../lib/types'
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  tasting: '#d4a843', meeting: '#4a9eff', planned_stop: '#3dba78',
+  tasting: '#d4a843', brand_dinner: '#f43f5e', meeting: '#4a9eff', planned_stop: '#3dba78',
   milestone: '#a78bfa', training: '#e89a2e', other: '#6b6966',
 }
 
@@ -39,7 +39,7 @@ export default function CalendarPage() {
   const [users, setUsers] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', status: 'planned' })
+  const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
   const [isMobile, setIsMobile] = useState(false)
   const [qrEventId, setQrEventId] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
@@ -176,7 +176,7 @@ export default function CalendarPage() {
   async function handleCreate() {
     await createEvent({ ...form, start_time: new Date(form.start_time).toISOString(), end_time: form.end_time ? new Date(form.end_time).toISOString() : undefined } as any)
     setShowCreate(false)
-    setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', status: 'planned' })
+    setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
     load()
   }
 
@@ -368,6 +368,7 @@ export default function CalendarPage() {
                         {e.accounts?.name && ` · ${e.accounts.name}`}
                         {client && ` · ${client.name}`}
                       </div>
+                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', marginTop: '2px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔗 RSVP / Link</a>}
                     </div>
                     {isTasting && (
                       <button onClick={() => generateQr(e.id)} title="Generate QR Code" style={{ background: isQrOpen ? t.goldDim : 'none', border: isQrOpen ? `1px solid ${t.border.gold}` : 'none', borderRadius: '6px', color: isQrOpen ? t.gold : t.text.muted, cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600' }}>
@@ -433,6 +434,7 @@ export default function CalendarPage() {
                   <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
                 </div>
                 <div><label style={labelStyle}>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'none' }} /></div>
+                <div><label style={labelStyle}>URL / RSVP Link (optional)</label><input type="url" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="https://..." style={inputStyle} /></div>
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
                 <button onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>

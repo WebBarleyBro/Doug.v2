@@ -17,6 +17,14 @@ export default function InternPage() {
   const [doneThisWeek, setDoneThisWeek] = useState<number | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
@@ -49,7 +57,7 @@ export default function InternPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
             {profile?.name ? `Hey, ${profile.name.split(' ')[0]}` : 'Intern Dashboard'}

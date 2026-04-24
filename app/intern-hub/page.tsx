@@ -13,6 +13,14 @@ export default function InternHubPage() {
   const [loading, setLoading] = useState(true)
   const [showAssign, setShowAssign] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', assigned_to: '', due_date: '', priority: 'medium' })
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
@@ -51,7 +59,7 @@ export default function InternHubPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Intern Hub</h1>
@@ -133,7 +141,7 @@ export default function InternHubPage() {
                     {interns.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div><label style={labelStyle}>Due Date</label><input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} style={inputStyle} /></div>
                   <div><label style={labelStyle}>Priority</label>
                     <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} style={selectStyle}>

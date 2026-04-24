@@ -468,7 +468,7 @@ export default function ClientDetailPage() {
                       <label style={labelStyle}>Product Name *</label>
                       <input value={productForm.name} onChange={e => setProductForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Barley Bros Wheat Whiskey" style={{ ...inputStyle, marginTop: '4px' }} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                       <div>
                         <label style={labelStyle}>SKU</label>
                         <input value={productForm.sku} onChange={e => setProductForm(f => ({ ...f, sku: e.target.value }))} placeholder="BBW-750" style={{ ...inputStyle, marginTop: '4px' }} />
@@ -680,7 +680,7 @@ export default function ClientDetailPage() {
                         {/* Add expense inline form */}
                         {showAddExpense === camp.id && (
                           <div style={{ marginTop: '10px', padding: '14px', backgroundColor: t.bg.elevated, borderRadius: '8px', border: `1px solid ${t.border.hover}`, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
                               <div>
                                 <label style={labelStyle}>Description *</label>
                                 <input value={addExpenseForm.description} onChange={e => setAddExpenseForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Shelf talkers" style={{ ...inputStyle, fontSize: '13px', padding: '8px 10px' }} />
@@ -833,7 +833,7 @@ export default function ClientDetailPage() {
                       <label style={labelStyle}>Campaign Title *</label>
                       <input value={newCampaignForm.title} onChange={e => setNewCampaignForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Summer Shelf Talker Push" style={{ ...inputStyle, marginTop: '4px' }} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                       <div>
                         <label style={labelStyle}>Type</label>
                         <input value={newCampaignForm.campaign_type} onChange={e => setNewCampaignForm(f => ({ ...f, campaign_type: e.target.value }))} placeholder="e.g. print, event, digital" style={{ ...inputStyle, marginTop: '4px' }} />

@@ -78,6 +78,7 @@ export default function MarketingPage() {
   const { profile } = useApp()
   const isIntern = profile?.role === 'intern'
 
+  const [isMobile, setIsMobile] = useState(false)
   const [tab, setTab] = useState<'campaigns' | 'email_list'>('campaigns')
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [emailList, setEmailList] = useState<any[]>([])
@@ -103,6 +104,13 @@ export default function MarketingPage() {
   }
 
   useEffect(() => { reload() }, [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     if (tab === 'email_list' && emailList.length === 0) {
@@ -201,10 +209,10 @@ export default function MarketingPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', gap: '12px', flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Marketing</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
@@ -326,7 +334,7 @@ export default function MarketingPage() {
                     {/* Expanded detail */}
                     {isExpanded && (
                       <div style={{ padding: '20px', borderTop: `1px solid ${t.border.subtle}` }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '20px' }}>
 
                           {/* Left column: brief + strategy */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -568,7 +576,8 @@ export default function MarketingPage() {
                 subtitle="Contacts opt in during tasting events via the consumer capture form" />
             ) : (
               <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 100px 80px', padding: '8px 16px', borderBottom: `1px solid ${t.border.default}` }}>
+                <div style={{ overflowX: 'auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 100px 80px', padding: '8px 16px', borderBottom: `1px solid ${t.border.default}`, minWidth: '420px' }}>
                   {['Name', 'Email', 'Brand Event', 'Date'].map(h => (
                     <span key={h} style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
                   ))}
@@ -578,6 +587,7 @@ export default function MarketingPage() {
                     display: 'grid', gridTemplateColumns: '1fr 1.2fr 100px 80px',
                     padding: '10px 16px', alignItems: 'center',
                     borderBottom: i < filteredEmail.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
+                    minWidth: '420px',
                   }}>
                     <span style={{ fontSize: '13px', color: t.text.primary }}>{person.name || person.first_name || '—'}</span>
                     <a href={`mailto:${person.email}`} style={{ fontSize: '12px', color: t.status.info, textDecoration: 'none', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -587,6 +597,7 @@ export default function MarketingPage() {
                     <span className="mono" style={{ fontSize: '11px', color: t.text.muted }}>{formatShortDateMT(person.captured_at)}</span>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>
@@ -601,7 +612,7 @@ export default function MarketingPage() {
                 <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Campaign Name *</label>
                     <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Spring Activation 2026" style={inputStyle} />
@@ -616,7 +627,7 @@ export default function MarketingPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Type</label>
                     <select value={form.campaign_type} onChange={e => setForm(f => ({ ...f, campaign_type: e.target.value }))} style={selectStyle}>
@@ -636,7 +647,7 @@ export default function MarketingPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Start Date</label>
                     <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} style={inputStyle} />
@@ -703,7 +714,7 @@ export default function MarketingPage() {
                 <button onClick={() => setEditingCampaign(null)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Campaign Name</label>
                     <input type="text" value={editingCampaign.name || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, name: e.target.value }))} style={inputStyle} />
@@ -718,7 +729,7 @@ export default function MarketingPage() {
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Start Date</label>
                     <input type="date"
@@ -764,7 +775,7 @@ export default function MarketingPage() {
                   <label style={labelStyle}>Key Messages</label>
                   <textarea value={editingCampaign.key_messages || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, key_messages: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'none', fontSize: '12px' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={labelStyle}>Budget ($)</label>
                     <input type="number" value={editingCampaign.budget || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, budget: e.target.value ? parseFloat(e.target.value) : undefined }))} style={inputStyle} />

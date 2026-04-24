@@ -768,7 +768,7 @@ export default function OrdersPage() {
                 )}
 
                 {/* Meta */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                   <div style={{ ...card, padding: '12px 14px', backgroundColor: t.bg.card }}>
                     <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}><Calendar size={10} /> Date</div>
                     <div className="mono" style={{ fontSize: '13px', color: t.text.primary }}>{formatShortDateMT(o.created_at)}</div>
@@ -978,7 +978,7 @@ export default function OrdersPage() {
                 })}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
                   <label style={labelStyle}>Brand</label>
                   <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>

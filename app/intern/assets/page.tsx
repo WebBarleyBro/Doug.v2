@@ -46,7 +46,15 @@ export default function InternAssetsPage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const [form, setForm] = useState({
     title: '',
@@ -138,7 +146,7 @@ export default function InternAssetsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+      <div className="page-wrap" style={{ padding: '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Upload size={20} /> Assets
@@ -150,7 +158,7 @@ export default function InternAssetsPage() {
         <div style={{ ...card, marginBottom: '32px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, marginBottom: '18px' }}>Submit New Asset</h2>
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <div>
                 <label style={labelStyle}>Title *</label>
                 <input

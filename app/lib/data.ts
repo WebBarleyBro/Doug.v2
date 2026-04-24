@@ -126,7 +126,6 @@ export async function createAccount(account: {
       instagram: account.instagram || null,
       best_days: account.best_days?.length ? account.best_days : [],
       best_time: account.best_time || 'anytime',
-      priority: account.priority || 'B',
     })
     .select()
     .single()

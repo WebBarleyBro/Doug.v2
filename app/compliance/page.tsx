@@ -22,23 +22,31 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true)
   const [addModal, setAddModal] = useState<{ open: boolean; clientId?: string; editing?: any }>({ open: false })
   const [form, setForm] = useState({ state: '', status: 'pending', ttb_number: '', expiry_date: '', notes: '' })
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     Promise.all([getClients(), getStateRegistrations()])
       .then(([cls, regs]) => { setClients(cls); setRegistrations(regs); setLoading(false) })
   }, [])
 
-  const expiringSoon = registrations.filter(r => {
-    if (!r.expiry_date || r.status !== 'active') return false
-    const days = daysAgoMT(r.expiry_date)
-    return days !== null && days > -90 && days <= 0
-  })
-  const expired = registrations.filter(r => r.status === 'expired')
   const urgent = registrations.filter(r => {
     if (!r.expiry_date || r.status !== 'active') return false
     const days = daysAgoMT(r.expiry_date)
     return days !== null && days > -30 && days <= 0
   })
+  const expiringSoon = registrations.filter(r => {
+    if (!r.expiry_date || r.status !== 'active') return false
+    const days = daysAgoMT(r.expiry_date)
+    return days !== null && days > -90 && days <= -30
+  })
+  const expired = registrations.filter(r => r.status === 'expired')
 
   async function handleSave() {
     if (!form.state || !addModal.clientId) return
@@ -60,7 +68,7 @@ export default function CompliancePage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '1300px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1300px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '24px' }}>
           <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Compliance</h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>State registrations, TTB approvals, label expiry tracking</p>
@@ -79,7 +87,7 @@ export default function CompliancePage() {
           <div style={{ backgroundColor: t.status.warningBg, border: `1px solid rgba(232,154,46,0.3)`, borderRadius: '10px', padding: '14px 18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <AlertTriangle size={18} color={t.status.warning} />
             <span style={{ color: t.status.warning, fontSize: '14px', fontWeight: '600' }}>
-              {expiringSoon.length} registration{expiringSoon.length !== 1 ? 's' : ''} expire within 90 days
+              {expiringSoon.length} registration{expiringSoon.length !== 1 ? 's' : ''} expire in the next 31–90 days
             </span>
           </div>
         )}
@@ -106,7 +114,7 @@ export default function CompliancePage() {
               {clientRegs.length === 0 ? (
                 <div style={{ fontSize: '13px', color: t.text.muted }}>No registrations tracked yet</div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
                   {clientRegs.map((r: any) => {
                     const expiryDays = r.expiry_date ? daysAgoMT(r.expiry_date) : null
                     const isExpiringSoon = expiryDays !== null && expiryDays > -90 && expiryDays <= 0
@@ -157,7 +165,7 @@ export default function CompliancePage() {
                 <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>{addModal.editing ? 'Edit Registration' : 'Add State Registration'}</h3>
                 <button onClick={() => setAddModal({ open: false })} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>State</label>
                   <select value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} style={selectStyle}>

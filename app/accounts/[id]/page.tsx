@@ -33,7 +33,8 @@ const CONTACT_CATEGORIES = [
   { value: 'buyer',       label: 'Buyer / Purchaser' },
   { value: 'bar_manager', label: 'Bar Manager' },
   { value: 'chef',        label: 'Chef' },
-  { value: 'gm_owner',   label: 'GM / Owner' },
+  { value: 'gm',          label: 'General Manager' },
+  { value: 'owner',       label: 'Owner' },
   { value: 'media',       label: 'Media / Press' },
   { value: 'other',       label: 'Other' },
 ]
@@ -43,7 +44,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   buyer:       t.gold,
   bar_manager: t.status.success,
   chef:        '#f97316',
-  gm_owner:   t.status.warning,
+  gm:          t.status.warning,
+  owner:       '#f43f5e',
+  gm_owner:    t.status.warning,
   media:       '#a78bfa',
   general:     t.text.muted,
   other:       t.text.muted,
@@ -77,7 +80,6 @@ export default function AccountDetailPage() {
     account_type: 'on_premise',
     visit_frequency_days: 21,
     client_slugs: [] as string[],
-    priority: 'B',
     best_days: [] as string[],
     best_time: 'anytime',
     website: '',
@@ -218,7 +220,6 @@ export default function AccountDetailPage() {
       account_type: account.account_type || 'on_premise',
       visit_frequency_days: account.visit_frequency_days || 21,
       client_slugs: currentSlugs,
-      priority: account.priority || 'B',
       best_days: account.best_days || [],
       best_time: account.best_time || 'anytime',
       website: account.website || '',
@@ -239,7 +240,6 @@ export default function AccountDetailPage() {
         phone: editForm.phone || undefined,
         account_type: editForm.account_type as any,
         visit_frequency_days: editForm.visit_frequency_days,
-        priority: editForm.priority,
         best_days: editForm.best_days,
         best_time: editForm.best_time,
         website: editForm.website || undefined,
@@ -299,7 +299,7 @@ export default function AccountDetailPage() {
   if (loading || !account) {
     return (
       <LayoutShell>
-        <div style={{ padding: '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
+        <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '1440px', margin: '0 auto', width: '100%' }}>
           <div style={{ width: '200px', height: '24px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '6px', animation: 'skeleton-pulse 1.2s ease-in-out infinite' }} />
         </div>
       </LayoutShell>
@@ -342,19 +342,6 @@ export default function AccountDetailPage() {
                 <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', backgroundColor: t.status.neutralBg, color: t.text.muted, textTransform: 'capitalize' }}>
                   {account.account_type?.replace('_', '-')}
                 </span>
-                {account.priority && (() => {
-                  const colors: Record<string, string> = { A: '#ef4444', B: t.gold, C: '#22c55e' }
-                  const labels: Record<string, string> = { A: 'High priority', B: 'Normal', C: 'Low priority' }
-                  const color = colors[account.priority]
-                  if (!color) return null
-                  return (
-                    <span title={labels[account.priority]} style={{
-                      width: '8px', height: '8px', borderRadius: '50%',
-                      backgroundColor: color, display: 'inline-block', flexShrink: 0,
-                      boxShadow: `0 0 4px ${color}88`,
-                    }} />
-                  )
-                })()}
               </div>
               {account.address && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
@@ -493,6 +480,7 @@ export default function AccountDetailPage() {
                     <VisitCard key={primary.id} visit={primary} allRows={rows} clients={clients}
                       onDelete={() => Promise.all(rows.map(r => deleteVisit(r.id, r.client_slug))).then(reloadAll)}
                       onSave={(updates) => Promise.all(rows.map(r => updateVisit(r.id, updates as any))).then(reloadAll)}
+                      isMobile={isMobile}
                     />
                   )
                 })
@@ -707,7 +695,7 @@ export default function AccountDetailPage() {
                   autoComplete="off"
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Phone</label>
                   <input type="text" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
@@ -754,25 +742,6 @@ export default function AccountDetailPage() {
                 </div>
               </div>
 
-              {/* Priority */}
-              <div>
-                <label style={labelStyle}>Priority</label>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                  {(['A', 'B', 'C'] as const).map(p => {
-                    const pColor = p === 'A' ? t.status.danger : p === 'B' ? t.gold : t.text.muted
-                    const selected = editForm.priority === p
-                    return (
-                      <button key={p} type="button" onClick={() => setEditForm(f => ({ ...f, priority: p }))} style={{
-                        padding: '5px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
-                        border: `1px solid ${selected ? pColor : t.border.default}`,
-                        backgroundColor: selected ? `${pColor}22` : 'transparent',
-                        color: selected ? pColor : t.text.secondary,
-                      }}>{p}</button>
-                    )
-                  })}
-                </div>
-              </div>
-
               {/* Best days */}
               <div>
                 <label style={labelStyle}>Best Days to Visit</label>
@@ -813,7 +782,7 @@ export default function AccountDetailPage() {
               </div>
 
               {/* Website + Instagram */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Website</label>
                   <input type="text" value={editForm.website} onChange={e => setEditForm(f => ({ ...f, website: e.target.value }))} placeholder="example.com" style={inputStyle} />
@@ -858,7 +827,7 @@ export default function AccountDetailPage() {
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary }}>{editingContact ? 'Edit Contact' : 'New Contact'}</h3>
               <button onClick={() => { setAddContact(false); setEditingContact(null) }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={labelStyle}>Name *</label>
                 <input type="text" value={contactForm.name} onChange={e => setContactForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" style={inputStyle} />
@@ -948,12 +917,13 @@ function TimelineItem({ item, accountId }: { item: any; accountId: string }) {
   )
 }
 
-function VisitCard({ visit, allRows, clients, onDelete, onSave }: {
+function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false }: {
   visit: any
   allRows?: any[]
   clients?: any[]
   onDelete: () => void
   onSave: (updates: { visited_at?: string; status?: string; notes?: string }) => void
+  isMobile?: boolean
 }) {
   const [confirm, setConfirm] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -982,7 +952,7 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave }: {
       <div style={{ ...card, padding: '14px 16px', borderLeft: `3px solid ${t.gold}` }}>
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
               <div>
                 <label style={labelStyle}>Date</label>
                 <input type="date" value={form.visited_at} onChange={e => setForm(f => ({ ...f, visited_at: e.target.value }))} style={inputStyle} />

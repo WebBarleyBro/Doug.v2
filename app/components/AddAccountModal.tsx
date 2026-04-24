@@ -12,7 +12,8 @@ declare global { interface Window { google: any } }
 export const CONTACT_CATEGORIES = [
   { value: 'buyer',       label: 'Buyer / Purchaser' },
   { value: 'bar_manager', label: 'Bar Manager' },
-  { value: 'gm_owner',   label: 'GM / Owner' },
+  { value: 'gm',          label: 'General Manager' },
+  { value: 'owner',       label: 'Owner' },
   { value: 'chef',        label: 'Chef' },
   { value: 'distributor', label: 'Distributor Rep' },
   { value: 'media',       label: 'Media / Press' },
@@ -24,12 +25,6 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const BEST_TIME_OPTIONS = ['morning', 'afternoon', 'evening', 'anytime']
 const BEST_TIME_LABELS: Record<string, string> = {
   morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: 'Anytime',
-}
-const PRIORITY_COLORS: Record<string, string> = { A: '#ef4444', B: '#d4a843', C: '#22c55e' }
-const PRIORITY_LABELS: Record<string, string> = {
-  A: 'High priority — visit often',
-  B: 'Normal cadence',
-  C: 'Low priority — occasional',
 }
 
 interface ContactDraft {
@@ -61,7 +56,6 @@ export default function AddAccountModal({
     account_type: 'on_premise',
     // Advanced
     client_slugs: [] as string[],
-    priority: 'B',
     visit_frequency_days: 21,
     best_days: [] as string[],
     best_time: 'anytime',
@@ -178,7 +172,6 @@ export default function AddAccountModal({
         instagram: form.instagram || undefined,
         best_days: form.best_days,
         best_time: form.best_time,
-        priority: form.priority,
       })
       await Promise.all(
         contacts
@@ -240,8 +233,6 @@ export default function AddAccountModal({
     transition: 'all 120ms ease',
   })
 
-  const priorityColors: Record<string, string> = PRIORITY_COLORS
-
   return (
     <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '20px' }}>
       <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', width: '100%', maxWidth: '520px', maxHeight: '92vh', overflowY: 'auto' }}>
@@ -277,7 +268,7 @@ export default function AddAccountModal({
               <label style={labelStyle}>Address</label>
               <input type="text" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Auto-fills from Google, or type manually" style={inputStyle} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
               <div>
                 <label style={labelStyle}>Phone</label>
                 <input type="text" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
@@ -304,7 +295,7 @@ export default function AddAccountModal({
               fontSize: '13px', fontWeight: '600', marginBottom: showAdvanced ? '0' : '16px',
             }}
           >
-            <span>More Details {!showAdvanced && form.client_slugs.length === 0 && form.priority === 'B' && !form.notes ? <span style={{ fontSize: '11px', color: t.text.muted, fontWeight: '400' }}>— brands, visit schedule, notes...</span> : ''}</span>
+            <span>More Details {!showAdvanced && form.client_slugs.length === 0 && !form.notes ? <span style={{ fontSize: '11px', color: t.text.muted, fontWeight: '400' }}>— brands, visit schedule, notes...</span> : ''}</span>
             {showAdvanced ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
 
@@ -330,45 +321,17 @@ export default function AddAccountModal({
                 </div>
               )}
 
-              {/* Priority + Visit Frequency */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Account Priority</label>
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                    {(['A', 'B', 'C'] as const).map(p => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, priority: p }))}
-                        style={{
-                          flex: 1, padding: '8px 0', borderRadius: '8px', cursor: 'pointer',
-                          border: `1px solid ${form.priority === p ? priorityColors[p] : t.border.default}`,
-                          backgroundColor: form.priority === p ? priorityColors[p] + '22' : 'transparent',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                        title={PRIORITY_LABELS[p]}
-                      >
-                        <span style={{
-                          width: 10, height: 10, borderRadius: '50%',
-                          backgroundColor: priorityColors[p],
-                          boxShadow: form.priority === p ? `0 0 6px ${priorityColors[p]}` : 'none',
-                        }} />
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{PRIORITY_LABELS[form.priority]}</div>
-                </div>
-                <div>
-                  <label style={labelStyle}>Visit Every (days)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    value={form.visit_frequency_days}
-                    onChange={e => setForm(f => ({ ...f, visit_frequency_days: parseInt(e.target.value) || 21 }))}
-                    style={inputStyle}
-                  />
-                </div>
+              {/* Visit Frequency */}
+              <div>
+                <label style={labelStyle}>Visit Every (days)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={form.visit_frequency_days}
+                  onChange={e => setForm(f => ({ ...f, visit_frequency_days: parseInt(e.target.value) || 21 }))}
+                  style={inputStyle}
+                />
               </div>
 
               {/* Best Days */}
@@ -413,7 +376,7 @@ export default function AddAccountModal({
               </div>
 
               {/* Website + Instagram */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={labelStyle}>Website</label>
                   <input type="url" value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://..." style={inputStyle} />
@@ -464,7 +427,7 @@ export default function AddAccountModal({
                       <Trash2 size={13} />
                     </button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                     <div>
                       <label style={{ ...labelStyle, marginBottom: '4px' }}>Name *</label>
                       <input type="text" value={c.name} onChange={e => setContacts(cs => cs.map((r, idx) => idx === i ? { ...r, name: e.target.value } : r))} placeholder="Full name" style={{ ...inputStyle, fontSize: '12px' }} />

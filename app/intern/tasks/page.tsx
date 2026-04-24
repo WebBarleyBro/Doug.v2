@@ -83,14 +83,14 @@ export default function InternTasksPage() {
     load(userId)
   }
 
-  if (loading) return <LayoutShell><div style={{ padding: '32px 48px', color: t.text.muted, fontSize: '14px' }}>Loading tasks...</div></LayoutShell>
+  if (loading) return <LayoutShell><div className="page-wrap" style={{ padding: '32px 48px', color: t.text.muted, fontSize: '14px' }}>Loading tasks...</div></LayoutShell>
   if (error && myTasks.length === 0 && unclaimedTasks.length === 0) return (
-    <LayoutShell><div style={{ padding: '32px 48px', color: t.status.danger, fontSize: '14px' }}>{error}</div></LayoutShell>
+    <LayoutShell><div className="page-wrap" style={{ padding: '32px 48px', color: t.status.danger, fontSize: '14px' }}>{error}</div></LayoutShell>
   )
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+      <div className="page-wrap" style={{ padding: '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
         <div style={{ marginBottom: '28px' }}>
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
             Tasks

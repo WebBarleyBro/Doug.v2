@@ -78,6 +78,7 @@ export interface Contact {
   phone?: string
   notes?: string
   is_decision_maker?: boolean
+  birthday?: string
   created_at: string
   // joined
   accounts?: { id: string; name: string }
@@ -204,7 +205,7 @@ export interface Task {
 
 // ─── Events ──────────────────────────────────────────────────────────────
 
-export type EventType = 'tasting' | 'meeting' | 'planned_stop' | 'milestone' | 'training' | 'other'
+export type EventType = 'tasting' | 'brand_dinner' | 'meeting' | 'planned_stop' | 'milestone' | 'training' | 'other'
 export type EventStatus = 'planned' | 'completed' | 'cancelled'
 
 export interface Event {
@@ -217,6 +218,7 @@ export interface Event {
   start_time: string
   end_time?: string
   notes?: string
+  url?: string
   status: EventStatus
   created_at: string
   // joined

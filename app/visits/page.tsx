@@ -16,6 +16,14 @@ export default function VisitsPage() {
   const [filter, setFilter] = useState<'today' | '7d' | '30d' | 'all'>('7d')
   const [repFilter, setRepFilter] = useState<string>('all')
   const [reps, setReps] = useState<any[]>([])
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
@@ -67,7 +75,7 @@ export default function VisitsPage() {
 
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
+      <div style={{ padding: isMobile ? '16px' : '32px 48px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>
         <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: t.text.muted, textDecoration: 'none', fontSize: '13px', marginBottom: '20px' }}>
           <ChevronLeft size={16} /> Dashboard
         </Link>

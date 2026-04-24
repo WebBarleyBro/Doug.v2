@@ -81,6 +81,13 @@ const mobileBottomNav = [
   { href: '/clients',  label: 'Clients',  icon: Users },
 ]
 
+const internMobileBottomNav = [
+  { href: '/intern',        label: 'My Work',  icon: Home },
+  { href: '/intern/tasks',  label: 'Tasks',    icon: ClipboardList },
+  { href: '/intern/assets', label: 'Assets',   icon: Upload },
+  { href: '/marketing',     label: 'Campaigns', icon: Megaphone },
+]
+
 // Grouped nav for desktop sidebar
 type NavItem = { href: string; label: string; icon: any }
 type NavGroup = { label: string; items: NavItem[] }
@@ -329,9 +336,37 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
   )
 }
 
-function MobileBottomNav({ onFabPress: _onFabPress }: { onFabPress: () => void }) {
+function MobileBottomNav({ onFabPress: _onFabPress, isIntern }: { onFabPress: () => void; isIntern?: boolean }) {
   const pathname = usePathname()
-  const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href)
+  const isActive = (href: string) => href === '/intern' ? pathname === '/intern' : href === '/' ? pathname === '/' : pathname.startsWith(href)
+
+  if (isIntern) {
+    return (
+      <nav className="mobile-nav-safe" style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        backgroundColor: t.bg.sidebar,
+        borderTop: `1px solid ${t.border.default}`,
+        display: 'flex', alignItems: 'stretch', height: '64px',
+      }}>
+        {internMobileBottomNav.map((item) => {
+          const Icon = item.icon
+          const active = isActive(item.href)
+          return (
+            <Link key={item.href} href={item.href} style={{
+              flex: 1, display: 'flex', flexDirection: 'column', minHeight: '44px',
+              alignItems: 'center', justifyContent: 'center',
+              textDecoration: 'none', color: active ? t.gold : t.text.muted,
+              gap: '3px', paddingBottom: '4px',
+            }}>
+              <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+              <span style={{ fontSize: '10px', fontWeight: active ? '600' : '400' }}>{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
+    )
+  }
+
   const left = mobileBottomNav.slice(0, 2)
   const right = mobileBottomNav.slice(2)
 
@@ -572,7 +607,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           <main style={{ paddingTop: '52px', paddingBottom: '80px', minHeight: '100vh' }}>
             {children}
           </main>
-          <MobileBottomNav onFabPress={() => setShowVisitLog(true)} />
+          <MobileBottomNav onFabPress={() => setShowVisitLog(true)} isIntern={profile.role === 'intern'} />
           <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} profile={profile} nav={nav} />
           {showVisitLog && profile.role !== 'intern' && (
             <VisitLogModal

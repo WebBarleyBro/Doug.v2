@@ -217,6 +217,50 @@ export default function ClientPortalPage() {
     drVisits.reduce((acc: any, v: any) => { acc[v.status] = (acc[v.status] || 0) + 1; return acc }, {} as Record<string, number>)
   ).sort(([, a], [, b]) => (b as number) - (a as number))
     .map(([status, count]) => ({ status, count: count as number, fill: STATUS_ACCENT[status] || '#4a4a45' }))
+  // Dynamic visit trend based on dateRange
+  const dynamicVisitTrend = (() => {
+    const now = new Date()
+    if (dateRange === '7d') {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(now); d.setDate(d.getDate() - (6 - i))
+        const dateStr = d.toISOString().slice(0, 10)
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const count = visits.filter((v: any) => String(v.visited_at).slice(0, 10) === dateStr).length
+        return { week: label, visits: count, weekEnd: label }
+      })
+    } else if (dateRange === '30d') {
+      return Array.from({ length: 4 }, (_, i) => {
+        const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() - (3 - i) * 7)
+        const weekStart = new Date(weekEnd); weekStart.setDate(weekStart.getDate() - 6)
+        const startStr = weekStart.toISOString().slice(0, 10)
+        const endStr = weekEnd.toISOString().slice(0, 10)
+        const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const endLabel = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const count = visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= startStr && d <= endStr }).length
+        return { week: label, visits: count, weekEnd: endLabel }
+      })
+    } else if (dateRange === '90d') {
+      return Array.from({ length: 12 }, (_, i) => {
+        const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() - (11 - i) * 7)
+        const weekStart = new Date(weekEnd); weekStart.setDate(weekStart.getDate() - 6)
+        const startStr = weekStart.toISOString().slice(0, 10)
+        const endStr = weekEnd.toISOString().slice(0, 10)
+        const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const endLabel = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const count = visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= startStr && d <= endStr }).length
+        return { week: label, visits: count, weekEnd: endLabel }
+      })
+    } else {
+      return Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(now); d.setMonth(d.getMonth() - (11 - i))
+        const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+        const count = visits.filter((v: any) => String(v.visited_at).slice(0, 7) === prefix).length
+        return { week: label, visits: count, weekEnd: label }
+      })
+    }
+  })()
+
   const placementBreakdown = ['committed', 'ordered', 'on_shelf', 'reordering'].map(status => ({
     status, label: PLACEMENT_STATUS_LABELS[status], color: PLACEMENT_STATUS_COLORS[status],
     count: activePlacements.filter((p: any) => p.status === status).length,
@@ -365,17 +409,19 @@ export default function ClientPortalPage() {
             {/* Charts row */}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', marginBottom: '20px' }}>
               {/* Visit trend chart */}
-              {visitTrend.some((w: any) => w.visits > 0) && (
+              {dynamicVisitTrend.some((w: any) => w.visits > 0) && (
                 <div style={{ ...card, padding: isMobile ? '14px' : '18px 22px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Visit Trend — Last 12 Weeks</div>
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts visited per week by our team</div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>
+                        Visit Trend — {dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 4 Weeks' : dateRange === '90d' ? 'Last 12 Weeks' : 'Last 12 Months'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts visited {dateRange === '7d' || dateRange === '30d' ? 'by day' : dateRange === '90d' ? 'per week' : 'per month'} by our team</div>
                     </div>
                     <button onClick={() => setActiveTab('activity')} style={{ fontSize: '11px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600', flexShrink: 0 }}>See all →</button>
                   </div>
                   <ResponsiveContainer width="100%" height={isMobile ? 100 : 130}>
-                    <BarChart data={visitTrend} barCategoryGap="40%">
+                    <BarChart data={dynamicVisitTrend} barCategoryGap="40%">
                       <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
                       <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 9 }} axisLine={false} tickLine={false} interval={isMobile ? 3 : 1} />
                       <YAxis tick={{ fill: t.text.muted, fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={18} />
