@@ -59,15 +59,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     if (!invoice) return Response.json({ error: 'Not found' }, { status: 404 })
     if (invoice.status === 'paid') return Response.json({ error: 'Cannot void a paid invoice' }, { status: 409 })
 
-    if (invoice.stripe_invoice_id && invoice.status === 'sent') {
-      try {
-        const { getStripe } = await import('../../../../lib/stripe')
-        await getStripe().invoices.voidInvoice(invoice.stripe_invoice_id)
-      } catch {
-        // non-fatal — still mark void in our DB
-      }
-    }
-
     await sb.from('billing_depletions').update({ invoice_id: null }).eq('invoice_id', id)
 
     const { error } = await sb.from('client_invoices').update({ status: 'void', updated_at: new Date().toISOString() }).eq('id', id)

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { DollarSign, TrendingUp, ChevronRight, Download, Receipt, Plus, X, Send, ExternalLink, AlertCircle, Check, Loader } from 'lucide-react'
+import { DollarSign, TrendingUp, ChevronRight, Download, Receipt, Plus, X, AlertCircle, Check, Loader } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -55,7 +55,7 @@ export default function FinancePage() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState(DEFAULT_FORM)
   const [saving, setSaving] = useState(false)
-  const [sendingId, setSendingId] = useState<string | null>(null)
+  const [markingSentId, setMarkingSentId] = useState<string | null>(null)
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
@@ -180,21 +180,22 @@ export default function FinancePage() {
     finally { setSaving(false) }
   }
 
-  async function handleSendInvoice(id: string) {
-    setSendingId(id); setErr('')
+  async function handleMarkSent(id: string) {
+    setMarkingSentId(id); setErr('')
     try {
       const token = await getToken()
-      const res = await fetch(`/api/billing/invoices/${id}/send`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`/api/billing/invoices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: 'sent' }),
       })
       let json: any = {}
       try { json = await res.json() } catch { /* response wasn't JSON */ }
-      if (!res.ok) { setErr(json.error || `Server error (${res.status})`); setSendingId(null); return }
+      if (!res.ok) { setErr(json.error || `Server error (${res.status})`); return }
       await loadInvoices()
-      showToast('Invoice sent via Stripe')
+      showToast('Invoice marked as sent')
     } catch (e: any) { setErr(e?.message || 'Network error') }
-    finally { setSendingId(null) }
+    finally { setMarkingSentId(null) }
   }
 
   async function handleVoidInvoice(id: string) {
@@ -347,7 +348,7 @@ export default function FinancePage() {
               {activeInvoices.map((inv) => {
                 const cl = clients.find(c => c.slug === inv.client_slug)
                 const total = (inv.retainer_amount || 0) + (inv.commission_amount || 0)
-                const isSending = sendingId === inv.id
+                const isMarkingSent = markingSentId === inv.id
                 const isVoiding = voidingId === inv.id
                 return (
                   <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: `1px solid ${t.border.subtle}`, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
@@ -368,14 +369,9 @@ export default function FinancePage() {
                     <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '6px', backgroundColor: INVOICE_STATUS_COLORS[inv.status] + '20', color: INVOICE_STATUS_COLORS[inv.status], flexShrink: 0 }}>{inv.status}</span>
                     <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                       {inv.status === 'draft' && (
-                        <button onClick={() => handleSendInvoice(inv.id)} disabled={isSending} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', backgroundColor: t.status.info + '20', color: t.status.info, border: `1px solid ${t.status.info}44`, cursor: 'pointer', opacity: isSending ? 0.6 : 1 }}>
-                          {isSending ? <Loader size={11} /> : <Send size={11} />} Send
+                        <button onClick={() => handleMarkSent(inv.id)} disabled={isMarkingSent} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', backgroundColor: t.status.info + '20', color: t.status.info, border: `1px solid ${t.status.info}44`, cursor: 'pointer', opacity: isMarkingSent ? 0.6 : 1 }}>
+                          {isMarkingSent ? <Loader size={11} /> : null} Mark Sent
                         </button>
-                      )}
-                      {inv.stripe_invoice_url && (
-                        <a href={inv.stripe_invoice_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', backgroundColor: t.bg.card, color: t.text.secondary, border: `1px solid ${t.border.default}`, cursor: 'pointer', textDecoration: 'none' }}>
-                          <ExternalLink size={11} /> View
-                        </a>
                       )}
                       {(inv.status === 'draft' || inv.status === 'sent') && (
                         <button onClick={() => handleVoidInvoice(inv.id)} disabled={isVoiding} style={{ padding: '5px 8px', borderRadius: '7px', fontSize: '11px', fontWeight: '600', backgroundColor: 'transparent', color: t.text.muted, border: `1px solid ${t.border.default}`, cursor: 'pointer', opacity: isVoiding ? 0.6 : 1 }}>
@@ -515,7 +511,7 @@ export default function FinancePage() {
 
               <div>
                 <label style={labelStyle}>Admin Notes (optional)</label>
-                <textarea value={form.admin_notes} onChange={e => setForm(f => ({ ...f, admin_notes: e.target.value }))} rows={2} placeholder="Visible on the Stripe invoice…" style={{ ...inputStyle, resize: 'none' }} />
+                <textarea value={form.admin_notes} onChange={e => setForm(f => ({ ...f, admin_notes: e.target.value }))} rows={2} placeholder="Internal notes…" style={{ ...inputStyle, resize: 'none' }} />
               </div>
 
               <div style={{ borderTop: `1px solid ${t.border.subtle}`, paddingTop: '12px' }}>
