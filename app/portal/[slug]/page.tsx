@@ -1196,16 +1196,18 @@ export default function ClientPortalPage() {
               </div>
             ))}
 
-            {/* Depletion submission */}
+            {/* Depletion submission — hidden in staff preview mode */}
             <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDepletionForm ? '16px' : '0' }}>
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>Submit Depletion Report</div>
                   <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Enter distributor sell-through data so we can calculate commission accurately</div>
                 </div>
-                <button onClick={() => { setShowDepletionForm(v => !v); setDepErr(''); setDepSuccess(false) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', backgroundColor: showDepletionForm ? t.bg.card : accent + '20', color: showDepletionForm ? t.text.muted : accent, border: `1px solid ${showDepletionForm ? t.border.default : accent + '44'}`, cursor: 'pointer' }}>
-                  {showDepletionForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> Add Report</>}
-                </button>
+                {!isPreview && (
+                  <button onClick={() => { setShowDepletionForm(v => !v); setDepErr(''); setDepSuccess(false) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', backgroundColor: showDepletionForm ? t.bg.card : accent + '20', color: showDepletionForm ? t.text.muted : accent, border: `1px solid ${showDepletionForm ? t.border.default : accent + '44'}`, cursor: 'pointer' }}>
+                    {showDepletionForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> Add Report</>}
+                  </button>
+                )}
               </div>
 
               {showDepletionForm && (
@@ -1259,7 +1261,7 @@ export default function ClientPortalPage() {
                             setDepForm({ product_name: '', period_month: '', cases_sold: '', sale_value: '', notes: '' })
                             setDepSuccess(true)
                             setBillingToast('Depletion report submitted')
-                            setTimeout(() => setBillingToast(''), 3000)
+                            setTimeout(() => { setBillingToast(''); setShowDepletionForm(false); setDepSuccess(false) }, 2500)
                           } catch { setDepErr('Network error') }
                           finally { setDepSubmitting(false) }
                         }}

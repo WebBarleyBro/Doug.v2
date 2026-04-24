@@ -8,6 +8,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const clientSlug = url.searchParams.get('client_slug')
   const month = url.searchParams.get('month')
+
+  // Validate month format if provided
+  if (month && !/^\d{4}-\d{2}$/.test(month)) {
+    return Response.json({ error: 'month must be YYYY-MM format' }, { status: 400 })
+  }
+
   const sb = getSupabaseAdmin()
 
   let q = sb
@@ -26,7 +32,7 @@ export async function GET(req: Request) {
 
   if (month) q = q.eq('period_month', month)
 
-  const { data, error } = await q.limit(100)
+  const { data, error } = await q.limit(200)
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json(data)
 }
@@ -39,8 +45,11 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { client_slug, product_name, period_month, cases_sold, sale_value, notes } = body
 
-  if (!client_slug || !product_name || !period_month) {
+  if (!client_slug || !product_name?.trim() || !period_month) {
     return Response.json({ error: 'client_slug, product_name, and period_month are required' }, { status: 400 })
+  }
+  if (!/^\d{4}-\d{2}$/.test(period_month)) {
+    return Response.json({ error: 'period_month must be YYYY-MM format' }, { status: 400 })
   }
 
   // Portal users can only submit for their own client
@@ -48,14 +57,17 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const casesNum = Math.max(0, Number(cases_sold) || 0)
+  const saleNum = Math.max(0, Number(sale_value) || 0)
+
   const sb = getSupabaseAdmin()
   const { data, error } = await sb.from('billing_depletions').insert({
     client_slug,
-    product_name,
+    product_name: product_name.trim(),
     period_month,
-    cases_sold: cases_sold ?? 0,
-    sale_value: sale_value ?? 0,
-    notes: notes || null,
+    cases_sold: casesNum,
+    sale_value: saleNum,
+    notes: notes?.trim() || null,
     submitted_by: user.id,
     submitted_by_portal: user.role === 'portal',
   }).select().single()
