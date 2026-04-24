@@ -37,6 +37,7 @@ export interface Client {
   website?: string
   stripe_customer_id?: string
   monthly_retainer_fee?: number
+  track_depletions?: boolean
   created_at: string
 }
 

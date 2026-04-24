@@ -169,13 +169,14 @@ export default function FinancePage() {
           ],
         }),
       })
-      const json = await res.json()
-      if (!res.ok) { setErr(json.error || 'Failed to create invoice'); return }
+      let json: any = {}
+      try { json = await res.json() } catch { /* response wasn't JSON */ }
+      if (!res.ok) { setErr(json.error || `Server error (${res.status})`); return }
       setShowCreate(false)
       setForm(DEFAULT_FORM)
       await loadInvoices()
       showToast('Invoice created')
-    } catch { setErr('Network error') }
+    } catch (e: any) { setErr(e?.message || 'Network error') }
     finally { setSaving(false) }
   }
 
@@ -187,11 +188,12 @@ export default function FinancePage() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      const json = await res.json()
-      if (!res.ok) { setErr(json.error || 'Failed to send invoice'); setSendingId(null); return }
+      let json: any = {}
+      try { json = await res.json() } catch { /* response wasn't JSON */ }
+      if (!res.ok) { setErr(json.error || `Server error (${res.status})`); setSendingId(null); return }
       await loadInvoices()
       showToast('Invoice sent via Stripe')
-    } catch { setErr('Network error') }
+    } catch (e: any) { setErr(e?.message || 'Network error') }
     finally { setSendingId(null) }
   }
 

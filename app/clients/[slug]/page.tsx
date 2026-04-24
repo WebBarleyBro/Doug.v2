@@ -1329,6 +1329,13 @@ export default function ClientDetailPage() {
                         onChange={e => setEditForm(f => ({ ...f, commission_rate: parseFloat(e.target.value) / 100 || 0 }))}
                         placeholder="e.g. 12" style={inputStyle} />
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', backgroundColor: t.bg.card, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
+                      <input type="checkbox" id="track-dep" checked={editForm.track_depletions !== undefined ? editForm.track_depletions : (client.track_depletions ?? false)} onChange={e => setEditForm(f => ({ ...f, track_depletions: e.target.checked }))} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: t.gold }} />
+                      <div>
+                        <label htmlFor="track-dep" style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, cursor: 'pointer', display: 'block' }}>Monthly Depletion Reports</label>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>Show depletion submission in this client's portal</div>
+                      </div>
+                    </div>
                     <div>
                       <label style={labelStyle}>Distributor Name</label>
                       <input type="text" value={editForm.distributor_name ?? client.distributor_name ?? ''} onChange={e => setEditForm(f => ({ ...f, distributor_name: e.target.value }))} placeholder="e.g. Republic National" style={inputStyle} />
