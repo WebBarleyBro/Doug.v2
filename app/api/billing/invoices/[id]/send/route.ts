@@ -1,11 +1,12 @@
 import { getAuthUserFromRequest, getSupabaseAdmin } from '../../../../../lib/supabase-server'
-import { stripe } from '../../../../../lib/stripe'
+import { getStripe } from '../../../../../lib/stripe'
 
 // POST /api/billing/invoices/[id]/send
 // Creates or updates the Stripe Invoice, finalizes it, and sends to the client.
 // Idempotent: if stripe_invoice_id is already set, re-finalizes/sends.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: invoiceId } = await params
+  const stripe = getStripe()
   const user = await getAuthUserFromRequest(req)
   if (!user || !['owner', 'admin'].includes(user.role)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })

@@ -56,8 +56,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   if (invoice.stripe_invoice_id && invoice.status === 'sent') {
     try {
-      const { stripe } = await import('../../../../lib/stripe')
-      await stripe.invoices.voidInvoice(invoice.stripe_invoice_id)
+      const { getStripe } = await import('../../../../lib/stripe')
+      await getStripe().invoices.voidInvoice(invoice.stripe_invoice_id)
     } catch {
       // non-fatal — still mark void in our DB
     }

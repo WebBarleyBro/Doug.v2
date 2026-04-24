@@ -1,8 +1,9 @@
-import { stripe } from '../../../lib/stripe'
+import { getStripe } from '../../../lib/stripe'
 import { getSupabaseAdmin } from '../../../lib/supabase-server'
 
 // Stripe sends raw bodies — must use req.text(), not req.json()
 export async function POST(req: Request) {
+  const stripe = getStripe()
   const body = await req.text()
   const sig = req.headers.get('stripe-signature')
   if (!sig) return Response.json({ error: 'Missing stripe-signature' }, { status: 400 })
