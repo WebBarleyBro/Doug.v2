@@ -15,7 +15,7 @@ import {
 } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
-import { formatCurrency, formatShortDateMT } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT, nDaysAgoMT } from '../lib/formatters'
 import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
 import type { Client, PlacementStatus } from '../lib/types'
 
@@ -59,8 +59,6 @@ const VISIT_STATUS_COLORS: Record<string, string> = {
   'General Check-In':  t.text.secondary,
 }
 
-// Statuses that represent actionable follow-up items
-const ACTION_STATUSES = new Set(['Will Order Soon', 'Needs Follow Up'])
 
 export default function AnalyticsPage() {
   const [rangeDays, setRangeDays] = useState(30)
@@ -105,8 +103,7 @@ export default function AnalyticsPage() {
     setLoading(true)
     setExpandedStatus(null)
     const end = new Date()
-    const start = new Date()
-    start.setDate(start.getDate() - rangeDays)
+    const start = new Date(nDaysAgoMT(rangeDays))
 
     Promise.all([
       getClients(),
