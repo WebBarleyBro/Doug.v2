@@ -4,7 +4,8 @@ import { stripe } from '../../../../../lib/stripe'
 // POST /api/billing/invoices/[id]/send
 // Creates or updates the Stripe Invoice, finalizes it, and sends to the client.
 // Idempotent: if stripe_invoice_id is already set, re-finalizes/sends.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: invoiceId } = await params
   const user = await getAuthUserFromRequest(req)
   if (!user || !['owner', 'admin'].includes(user.role)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
@@ -16,7 +17,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: invoice, error: invErr } = await sb
     .from('client_invoices')
     .select('*, client_invoice_line_items(*)')
-    .eq('id', params.id)
+    .eq('id', invoiceId)
     .single()
   if (invErr || !invoice) return Response.json({ error: 'Invoice not found' }, { status: 404 })
   if (invoice.status === 'paid') return Response.json({ error: 'Invoice is already paid' }, { status: 409 })
