@@ -1165,13 +1165,13 @@ export async function getCommissionTrend(sinceDate?: Date, untilDate?: Date) {
   const since = sinceDate ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 12); return d })()
   let q = sb
     .from('purchase_orders')
-    .select('created_at, sent_at, status, commission_amount, total_amount, po_line_items(*), client_slug, po_number, deliver_to_name')
+    .select('created_at, sent_at, commission_amount, total_amount, client_slug, po_number, deliver_to_name')
     .in('status', ['sent', 'fulfilled'])
     .gte('created_at', since.toISOString())
   if (untilDate) q = q.lte('created_at', untilDate.toISOString())
   const { data, error } = await q.order('created_at')
   if (error) throw error
-  return (data || []).filter((o: any) => isCommissionEligible(o.status))
+  return data || []
 }
 
 export async function getRepActivity(since: string) {

@@ -209,7 +209,7 @@ export default function AnalyticsPage() {
       setVisitsByStatusGrouped(grouped)
 
       setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch((e) => { console.error('analytics load error:', e); setLoading(false) })
   }, [rangeDays])
 
   const statusColors: Record<string, string> = {
