@@ -144,31 +144,15 @@ export default function AnalyticsPage() {
         unique: new Set(dedupedVisits.map((v: any) => v.account_id).filter(Boolean)).size,
       })
 
-      // Commission — bucket by day/week/month depending on range
+      // Commission — always 12 monthly buckets, independent of the visit range picker
       const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number; orders: any[] }[] = []
-      const useDaily = rangeDays <= 14
-      const useWeekly = rangeDays <= 90 && !useDaily
-      if (useDaily) {
-        for (let i = 0; i < rangeDays; i++) {
-          const d = new Date(start.getTime() + i * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000, orders: [] })
-        }
-      } else if (useWeekly) {
-        const weeks = Math.ceil(rangeDays / 7)
-        for (let i = 0; i < weeks; i++) {
-          const d = new Date(start.getTime() + i * 7 * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000, orders: [] })
-        }
-      } else {
-        const months = Math.ceil(rangeDays / 30)
-        for (let i = months - 1; i >= 0; i--) {
-          const d = new Date()
-          d.setDate(1)
-          d.setMonth(d.getMonth() - i)
-          const monthStart = d.getTime()
-          const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
-        }
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(1)
+        d.setMonth(d.getMonth() - i)
+        const monthStart = d.getTime()
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
+        commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
       }
       const rateMap = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
       const billedOrders = ordersData.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
@@ -303,7 +287,7 @@ export default function AnalyticsPage() {
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 Commission
               </div>
-              <div style={{ fontSize: '10px', color: t.text.muted }}>by order date</div>
+              <div style={{ fontSize: '10px', color: t.text.muted }}>last 12 months</div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={commissionData}>

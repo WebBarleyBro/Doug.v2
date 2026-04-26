@@ -1152,6 +1152,22 @@ export function getTodaySchedule(userId: string) {
   })
 }
 
+// ─── Distributor Inquiries ────────────────────────────────────────────────
+
+export async function getPendingDistributorInquiries() {
+  const sb = getSupabase()
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await sb
+    .from('purchase_orders')
+    .select('*, po_line_items(*)')
+    .eq('order_type', 'distributor')
+    .in('status', ['draft', 'sent'])
+    .or(`distributor_status.eq.not_contacted,and(distributor_status.eq.contacted,distributor_contacted_at.lte.${sevenDaysAgo})`)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 // ─── Analytics ────────────────────────────────────────────────────────────
 
 export async function getVisitTrend(range: DateRange) {

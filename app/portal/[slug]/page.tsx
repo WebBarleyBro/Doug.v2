@@ -764,9 +764,19 @@ export default function ClientPortalPage() {
                         }
                       }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name}</span>
                             <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{o.status}</span>
+                            {isDistributorClient && o.distributor_status && o.distributor_status !== 'not_contacted' && (() => {
+                              const DS_COLOR: Record<string, string> = { contacted: t.status.info, confirmed: t.status.success, ordered: t.status.success }
+                              const DS_LABEL: Record<string, string> = { contacted: 'Inquiry Sent', confirmed: 'Confirmed', ordered: 'Ordered' }
+                              const dc = DS_COLOR[o.distributor_status] || t.text.muted
+                              return (
+                                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: dc + '22', color: dc, fontWeight: '700', flexShrink: 0, border: `1px solid ${dc}44` }}>
+                                  {DS_LABEL[o.distributor_status] || o.distributor_status}
+                                </span>
+                              )
+                            })()}
                             <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.elevated, color: t.text.muted, fontWeight: '600', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
                               {isDistributorClient ? 'Distributor Inquiry' : 'Purchase Order'}
                             </span>

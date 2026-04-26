@@ -16,7 +16,7 @@ import {
   getDashboardStats, getTodaySchedule, getFollowUpVisits,
   getOverdueAccounts, getTasks, globalSearch, completeTask,
   getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
-  getPlannerStops,
+  getPlannerStops, getPendingDistributorInquiries,
 } from './lib/data'
 import type { PlannerStop } from './lib/data'
 import { getSupabase } from './lib/supabase'
@@ -47,6 +47,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [showAllFollowUps, setShowAllFollowUps] = useState(false)
   const [plannerStops, setPlannerStops] = useState<PlannerStop[]>([])
+  const [pendingInquiries, setPendingInquiries] = useState<any[]>([])
 
   const isOwner = profile.role === 'owner'
 
@@ -62,6 +63,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
       setStats(s); setSchedule(sched); setFollowups(fu ?? []); setOverdue(od ?? []); setTasks(taskData ?? [])
       if (isOwner) {
         getClientSuggestions('new').then(setSuggestions).catch(() => {})
+        getPendingDistributorInquiries().then(setPendingInquiries).catch(() => {})
       }
       // Fetch active placement account IDs for urgency scoring
       getSupabase().from('placements').select('account_id').is('lost_at', null).then(({ data }) => {
@@ -249,6 +251,42 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
               </Link>
             </div>
           ))}
+        </div>
+      )}
+
+      {isOwner && pendingInquiries.length > 0 && (
+        <div style={{ marginBottom: '20px', backgroundColor: 'rgba(233,153,40,0.07)', border: `1px solid rgba(233,153,40,0.22)`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid rgba(233,153,40,0.15)`, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={14} color={t.status.warning} />
+              <span style={{ fontSize: '12px', fontWeight: '700', color: t.status.warning }}>
+                {pendingInquiries.length} Pending Distributor {pendingInquiries.length === 1 ? 'Inquiry' : 'Inquiries'}
+              </span>
+            </div>
+            <Link href="/orders" style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              View all <ChevronRight size={11} />
+            </Link>
+          </div>
+          {pendingInquiries.slice(0, 5).map((o: any, i: number) => {
+            const isOverdue = o.distributor_status === 'contacted'
+            const daysAgo = o.distributor_contacted_at
+              ? Math.floor((Date.now() - new Date(o.distributor_contacted_at).getTime()) / 86400_000)
+              : null
+            return (
+              <div key={o.id} style={{
+                display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
+                borderBottom: i < Math.min(pendingInquiries.length, 5) - 1 ? `1px solid ${t.border.subtle}` : 'none',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{o.deliver_to_name}</span>
+                  {o.client_slug && <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '8px' }}>{o.client_slug}</span>}
+                </div>
+                <span style={{ fontSize: '11px', color: isOverdue ? t.status.danger : t.text.muted, flexShrink: 0 }}>
+                  {isOverdue && daysAgo !== null ? `⚠ ${daysAgo}d ago — no response` : 'Not contacted'}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -544,6 +582,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
   const [suggestions, setSuggestions] = useState<any[]>([])
+  const [pendingInquiries, setPendingInquiries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
   const [plannerStops, setPlannerStops] = useState<PlannerStop[]>([])
@@ -559,6 +598,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
       setStats(s); setSchedule(sched); setFollowups(fu); setOverdue(od)
       if (profile.role === 'owner') {
         getClientSuggestions('new').then(setSuggestions).catch(() => {})
+        getPendingDistributorInquiries().then(setPendingInquiries).catch(() => {})
       }
       if (s?.commissionThisMonth !== undefined) setCommission(s.commissionThisMonth)
       getPlannerStops(profile.id, todayMT()).then(setPlannerStops).catch(() => {})
@@ -633,6 +673,18 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
               <ChevronRight size={13} color={t.text.muted} />
             </Link>
           ))}
+        </div>
+      )}
+
+      {profile.role === 'owner' && pendingInquiries.length > 0 && (
+        <div style={{ marginBottom: '16px', backgroundColor: 'rgba(233,153,40,0.07)', border: `1px solid rgba(233,153,40,0.22)`, borderRadius: '10px', overflow: 'hidden' }}>
+          <Link href="/orders" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+            <Clock size={13} color={t.status.warning} />
+            <span style={{ fontSize: '12px', fontWeight: '700', color: t.status.warning, flex: 1 }}>
+              {pendingInquiries.length} Pending Distributor {pendingInquiries.length === 1 ? 'Inquiry' : 'Inquiries'}
+            </span>
+            <ChevronRight size={13} color={t.status.warning} />
+          </Link>
         </div>
       )}
 

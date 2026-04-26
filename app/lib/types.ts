@@ -145,6 +145,7 @@ export interface Placement {
 
 export type OrderStatus = 'draft' | 'sent' | 'fulfilled' | 'cancelled'
 export type FollowUpStatus = 'not_started' | 'contacted' | 'waiting' | 'closed'
+export type DistributorStatus = 'not_contacted' | 'contacted' | 'confirmed' | 'ordered'
 
 export interface PurchaseOrder {
   id: string
@@ -163,13 +164,16 @@ export interface PurchaseOrder {
   follow_up_status: FollowUpStatus
   distributor_email?: string
   distributor_rep_name?: string
+  distributor_status?: DistributorStatus
+  distributor_contacted_at?: string
+  distributor_notes?: string
   email_draft?: string
   email_sent?: boolean
   last_resent_at?: string
   last_resent_to?: string
   notes?: string
   created_at: string
-  sent_at?: string  // not a DB column — kept for local typing only; do not write to DB
+  sent_at?: string
   // joined
   po_line_items?: POLineItem[]
   accounts?: { id: string; name: string }

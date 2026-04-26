@@ -656,11 +656,17 @@ export default function OrdersPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
                       <span className="mono" style={{ fontSize: '13px', fontWeight: '600', color: t.gold }}>{o.po_number}</span>
                       <span style={badge.orderStatus(o.status)}>{o.status}</span>
-                      {isInquiry && o.follow_up_status && o.follow_up_status !== 'not_started' && (
-                        <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: t.bg.input, color: t.text.muted }}>
-                          {followUpColumns.find(c => c.key === o.follow_up_status)?.label}
-                        </span>
-                      )}
+                      {isInquiry && (() => {
+                        const ds = o.distributor_status || 'not_contacted'
+                        const dsColor = ds === 'confirmed' || ds === 'ordered' ? t.status.success : ds === 'contacted' ? t.gold : t.text.muted
+                        const dsLabel = ds === 'not_contacted' ? 'Not Contacted' : ds === 'contacted' ? 'Contacted' : ds === 'confirmed' ? 'Confirmed' : 'Ordered'
+                        const isOverdue = ds === 'contacted' && o.distributor_contacted_at && (Date.now() - new Date(o.distributor_contacted_at).getTime()) > 7 * 24 * 60 * 60 * 1000
+                        return (
+                          <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', backgroundColor: `${dsColor}18`, color: dsColor, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isOverdue && '⚠ '}{dsLabel}
+                          </span>
+                        )
+                      })()}
                       {client && (() => {
                         const logo = clientLogoUrl(client)
                         return logo ? (
@@ -762,6 +768,50 @@ export default function OrdersPage() {
                     {o.distributor_email && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{o.distributor_email}</div>}
                   </div>
                 )}
+
+                {/* Distributor outreach status */}
+                {isInquiry && (() => {
+                  const ds = o.distributor_status || 'not_contacted'
+                  const dsColor = ds === 'confirmed' || ds === 'ordered' ? t.status.success : ds === 'contacted' ? t.gold : t.text.muted
+                  const isOverdue = ds === 'contacted' && o.distributor_contacted_at && (Date.now() - new Date(o.distributor_contacted_at).getTime()) > 7 * 24 * 60 * 60 * 1000
+                  return (
+                    <div style={{ ...card, padding: '14px 16px', backgroundColor: t.bg.card }}>
+                      <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MessageSquare size={11} /> Outreach Status
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: dsColor }}>
+                          {isOverdue && '⚠ '}
+                          {ds === 'not_contacted' ? 'Not Contacted' : ds === 'contacted' ? 'Contacted' : ds === 'confirmed' ? 'Confirmed' : 'Ordered'}
+                        </span>
+                        {o.distributor_contacted_at && (
+                          <span style={{ fontSize: '11px', color: t.text.muted }}>
+                            {isOverdue ? '(overdue — ' : '('}contacted {formatShortDateMT(o.distributor_contacted_at)})
+                          </span>
+                        )}
+                      </div>
+                      {ds !== 'confirmed' && ds !== 'ordered' && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'confirmed' as any }); load() }}
+                            style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78', fontFamily: 'inherit' }}
+                          >
+                            ✓ Mark Confirmed
+                          </button>
+                          <button
+                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'ordered' as any }); load() }}
+                            style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.secondary, fontFamily: 'inherit' }}
+                          >
+                            Mark Ordered
+                          </button>
+                        </div>
+                      )}
+                      {o.distributor_notes && (
+                        <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '8px', lineHeight: 1.4 }}>{o.distributor_notes}</div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Meta */}
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
@@ -875,7 +925,7 @@ export default function OrdersPage() {
                       try {
                         const res = await fetch('/api/send-email', {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ to: email.trim(), subject, text, html }),
+                          body: JSON.stringify({ to: email.trim(), subject, text, html, ...(isInquiry ? { orderId: o.id } : {}) }),
                         })
                         if (res.ok) { await updateOrder(o.id, { status: 'sent' }); load(); setResendState('sent'); setResendTo('') }
                         else setResendState('open')
