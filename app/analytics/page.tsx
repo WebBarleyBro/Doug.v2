@@ -109,7 +109,7 @@ export default function AnalyticsPage() {
       getClients().catch(e => { console.error('analytics/clients:', e); return [] }),
       getVisitTrend({ start, end }).catch(e => { console.error('analytics/visitTrend:', e); return [] }),
       getPlacementFunnel({ start, end }).catch(e => { console.error('analytics/funnel:', e); return { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 } }),
-      getOrders({ since: start.toISOString() }).catch(e => { console.error('analytics/orders:', e); return [] }),
+      getOrders().catch(e => { console.error('analytics/orders:', e); return [] }),
       getPlacements().catch(e => { console.error('analytics/placements:', e); return [] }),
       getVisits({ since: start.toISOString(), limit: 500 }).catch(e => { console.error('analytics/visits:', e); return [] }),
     ]).then(([cls, visitTrend, funnelData, ordersData, placements, recentVisits]) => {
