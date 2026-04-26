@@ -12,6 +12,15 @@ rules:
 - **Status enum**: 7 statuses defined in lib/types.ts (Will Order Soon, Just Ordered, etc.)
 - **Deduplication**: On dashboard, group by `(account_id, visited_at, user_id)` → one row
 
+## Placement Status Flow
+```
+committed → ordered → on_shelf → reordering
+                ↘ lost_at (not a status — it's a timestamp; set on any transition to "lost")
+```
+- Never add a `lost` status value — loss is tracked via `lost_at` + `lost_reason` columns
+- Advance with `updatePlacement(id, { status: 'next' })`
+- Mark lost with `markPlacementLost(id, reason)` which sets `lost_at = now()`
+
 **Example: Rep visits "NoCo Bar" with 2 brands**
 ```typescript
 await logVisit({
