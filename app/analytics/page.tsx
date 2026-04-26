@@ -170,10 +170,17 @@ export default function AnalyticsPage() {
           commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
         }
       }
+      const rateMap = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
       commTrend.forEach((o: any) => {
-        const t2 = new Date(o.created_at).getTime()
+        const effectiveDate = o.sent_at || o.created_at
+        const t2 = new Date(effectiveDate).getTime()
         const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
-        if (bucket) { bucket.commission += Number(o.commission_amount || 0); bucket.orders.push(o) }
+        if (bucket) {
+          const stored = Number(o.commission_amount) || 0
+          const commission = stored > 0 ? stored : (Number(o.total_amount) || 0) * (rateMap[o.client_slug] || 0)
+          bucket.commission += commission
+          bucket.orders.push(o)
+        }
       })
       setCommissionData(commBuckets.map(b => ({ month: b.label, commission: b.commission })))
 

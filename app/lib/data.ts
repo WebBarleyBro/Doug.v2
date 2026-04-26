@@ -603,7 +603,13 @@ export async function createOrder(order: {
 export async function updateOrder(id: string, updates: Partial<PurchaseOrder> & { client_slug?: string }) {
   const sb = getSupabase()
   // Strip joined/virtual fields that don't exist as DB columns
-  const { po_line_items, accounts, sent_at, ...dbUpdates } = updates as any
+  const { po_line_items, accounts, ...rest } = updates as any
+  const dbUpdates: any = { ...rest }
+  // Auto-stamp sent_at when marking as sent (only if not already set)
+  if (dbUpdates.status === 'sent' && !dbUpdates.sent_at) {
+    const { data: existing } = await sb.from('purchase_orders').select('sent_at').eq('id', id).single()
+    if (!existing?.sent_at) dbUpdates.sent_at = new Date().toISOString()
+  }
   const { error } = await sb.from('purchase_orders').update(dbUpdates).eq('id', id)
   if (error) throw error
   invalidatePrefix('dashboard-stats')
