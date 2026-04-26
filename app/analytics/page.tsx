@@ -10,12 +10,12 @@ import StatCard from '../components/StatCard'
 import VisitLogModal from '../components/VisitLogModal'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
 import {
-  getVisitTrend, getPlacementFunnel, getCommissionTrend,
-  getClients, getPlacements, getVisits, clearFollowUp, dismissFollowUp,
+  getVisitTrend, getPlacementFunnel,
+  getClients, getPlacements, getVisits, getOrders, clearFollowUp, dismissFollowUp,
 } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
-import { formatCurrency, formatShortDateMT, nDaysAgoMT } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT, nDaysAgoMT, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
 import type { Client, PlacementStatus } from '../lib/types'
 
@@ -109,10 +109,10 @@ export default function AnalyticsPage() {
       getClients().catch(e => { console.error('analytics/clients:', e); return [] }),
       getVisitTrend({ start, end }).catch(e => { console.error('analytics/visitTrend:', e); return [] }),
       getPlacementFunnel({ start, end }).catch(e => { console.error('analytics/funnel:', e); return { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 } }),
-      getCommissionTrend(start, end).catch(e => { console.error('analytics/commTrend:', e); return [] }),
+      getOrders({ since: start.toISOString() }).catch(e => { console.error('analytics/orders:', e); return [] }),
       getPlacements().catch(e => { console.error('analytics/placements:', e); return [] }),
       getVisits({ since: start.toISOString(), limit: 500 }).catch(e => { console.error('analytics/visits:', e); return [] }),
-    ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
+    ]).then(([cls, visitTrend, funnelData, ordersData, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)
 
@@ -171,13 +171,14 @@ export default function AnalyticsPage() {
         }
       }
       const rateMap = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
-      commTrend.forEach((o: any) => {
+      const billedOrders = ordersData.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
+      billedOrders.forEach((o: any) => {
         const effectiveDate = o.sent_at || o.created_at
         const t2 = new Date(effectiveDate).getTime()
         const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
         if (bucket) {
           const stored = Number(o.commission_amount) || 0
-          const commission = stored > 0 ? stored : (Number(o.total_amount) || 0) * (rateMap[o.client_slug] || 0)
+          const commission = stored > 0 ? stored : resolveTotal(o) * (rateMap[o.client_slug] || 0)
           bucket.commission += commission
           bucket.orders.push(o)
         }
