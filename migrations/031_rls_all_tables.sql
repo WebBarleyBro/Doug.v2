@@ -421,17 +421,25 @@ DROP POLICY IF EXISTS "portal_upload_campaign_assets"  ON campaign_assets;
 CREATE POLICY "assets_staff_all" ON campaign_assets
   FOR ALL USING (get_my_role() IN ('owner','admin','rep','intern'));
 
+-- campaign_assets has no client_slug column — scope through campaigns table
 CREATE POLICY "assets_portal_read" ON campaign_assets
   FOR SELECT USING (
     get_my_role() = 'portal'
-    AND client_slug = get_my_client_slug()
+    AND EXISTS (
+      SELECT 1 FROM campaigns c
+      WHERE c.id = campaign_assets.campaign_id
+        AND c.client_slug = get_my_client_slug()
+    )
   );
 
--- Portal clients can upload assets for their own campaigns
 CREATE POLICY "assets_portal_insert" ON campaign_assets
   FOR INSERT WITH CHECK (
     get_my_role() = 'portal'
-    AND client_slug = get_my_client_slug()
+    AND EXISTS (
+      SELECT 1 FROM campaigns c
+      WHERE c.id = campaign_assets.campaign_id
+        AND c.client_slug = get_my_client_slug()
+    )
   );
 
 
