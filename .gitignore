@@ -15,7 +15,8 @@ out/
 *.pem
 npm-debug.log*
 
-# Claude
-.claude/
+# Claude (session data stays local, rules are shared)
+.claude/projects/
+.claude/settings.local.json
 
 .vercel
