@@ -19,6 +19,8 @@ import AddAccountModal from '../components/AddAccountModal'
 import type { Product } from '../lib/types'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
+import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from '../lib/commission'
+import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client, Contact } from '../lib/types'
 
@@ -262,14 +264,7 @@ export default function OrdersPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useIsMobile()
 
   const [activeTab, setActiveTab] = useState<'direct' | 'inquiries' | 'followups'>('direct')
   const [showCreate, setShowCreate] = useState(false)
@@ -365,11 +360,12 @@ export default function OrdersPage() {
   const monthStart = startOfMonthMT()
   const directOrders = orders.filter(o => !o.order_type || o.order_type === 'direct' || o.po_number?.startsWith('PO-'))
   const inquiryOrders = orders.filter(o => o.order_type === 'distributor' || o.po_number?.startsWith('OI-'))
-  const monthDirectSent = directOrders.filter(o => o.status === 'sent' && o.created_at >= monthStart)
+  const monthDirectSent = directOrders.filter(o => o.status === 'sent' && getEffectiveOrderDate(o) >= monthStart)
   const monthRevenue = monthDirectSent.reduce((s, o) => s + resolveTotal(o), 0)
+  const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
   const monthCommission = orders
-    .filter(o => ['sent', 'fulfilled'].includes(o.status) && o.created_at >= monthStart)
-    .reduce((s, o) => s + Number(o.commission_amount || 0), 0)
+    .filter(o => isCommissionEligible(o.status) && getEffectiveOrderDate(o) >= monthStart)
+    .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0)
 
   function addLineItem() {
     setForm(f => ({ ...f, line_items: [...f.line_items, { product_name: '', quantity: 1, price: 0 }] }))
@@ -404,7 +400,6 @@ export default function OrdersPage() {
     return s + cases * casePrice + bottles * bottlePrice
   }, 0)
   const selectedClient = clients.find(c => c.slug === form.client_slug)
-  const orderCommission = orderTotal * (selectedClient?.commission_rate || 0)
 
   function resetForm() {
     setForm({

@@ -24,6 +24,7 @@ import { t, badge, card, btnPrimary, btnSecondary } from './lib/theme'
 import { formatCurrency, formatShortDateMT, relativeTimeStr, daysAgoMT, todayMT } from './lib/formatters'
 import { overdueColor } from './lib/theme'
 import type { UserProfile, Task } from './lib/types'
+import { useIsMobile } from './lib/use-is-mobile'
 
 // ─── Desktop Dashboard ────────────────────────────────────────────────────
 
@@ -514,8 +515,8 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
             borderRadius: '12px',
             overflow: 'hidden',
           }}>
-            {tasks.slice(0, 8).map((task, i) => (
-              <TaskRow key={task.id} task={task} last={i === Math.min(tasks.length, 8) - 1}
+            {tasks.map((task, i) => (
+              <TaskRow key={task.id} task={task} last={i === tasks.length - 1}
                 onComplete={() => completeTask(task.id).then(load)} />
             ))}
           </div>
@@ -955,14 +956,7 @@ function MobileListItem({ title, sub, dot, chevron }: { title: string; sub?: str
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const sb = getSupabase()

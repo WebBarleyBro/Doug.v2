@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { CheckSquare, Check, AlertCircle } from 'lucide-react'
 import LayoutShell from '../../layout-shell'
-import { getTasks } from '../../lib/data'
+import { claimTask as claimTaskHelper, completeTask as completeTaskHelper, getTasks, getUnclaimedTasks } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
 import { t, card } from '../../lib/theme'
 import { formatShortDateMT, nDaysAgoMT } from '../../lib/formatters'
@@ -28,7 +28,6 @@ export default function InternTasksPage() {
   const [error, setError] = useState('')
 
   async function load(uid: string) {
-    const sb = getSupabase()
     const sevenDaysAgo = nDaysAgoMT(7)
 
     // My assigned tasks (assigned_to = user id), incomplete
@@ -37,15 +36,10 @@ export default function InternTasksPage() {
     const myOpen = mine.filter((tk: Task) => tk.assigned_to === uid || tk.user_id === uid)
 
     // Unclaimed tasks (assigned_to IS NULL), incomplete
-    const { data: unclaimed } = await sb
-      .from('tasks')
-      .select('*')
-      .is('assigned_to', null)
-      .eq('completed', false)
-      .order('due_date', { ascending: true, nullsFirst: false })
-      .limit(30)
+    const unclaimed = await getUnclaimedTasks(30)
 
     // Completed tasks last 7 days
+    const sb = getSupabase()
     const { data: done } = await sb
       .from('tasks')
       .select('*')
@@ -71,15 +65,13 @@ export default function InternTasksPage() {
   }, [])
 
   async function completeTask(taskId: string) {
-    const sb = getSupabase()
-    await sb.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', taskId)
+    await completeTaskHelper(taskId)
     if (userId) load(userId)
   }
 
-  async function claimTask(taskId: string) {
+  async function claim(taskId: string) {
     if (!userId) return
-    const sb = getSupabase()
-    await sb.from('tasks').update({ assigned_to: userId }).eq('id', taskId)
+    await claimTaskHelper(taskId, userId)
     load(userId)
   }
 
@@ -167,7 +159,7 @@ export default function InternTasksPage() {
                       </div>
                     )}
                     <button
-                      onClick={() => claimTask(task.id)}
+                      onClick={() => claim(task.id)}
                       style={{ padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: `1px solid ${t.border.hover}`, background: 'none', color: t.text.secondary, cursor: 'pointer', flexShrink: 0 }}
                     >
                       Claim

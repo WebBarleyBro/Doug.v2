@@ -2,6 +2,7 @@
 import { getSupabase } from './supabase'
 import { cached, invalidate, invalidatePrefix } from './cache'
 import { startOfMonthMT, endOfMonthMT, nDaysAgoMT, todayMT, daysAgoMT } from './formatters'
+import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from './commission'
 import type {
   Account, Client, Visit, Placement, PurchaseOrder, POLineItem,
   Contact, Task, Event, Campaign, CampaignMilestone, Product,
@@ -57,34 +58,28 @@ export function getAccounts(filters?: {
   clientSlug?: string
   limit?: number
 }): Promise<Account[]> {
-  // Cache the full unfiltered list; apply in-memory filters on top
-  return cached('accounts:all', 3 * 60_000, async () => {
+  const cacheKey = `accounts:${JSON.stringify(filters || {})}`
+  return cached(cacheKey, 90_000, async () => {
     const sb = getSupabase()
-    const { data, error } = await sb
+    let q = sb
       .from('accounts')
       .select('*, account_clients(client_slug)')
       .order('name')
-      .limit(1000)
-    if (error) throw error
-    return data || []
-  }).then(all => {
-    let accounts = all
+      .limit(filters?.limit ?? 300)
     if (filters?.search) {
-      const q = filters.search.toLowerCase()
-      accounts = accounts.filter((a: any) =>
-        a.name?.toLowerCase().includes(q) || a.address?.toLowerCase().includes(q)
-      )
+      const safe = filters.search.replace(/,/g, '')
+      q = q.or(`name.ilike.%${safe}%,address.ilike.%${safe}%`)
     }
     if (filters?.type && filters.type !== 'all') {
-      accounts = accounts.filter((a: any) => a.account_type === filters.type)
+      q = q.eq('account_type', filters.type)
     }
-    if (filters?.clientSlug) {
-      accounts = accounts.filter((a: any) =>
-        a.account_clients?.some((ac: any) => ac.client_slug === filters.clientSlug)
-      )
-    }
-    if (filters?.limit) accounts = accounts.slice(0, filters.limit)
-    return accounts
+    const { data, error } = await q
+    if (error) throw error
+    const rows = data || []
+    if (!filters?.clientSlug) return rows
+    return rows.filter((a: any) =>
+      a.account_clients?.some((ac: any) => ac.client_slug === filters.clientSlug),
+    )
   })
 }
 
@@ -337,6 +332,29 @@ export async function deleteVisit(id: string, clientSlug?: string) {
   if (clientSlug) invalidate(`visits:${clientSlug}`)
 }
 
+export async function updateVisitGroup(visitIds: string[], updates: Partial<Visit> & { client_slug?: string }) {
+  const sb = getSupabase()
+  if (!visitIds.length) return
+  const { error } = await sb.from('visits').update(updates).in('id', visitIds)
+  if (error) throw error
+  invalidate('followup-visits')
+  invalidatePrefix('dashboard-stats')
+  if (updates.client_slug) invalidate(`visits:${updates.client_slug}`)
+}
+
+export async function deleteVisitGroup(visitIds: string[], clientSlugs?: string[]) {
+  const sb = getSupabase()
+  if (!visitIds.length) return
+  const { error } = await sb.from('visits').delete().in('id', visitIds)
+  if (error) throw error
+  invalidate('followup-visits')
+  invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
+  for (const slug of clientSlugs || []) {
+    if (slug) invalidate(`visits:${slug}`)
+  }
+}
+
 export function getFollowUpVisits(): Promise<Visit[]> {
   return cached('followup-visits', 60_000, async () => {
     const sb = getSupabase()
@@ -500,13 +518,10 @@ export async function getOrders(filters?: {
     .order('created_at', { ascending: false })
 
   if (filters?.clientSlug) q = q.eq('client_slug', filters.clientSlug)
-  if (filters?.accountId && filters?.accountName) {
-    // Match orders linked by ID OR by name (for older orders created without account_id)
-    q = q.or(`account_id.eq.${filters.accountId},deliver_to_name.ilike.${filters.accountName}`)
-  } else if (filters?.accountId) {
+  if (filters?.accountId) {
     q = q.eq('account_id', filters.accountId)
   } else if (filters?.accountName) {
-    q = q.ilike('deliver_to_name', filters.accountName)
+    q = q.ilike('deliver_to_name', `%${filters.accountName}%`)
   }
   if (filters?.status) q = q.eq('status', filters.status)
   if (filters?.since) q = q.gte('created_at', filters.since)
@@ -514,9 +529,7 @@ export async function getOrders(filters?: {
 
   const { data, error } = await q
   if (error) throw error
-  // Deduplicate in case both conditions match the same row
-  const seen = new Set<string>()
-  return (data || []).filter((o: any) => seen.has(o.id) ? false : (seen.add(o.id), true))
+  return data || []
 }
 
 export async function createOrder(order: {
@@ -761,6 +774,26 @@ export async function deleteTask(id: string) {
   invalidate('tasks:all')
 }
 
+export async function claimTask(id: string, userId: string) {
+  const sb = getSupabase()
+  const { error } = await sb.from('tasks').update({ assigned_to: userId }).eq('id', id)
+  if (error) throw error
+  invalidate('tasks:all')
+}
+
+export async function getUnclaimedTasks(limit = 30): Promise<Task[]> {
+  const sb = getSupabase()
+  const { data, error } = await sb
+    .from('tasks')
+    .select('*, accounts(id, name)')
+    .is('assigned_to', null)
+    .eq('completed', false)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .limit(limit)
+  if (error) throw error
+  return data || []
+}
+
 // ─── Events ───────────────────────────────────────────────────────────────
 
 export async function getEvents(filters?: {
@@ -993,22 +1026,11 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
 
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
-    function resolveComm(o: any): number {
-      const stored = Number(o.commission_amount) || 0
-      if (stored > 0) return stored
-      const lineTotal = (o.po_line_items || []).reduce((s: number, li: any) => {
-        const t = Number(li.total || 0) || Number(li.unit_price || li.price || 0) * ((Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0)) || 1)
-        return s + t
-      }, 0)
-      const base = Number(o.total_amount) || lineTotal
-      return base * (rateMap[o.client_slug] || 0)
-    }
-
     const mtNow = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
     const thisMonth = mtNow.slice(0, 7) // "2026-04"
     const commissionThisMonth = billedOrders
-      .filter(o => (o.created_at || '').slice(0, 7) === thisMonth)
-      .reduce((s, o) => s + resolveComm(o), 0)
+      .filter(o => getEffectiveOrderDate(o).slice(0, 7) === thisMonth)
+      .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0)
 
     return {
       teamVisits: teamVisits.count || 0,
@@ -1017,8 +1039,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       openTasks: openTasks.count || 0,
       commissionThisMonth,
       commissionYTD: billedOrders
-        .filter(o => (o.created_at || '').startsWith(thisMonth.slice(0, 4)))
-        .reduce((s, o) => s + resolveComm(o), 0),
+        .filter(o => getEffectiveOrderDate(o).startsWith(thisMonth.slice(0, 4)))
+        .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0),
     }
   })
 }
@@ -1143,13 +1165,13 @@ export async function getCommissionTrend(sinceDate?: Date, untilDate?: Date) {
   const since = sinceDate ?? (() => { const d = new Date(); d.setMonth(d.getMonth() - 12); return d })()
   let q = sb
     .from('purchase_orders')
-    .select('created_at, commission_amount, total_amount, client_slug, po_number, deliver_to_name')
+    .select('created_at, sent_at, status, commission_amount, total_amount, po_line_items(*), client_slug, po_number, deliver_to_name')
     .in('status', ['sent', 'fulfilled'])
     .gte('created_at', since.toISOString())
   if (untilDate) q = q.lte('created_at', untilDate.toISOString())
   const { data, error } = await q.order('created_at')
   if (error) throw error
-  return data || []
+  return (data || []).filter((o: any) => isCommissionEligible(o.status))
 }
 
 export async function getRepActivity(since: string) {

@@ -13,6 +13,7 @@ import { signOut } from './lib/auth'
 import { getSupabase } from './lib/supabase'
 import VisitLogModal from './components/VisitLogModal'
 import type { UserProfile } from './lib/types'
+import { useIsMobile } from './lib/use-is-mobile'
 
 // ─── App Context ─────────────────────────────────────────────────────────
 
@@ -526,7 +527,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
+  const isMobile = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showVisitLog, setShowVisitLog] = useState(false)
   const [collapsed, setCollapsedState] = useState(false)
@@ -548,13 +549,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       const saved = localStorage.getItem('sidebar-collapsed')
       if (saved === 'true') setCollapsedState(true)
     } catch {}
-  }, [])
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
   }, [])
 
   useEffect(() => {

@@ -16,6 +16,8 @@ import {
 import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
 import { formatCurrency, formatShortDateMT, nDaysAgoMT } from '../lib/formatters'
+import { getCommissionAmount, getEffectiveOrderDate } from '../lib/commission'
+import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl, PLACEMENT_STATUS_LABELS } from '../lib/constants'
 import type { Client, PlacementStatus } from '../lib/types'
 
@@ -77,14 +79,7 @@ export default function AnalyticsPage() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [showAllByStatus, setShowAllByStatus] = useState<Record<string, boolean>>({})
   const [visitCounts, setVisitCounts] = useState<{ total: number; unique: number } | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const sb = getSupabase()
@@ -170,10 +165,11 @@ export default function AnalyticsPage() {
           commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
         }
       }
+      const rateMap = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
       commTrend.forEach((o: any) => {
-        const t2 = new Date(o.created_at).getTime()
+        const t2 = new Date(getEffectiveOrderDate(o)).getTime()
         const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
-        if (bucket) { bucket.commission += Number(o.commission_amount || 0); bucket.orders.push(o) }
+        if (bucket) { bucket.commission += getCommissionAmount(o, rateMap); bucket.orders.push(o) }
       })
       setCommissionData(commBuckets.map(b => ({ month: b.label, commission: b.commission })))
 

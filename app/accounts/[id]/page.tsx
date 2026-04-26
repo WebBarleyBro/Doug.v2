@@ -12,7 +12,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
 import {
   getAccount, getVisits, getPlacements, getOrders, getContacts,
-  deleteVisit, updateVisit, createContact, updateContact, deleteContact,
+  deleteVisitGroup, updateVisitGroup, createContact, updateContact, deleteContact,
   createPlacement, getProducts, getClients, updateAccount, updateAccountClients,
   deleteAccount,
 } from '../../lib/data'
@@ -24,6 +24,7 @@ import { formatShortDateMT, daysAgoMT, formatCurrency, resolveTotal } from '../.
 import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client } from '../../lib/types'
+import { useIsMobile } from '../../lib/use-is-mobile'
 
 declare global { interface Window { google: any } }
 
@@ -70,7 +71,7 @@ export default function AccountDetailPage() {
   const [loading, setLoading] = useState(true)
   const loadedTabsRef = useRef<Set<string>>(new Set())
   const accountNameRef = useRef<string>('')
-  const [isMobile, setIsMobile] = useState(false)
+  const isMobile = useIsMobile()
   const [activityLimit, setActivityLimit] = useState(20)
 
   // Edit account modal
@@ -106,13 +107,6 @@ export default function AccountDetailPage() {
   const [placementForm, setPlacementForm] = useState({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
   const [savingPlacement, setSavingPlacement] = useState(false)
   const [placementProducts, setPlacementProducts] = useState<any[]>([])
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
@@ -478,8 +472,8 @@ export default function AccountDetailPage() {
                   const primary = rows[0]
                   return (
                     <VisitCard key={primary.id} visit={primary} allRows={rows} clients={clients}
-                      onDelete={() => Promise.all(rows.map(r => deleteVisit(r.id, r.client_slug))).then(reloadAll)}
-                      onSave={(updates) => Promise.all(rows.map(r => updateVisit(r.id, updates as any))).then(reloadAll)}
+                      onDelete={() => deleteVisitGroup(rows.map(r => r.id), rows.map(r => r.client_slug)).then(reloadAll)}
+                      onSave={(updates) => updateVisitGroup(rows.map(r => r.id), updates as any).then(reloadAll)}
                       isMobile={isMobile}
                     />
                   )

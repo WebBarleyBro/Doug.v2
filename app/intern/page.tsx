@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { CheckSquare, ExternalLink, BookOpen, FolderOpen, Check } from 'lucide-react'
+import { CheckSquare, ExternalLink, BookOpen, Check } from 'lucide-react'
 import LayoutShell from '../layout-shell'
-import { getTasks } from '../lib/data'
+import { completeTask, getTasks } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
+import { useIsMobile } from '../lib/use-is-mobile'
 
 const RESOURCES = [
   { label: 'Brand Resources', href: '/intern/resources', icon: '📦' },
@@ -16,15 +17,7 @@ export default function InternPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [doneThisWeek, setDoneThisWeek] = useState<number | null>(null)
   const [profile, setProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const sb = getSupabase()
@@ -42,13 +35,11 @@ export default function InternPage() {
         weekAgo.setDate(weekAgo.getDate() - 7)
         setDoneThisWeek(completedTasks.filter((t: any) => t.completed_at && new Date(t.completed_at) >= weekAgo).length)
       } catch { /* RLS may block — show empty state */ }
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    }).catch(() => {})
   }, [])
 
   async function complete(id: string) {
-    const sb = getSupabase()
-    await sb.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', id)
+    await completeTask(id)
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 

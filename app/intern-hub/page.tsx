@@ -1,11 +1,12 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Users, ClipboardList, Plus, X, Check } from 'lucide-react'
+import { ClipboardList, Plus, X, Check } from 'lucide-react'
 import LayoutShell from '../layout-shell'
-import { getTasks, createTask } from '../lib/data'
+import { getTasks, createTask, completeTask as completeTaskHelper } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT } from '../lib/formatters'
+import { useIsMobile } from '../lib/use-is-mobile'
 
 export default function InternHubPage() {
   const [interns, setInterns] = useState<any[]>([])
@@ -13,14 +14,7 @@ export default function InternHubPage() {
   const [loading, setLoading] = useState(true)
   const [showAssign, setShowAssign] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', assigned_to: '', due_date: '', priority: 'medium' })
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const sb = getSupabase()
@@ -41,7 +35,7 @@ export default function InternHubPage() {
       description: form.description || undefined,
       assigned_to: form.assigned_to,
       due_date: form.due_date || undefined,
-      priority: form.priority as any,
+      priority: form.priority as 'low' | 'medium' | 'high' | 'urgent',
     })
     const sb = getSupabase()
     const allTasks = await getTasks()
@@ -52,8 +46,7 @@ export default function InternHubPage() {
   }
 
   async function completeTask(id: string) {
-    const sb = getSupabase()
-    await sb.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', id)
+    await completeTaskHelper(id)
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
