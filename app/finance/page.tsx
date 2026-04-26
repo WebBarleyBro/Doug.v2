@@ -46,12 +46,10 @@ export default function FinancePage() {
 
   useEffect(() => {
     const twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
-    const safe = <T>(name: string, p: Promise<T>, fb: T): Promise<T> =>
-      p.catch(e => { console.error(`finance/${name}:`, e); return fb })
     Promise.all([
-      safe('clients', getClients(), []),
-      safe('orders', getOrders(), []),
-      safe('trend', getCommissionTrend(twelveMonthsAgo), []),
+      getClients().catch(e => { console.error('finance/clients:', e); return [] }),
+      getOrders().catch(e => { console.error('finance/orders:', e); return [] }),
+      getCommissionTrend(twelveMonthsAgo).catch(e => { console.error('finance/trend:', e); return [] }),
     ]).then(([cls, ords, trend]) => {
         setClients(cls)
         setOrders(ords.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled'))
