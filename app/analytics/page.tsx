@@ -105,13 +105,15 @@ export default function AnalyticsPage() {
     const end = new Date()
     const start = new Date(nDaysAgoMT(rangeDays))
 
+    const safe = <T>(name: string, p: Promise<T>, fallback: T): Promise<T> =>
+      p.catch(e => { console.error(`analytics/${name}:`, e); return fallback })
     Promise.all([
-      getClients(),
-      getVisitTrend({ start, end }),
-      getPlacementFunnel({ start, end }),
-      getCommissionTrend(start, end),
-      getPlacements(),
-      getVisits({ since: start.toISOString(), limit: 500 }),
+      safe('clients', getClients(), []),
+      safe('visitTrend', getVisitTrend({ start, end }), []),
+      safe('funnel', getPlacementFunnel({ start, end }), { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 }),
+      safe('commTrend', getCommissionTrend(start, end), []),
+      safe('placements', getPlacements(), []),
+      safe('visits', getVisits({ since: start.toISOString(), limit: 500 }), []),
     ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)
