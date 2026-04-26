@@ -105,15 +105,13 @@ export default function AnalyticsPage() {
     const end = new Date()
     const start = new Date(nDaysAgoMT(rangeDays))
 
-    const safe = <T>(name: string, p: Promise<T>, fallback: T): Promise<T> =>
-      p.catch(e => { console.error(`analytics/${name}:`, e); return fallback })
     Promise.all([
-      safe('clients', getClients(), []),
-      safe('visitTrend', getVisitTrend({ start, end }), []),
-      safe('funnel', getPlacementFunnel({ start, end }), { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 }),
-      safe('commTrend', getCommissionTrend(start, end), []),
-      safe('placements', getPlacements(), []),
-      safe('visits', getVisits({ since: start.toISOString(), limit: 500 }), []),
+      getClients().catch(e => { console.error('analytics/clients:', e); return [] }),
+      getVisitTrend({ start, end }).catch(e => { console.error('analytics/visitTrend:', e); return [] }),
+      getPlacementFunnel({ start, end }).catch(e => { console.error('analytics/funnel:', e); return { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 } }),
+      getCommissionTrend(start, end).catch(e => { console.error('analytics/commTrend:', e); return [] }),
+      getPlacements().catch(e => { console.error('analytics/placements:', e); return [] }),
+      getVisits({ since: start.toISOString(), limit: 500 }).catch(e => { console.error('analytics/visits:', e); return [] }),
     ]).then(([cls, visitTrend, funnelData, commTrend, placements, recentVisits]) => {
       setClients(cls)
       setFunnel(funnelData)
