@@ -9,7 +9,7 @@ import Link from 'next/link'
 import LayoutShell from '../layout-shell'
 import StatCard from '../components/StatCard'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
-import { getOrders, getClients, getCommissionTrend } from '../lib/data'
+import { getOrders, getClients } from '../lib/data'
 import { t, card, badge } from '../lib/theme'
 import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
@@ -49,10 +49,17 @@ export default function FinancePage() {
     Promise.all([
       getClients().catch(e => { console.error('finance/clients:', e); return [] }),
       getOrders().catch(e => { console.error('finance/orders:', e); return [] }),
-      getCommissionTrend(twelveMonthsAgo).catch(e => { console.error('finance/trend:', e); return [] }),
-    ]).then(([cls, ords, trend]) => {
+    ]).then(([cls, ords]) => {
         setClients(cls)
-        setOrders(ords.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled'))
+        const billed = ords.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
+        setOrders(billed)
+
+        const rateMapTrend = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
+        function resolveComm(o: any): number {
+          const stored = Number(o.commission_amount) || 0
+          if (stored > 0) return stored
+          return resolveTotal(o) * (rateMapTrend[o.client_slug] || 0)
+        }
 
         const months: Record<string, { month: string; commission: number; revenue: number }> = {}
         for (let i = 11; i >= 0; i--) {
@@ -61,14 +68,11 @@ export default function FinancePage() {
           const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
           months[key] = { month: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, revenue: 0 }
         }
-        const rateMapTrend = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
-        trend.forEach((o: any) => {
+        billed.forEach((o: any) => {
           const key = (o.sent_at || o.created_at).slice(0, 7)
           if (months[key]) {
-            const stored = Number(o.commission_amount) || 0
-            const rev = Number(o.total_amount) || resolveTotal(o)
-            months[key].commission += stored > 0 ? stored : rev * (rateMapTrend[o.client_slug] || 0)
-            months[key].revenue += rev
+            months[key].commission += resolveComm(o)
+            months[key].revenue += resolveTotal(o)
           }
         })
         setTrendData(Object.values(months))
