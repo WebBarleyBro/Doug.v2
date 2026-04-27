@@ -63,6 +63,8 @@ const VISIT_STATUS_COLORS: Record<string, string> = {
 export default function AnalyticsPage() {
   const [rangeDays, setRangeDays] = useState(30)
   const [clients, setClients] = useState<Client[]>([])
+  // null = not yet loaded (sentinel to gate the range effect)
+  const [allOrders, setAllOrders] = useState<any[] | null>(null)
   const [visitData, setVisitData] = useState<any[]>([])
   const [commissionData, setCommissionData] = useState<any[]>([])
   const [funnel, setFunnel] = useState<any>(null)
@@ -96,7 +98,31 @@ export default function AnalyticsPage() {
     })
   }, [])
 
+  // Load static data once — clients, all orders (for commission), placements (for status panel)
   useEffect(() => {
+    Promise.all([
+      getClients().catch(e => { console.error('analytics/clients:', e); return [] }),
+      getOrders().catch(e => { console.error('analytics/orders:', e); return [] }),
+      getPlacements().catch(e => { console.error('analytics/placements:', e); return [] }),
+    ]).then(([cls, ords, pls]) => {
+      setClients(cls)
+      setAllOrders(ords)
+      // Placements panel — shows current state, not date-ranged
+      const statusMap: Record<string, number> = {}
+      const brandMap: Record<string, number> = {}
+      pls.forEach((p: any) => {
+        statusMap[p.status] = (statusMap[p.status] || 0) + 1
+        if (p.client_slug) brandMap[p.client_slug] = (brandMap[p.client_slug] || 0) + 1
+      })
+      const STATUS_ORDER: PlacementStatus[] = ['committed', 'ordered', 'on_shelf', 'reordering']
+      setPlacementsByStatus(STATUS_ORDER.filter(s => statusMap[s]).map(s => ({ name: s, value: statusMap[s] })))
+      setPlacementsByBrand(brandMap)
+    })
+  }, [])
+
+  // Re-run whenever range changes OR after static data is first loaded
+  useEffect(() => {
+    if (allOrders === null) return  // wait for orders to load first
     setDismissedIds(new Set())
     setShowAllByStatus({})
     setVisitCounts(null)
@@ -106,14 +132,10 @@ export default function AnalyticsPage() {
     const start = new Date(nDaysAgoMT(rangeDays))
 
     Promise.all([
-      getClients().catch(e => { console.error('analytics/clients:', e); return [] }),
       getVisitTrend({ start, end }).catch(e => { console.error('analytics/visitTrend:', e); return [] }),
       getPlacementFunnel({ start, end }).catch(e => { console.error('analytics/funnel:', e); return { totalVisits: 0, placementsCreated: 0, activeOnShelf: 0, uniqueAccounts: 0 } }),
-      getOrders().catch(e => { console.error('analytics/orders:', e); return [] }),
-      getPlacements().catch(e => { console.error('analytics/placements:', e); return [] }),
       getVisits({ since: start.toISOString(), limit: 500 }).catch(e => { console.error('analytics/visits:', e); return [] }),
-    ]).then(([cls, visitTrend, funnelData, ordersData, placements, recentVisits]) => {
-      setClients(cls)
+    ]).then(([visitTrend, funnelData, recentVisits]) => {
       setFunnel(funnelData)
 
       // Deduplicate visitTrend by (account_id, user_id, date) — one physical visit per account per day
@@ -144,20 +166,21 @@ export default function AnalyticsPage() {
         unique: new Set(dedupedVisits.map((v: any) => v.account_id).filter(Boolean)).size,
       })
 
-      // Commission — daily for ≤14D, weekly for ≤90D, monthly for 1Y
-      const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number; orders: any[] }[] = []
+      // Commission — rebucket from already-loaded allOrders (no extra DB call on range change)
+      // daily for ≤14D, weekly for ≤90D, monthly for 1Y
+      const commBuckets: { label: string; commission: number; keyStart: number; keyEnd: number }[] = []
       const useDaily = rangeDays <= 14
       const useWeekly = rangeDays <= 90 && !useDaily
       if (useDaily) {
         for (let i = 0; i < rangeDays; i++) {
           const d = new Date(start.getTime() + i * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000, orders: [] })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 86400_000 })
         }
       } else if (useWeekly) {
         const weeks = Math.ceil(rangeDays / 7)
         for (let i = 0; i < weeks; i++) {
           const d = new Date(start.getTime() + i * 7 * 86400_000)
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000, orders: [] })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), commission: 0, keyStart: d.getTime(), keyEnd: d.getTime() + 7 * 86400_000 })
         }
       } else {
         const months = Math.ceil(rangeDays / 30)
@@ -165,36 +188,20 @@ export default function AnalyticsPage() {
           const d = new Date()
           d.setDate(1)
           d.setMonth(d.getMonth() - i)
-          const monthStart = d.getTime()
-          const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
-          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: monthStart, keyEnd: monthEnd, orders: [] })
+          commBuckets.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), commission: 0, keyStart: d.getTime(), keyEnd: new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime() })
         }
       }
-      const rateMap = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))
-      const billedOrders = ordersData.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
+      const rateMap = Object.fromEntries(clients.map((c: any) => [c.slug, c.commission_rate || 0]))
+      const billedOrders = allOrders.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
       billedOrders.forEach((o: any) => {
-        const effectiveDate = o.sent_at || o.created_at
-        const t2 = new Date(effectiveDate).getTime()
+        const t2 = new Date(o.sent_at || o.created_at).getTime()
         const bucket = commBuckets.find(b => t2 >= b.keyStart && t2 < b.keyEnd)
         if (bucket) {
           const stored = Number(o.commission_amount) || 0
-          const commission = stored > 0 ? stored : resolveTotal(o) * (rateMap[o.client_slug] || 0)
-          bucket.commission += commission
-          bucket.orders.push(o)
+          bucket.commission += stored > 0 ? stored : resolveTotal(o) * (rateMap[o.client_slug] || 0)
         }
       })
       setCommissionData(commBuckets.map(b => ({ month: b.label, commission: b.commission })))
-
-      // Placements by status (all active, not date-ranged — current state)
-      const statusMap2: Record<string, number> = {}
-      const brandMap: Record<string, number> = {}
-      placements.forEach((p: any) => {
-        statusMap2[p.status] = (statusMap2[p.status] || 0) + 1
-        if (p.client_slug) brandMap[p.client_slug] = (brandMap[p.client_slug] || 0) + 1
-      })
-      const STATUS_ORDER: PlacementStatus[] = ['committed', 'ordered', 'on_shelf', 'reordering']
-      setPlacementsByStatus(STATUS_ORDER.filter(s => statusMap2[s]).map(s => ({ name: s, value: statusMap2[s] })))
-      setPlacementsByBrand(brandMap)
 
       // Visits by status — grouped for drill-down, deduplicated by account
       const statusCount: Record<string, number> = {}
@@ -202,7 +209,6 @@ export default function AnalyticsPage() {
       recentVisits.forEach((v: any) => {
         if (!v.status) return
         if (!grouped[v.status]) grouped[v.status] = []
-        // One entry per account per status — keep most-recent visit row
         const existing = grouped[v.status].findIndex((x: any) => x.account_id === v.account_id)
         if (existing === -1) {
           grouped[v.status].push(v)
@@ -211,14 +217,13 @@ export default function AnalyticsPage() {
           grouped[v.status][existing] = v
         }
       })
-      // Sort each group by most recent first
       Object.values(grouped).forEach(arr => arr.sort((a, b) => new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime()))
       setVisitsByStatus(Object.entries(statusCount).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count))
       setVisitsByStatusGrouped(grouped)
 
       setLoading(false)
     }).catch((e) => { console.error('analytics load error:', e); setLoading(false) })
-  }, [rangeDays])
+  }, [rangeDays, allOrders, clients])
 
   const statusColors: Record<string, string> = {
     committed: t.status.warning,

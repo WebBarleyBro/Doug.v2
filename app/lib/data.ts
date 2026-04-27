@@ -605,14 +605,14 @@ export async function updateOrder(id: string, updates: Partial<PurchaseOrder> & 
   // Strip joined/virtual fields that don't exist as DB columns
   const { po_line_items, accounts, ...rest } = updates as any
   const dbUpdates: any = { ...rest }
-  // Auto-stamp sent_at when marking as sent (only if not already set)
+  // Stamp sent_at on first transition to 'sent' — skip the pre-check SELECT, just set it
   if (dbUpdates.status === 'sent' && !dbUpdates.sent_at) {
-    const { data: existing } = await sb.from('purchase_orders').select('sent_at').eq('id', id).single()
-    if (!existing?.sent_at) dbUpdates.sent_at = new Date().toISOString()
+    dbUpdates.sent_at = new Date().toISOString()
   }
   const { error } = await sb.from('purchase_orders').update(dbUpdates).eq('id', id)
   if (error) throw error
   invalidatePrefix('dashboard-stats')
+  invalidate('pending-distributor-inquiries')
   if (updates.client_slug) invalidate(`orders:${updates.client_slug}`)
 }
 
@@ -621,6 +621,7 @@ export async function deleteOrder(id: string, clientSlug?: string) {
   await sb.from('po_line_items').delete().eq('po_id', id)
   await sb.from('purchase_orders').delete().eq('id', id)
   invalidatePrefix('dashboard-stats')
+  invalidate('pending-distributor-inquiries')
   if (clientSlug) invalidate(`orders:${clientSlug}`)
 }
 
@@ -1006,29 +1007,29 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       }).length
     }
 
-    const [teamVisitRows, myVisitRows, activePlacements, openTasks] = await Promise.all([
+    // Single visit query; for non-owners team = self so one query suffices
+    const [visitRows, activePlacements, openTasks, billedOrders, clients] = await Promise.all([
       isOwner
         ? sb.from('visits').select('visited_at, user_id, account_id')
             .gte('visited_at', monthStart).lte('visited_at', monthEnd)
         : sb.from('visits').select('visited_at, user_id, account_id')
             .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
-      sb.from('visits').select('visited_at, user_id, account_id')
-        .eq('user_id', userId).gte('visited_at', monthStart).lte('visited_at', monthEnd),
       sb.from('placements').select('id', { count: 'exact', head: true }).is('lost_at', null),
       sb.from('tasks').select('id', { count: 'exact', head: true })
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
-    ])
-    const teamVisits = { count: countDistinctVisits(teamVisitRows.data || []) }
-    const myVisits = { count: countDistinctVisits(myVisitRows.data || []) }
-
-    // Only count sent/fulfilled orders for commission — drafts and cancelled don't earn commission
-    const [sentOrders, fulfilledOrders, clients] = await Promise.all([
-      getOrders({ status: 'sent' }),
-      getOrders({ status: 'fulfilled' }),
+      // Lightweight order query — no po_line_items join needed; commission_amount/total_amount are sufficient
+      sb.from('purchase_orders')
+        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status')
+        .in('status', ['sent', 'fulfilled'])
+        .then(({ data }) => data || []),
       getClients(),
     ])
-    const billedOrders = [...sentOrders, ...fulfilledOrders]
+    const allVisits = visitRows.data || []
+    const teamVisits = { count: countDistinctVisits(allVisits) }
+    const myVisits = isOwner
+      ? { count: countDistinctVisits(allVisits.filter((v: any) => v.user_id === userId)) }
+      : teamVisits
 
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
@@ -1154,18 +1155,20 @@ export function getTodaySchedule(userId: string) {
 
 // ─── Distributor Inquiries ────────────────────────────────────────────────
 
-export async function getPendingDistributorInquiries() {
-  const sb = getSupabase()
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const { data, error } = await sb
-    .from('purchase_orders')
-    .select('*, po_line_items(*)')
-    .eq('order_type', 'distributor')
-    .in('status', ['draft', 'sent'])
-    .or(`distributor_status.eq.not_contacted,and(distributor_status.eq.contacted,distributor_contacted_at.lte.${sevenDaysAgo})`)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data || []
+export function getPendingDistributorInquiries() {
+  return cached('pending-distributor-inquiries', 60_000, async () => {
+    const sb = getSupabase()
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data, error } = await sb
+      .from('purchase_orders')
+      .select('id, deliver_to_name, client_slug, status, order_type, created_at, distributor_status, distributor_contacted_at')
+      .eq('order_type', 'distributor')
+      .in('status', ['draft', 'sent'])
+      .or(`distributor_status.eq.not_contacted,and(distributor_status.eq.contacted,distributor_contacted_at.lte.${sevenDaysAgo})`)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data || []
+  })
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────
