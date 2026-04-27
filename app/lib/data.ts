@@ -1018,9 +1018,9 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       sb.from('tasks').select('id', { count: 'exact', head: true })
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
-      // Lightweight order query — no po_line_items join needed; commission_amount/total_amount are sufficient
+      // Include po_line_items so resolveTotal works for orders where total_amount is null
       sb.from('purchase_orders')
-        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status')
+        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status, po_line_items(quantity, price)')
         .in('status', ['sent', 'fulfilled'])
         .then(({ data }) => data || []),
       getClients(),
@@ -1347,7 +1347,7 @@ export async function getPortalData(clientSlug: string) {
       .is('lost_at', null)
       .order('created_at', { ascending: false }),
     sb.from('purchase_orders')
-      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, distributor_email, distributor_rep_name, deliver_to_address')
+      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, distributor_email, distributor_rep_name, deliver_to_address, distributor_status, distributor_contacted_at')
       .eq('client_slug', clientSlug)
       .gte('created_at', ninetyDaysAgo)
       .order('created_at', { ascending: false }),

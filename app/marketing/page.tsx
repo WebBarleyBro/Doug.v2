@@ -4,9 +4,9 @@ import {
   Plus, X, ChevronRight, Megaphone, Users, Check,
   Mail, Edit2, Paperclip, Copy, CheckCheck, Trash2,
   Instagram, Facebook, AtSign, Printer, Globe, Video,
-  Image, FileText, Calendar, Layers,
+  Image, FileText, Calendar, Layers, DollarSign,
 } from 'lucide-react'
-import LayoutShell, { useApp } from '../layout-shell'
+import LayoutShell, { useApp, useToast } from '../layout-shell'
 import EmptyState from '../components/EmptyState'
 import { CardSkeleton } from '../components/LoadingSkeleton'
 import {
@@ -14,6 +14,7 @@ import {
   toggleMilestone, createMilestone,
   getEmailList, getClients,
   createDeliverable, updateDeliverable, deleteDeliverable,
+  getCampaignExpenses, createCampaignExpense, deleteCampaignExpense,
 } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
 import { formatShortDateMT, formatCurrency, saveDateMT } from '../lib/formatters'
@@ -74,8 +75,11 @@ const BLANK_FORM = {
 
 const BLANK_DELIVERABLE = { title: '', deliverable_type: 'post' as DeliverableType, channel: 'instagram' as DeliverableChannel, due_date: '', notes: '' }
 
+const BLANK_EXPENSE = { description: '', category: 'other', amount: '', vendor: '', expense_date: '', notes: '' }
+
 export default function MarketingPage() {
   const { profile } = useApp()
+  const toast = useToast()
   const isIntern = profile?.role === 'intern'
 
   const [isMobile, setIsMobile] = useState(false)
@@ -87,11 +91,16 @@ export default function MarketingPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editingCampaign, setEditingCampaign] = useState<any | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
   const [newMilestone, setNewMilestone] = useState<Record<string, string>>({})
   const [newMilestoneDue, setNewMilestoneDue] = useState<Record<string, string>>({})
   const [addingMilestone, setAddingMilestone] = useState<string | null>(null)
   const [addingDeliverable, setAddingDeliverable] = useState<string | null>(null)
   const [newDeliverable, setNewDeliverable] = useState<Record<string, typeof BLANK_DELIVERABLE>>({})
+  const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
+  const [showAddExpense, setShowAddExpense] = useState<string | null>(null)
+  const [addExpenseForm, setAddExpenseForm] = useState({ ...BLANK_EXPENSE })
+  const [expenseSaving, setExpenseSaving] = useState(false)
   const [emailFilter, setEmailFilter] = useState('all')
   const [copiedEmail, setCopiedEmail] = useState(false)
   const [form, setForm] = useState({ ...BLANK_FORM })
@@ -141,24 +150,44 @@ export default function MarketingPage() {
 
   async function handleSaveEdit() {
     if (!editingCampaign) return
-    await updateCampaign(editingCampaign.id, {
-      name: editingCampaign.name,
-      status: editingCampaign.status,
-      budget: editingCampaign.budget,
-      start_date: editingCampaign.start_date ? saveDateMT(editingCampaign.start_date) : undefined,
-      end_date: editingCampaign.end_date ? saveDateMT(editingCampaign.end_date) : undefined,
-      description: editingCampaign.description || undefined,
-      target_audience: editingCampaign.target_audience || undefined,
-      key_messages: editingCampaign.key_messages || undefined,
-      channels: editingCampaign.channels?.length > 0 ? editingCampaign.channels : undefined,
-      notes: editingCampaign.notes || undefined,
-    })
-    setEditingCampaign(null)
-    await reload()
+    setEditSaving(true)
+    try {
+      const displayName = editingCampaign.name || editingCampaign.title || ''
+      await updateCampaign(editingCampaign.id, {
+        name: displayName || undefined,
+        title: displayName || undefined,
+        status: editingCampaign.status,
+        budget: editingCampaign.budget,
+        start_date: editingCampaign.start_date ? saveDateMT(editingCampaign.start_date) : undefined,
+        end_date: editingCampaign.end_date ? saveDateMT(editingCampaign.end_date) : undefined,
+        description: editingCampaign.description ?? undefined,
+        target_audience: editingCampaign.target_audience ?? undefined,
+        key_messages: editingCampaign.key_messages ?? undefined,
+        channels: editingCampaign.channels?.length > 0 ? editingCampaign.channels : undefined,
+        notes: editingCampaign.notes ?? undefined,
+      })
+      setEditingCampaign(null)
+      toast('Campaign saved')
+      await reload()
+    } catch (err: any) {
+      console.error('updateCampaign', err)
+      toast(err?.message || 'Failed to save campaign', 'error')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
-  function toggleExpand(id: string) {
-    setExpanded(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  async function toggleExpand(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+    if (!campaignExpenses[id]) {
+      getCampaignExpenses(id).then(exps => {
+        setCampaignExpenses(prev => ({ ...prev, [id]: exps }))
+      }).catch(() => setCampaignExpenses(prev => ({ ...prev, [id]: [] })))
+    }
   }
 
   function toggleChannel(ch: string, arr: string[], set: (v: string[]) => void) {
@@ -271,7 +300,7 @@ export default function MarketingPage() {
                   <div key={c.id} style={{ ...card, padding: 0, overflow: 'hidden' }}>
 
                     {/* Campaign header row */}
-                    <div onClick={() => toggleExpand(c.id)} style={{
+                    <div onClick={() => { toggleExpand(c.id) }} style={{
                       padding: '16px 20px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '14px',
                       borderLeft: `3px solid ${typeColor}`,
@@ -282,7 +311,7 @@ export default function MarketingPage() {
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{c.name}</span>
+                          <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{c.title || c.name}</span>
                           <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '6px', backgroundColor: typeColor + '22', color: typeColor, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             {c.campaign_type?.replace('_', ' ') ?? 'general'}
                           </span>
@@ -325,7 +354,7 @@ export default function MarketingPage() {
                       </div>
 
                       {!isIntern && (
-                        <button onClick={e => { e.stopPropagation(); setEditingCampaign({ ...c }) }}
+                        <button onClick={e => { e.stopPropagation(); setEditingCampaign({ ...c, name: c.title || c.name || '' }) }}
                           style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '6px', flexShrink: 0 }}>
                           <Edit2 size={14} />
                         </button>
@@ -375,14 +404,122 @@ export default function MarketingPage() {
                               </div>
                             )}
 
-                            {budgetNum > 0 && (
-                              <div style={{ display: 'flex', gap: '10px' }}>
-                                <div style={{ flex: 1, padding: '12px 14px', backgroundColor: t.bg.page, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
-                                  <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Budget</div>
-                                  <div className="mono" style={{ fontSize: '18px', fontWeight: '700', color: t.gold }}>{formatCurrency(budgetNum)}</div>
+                            {budgetNum > 0 && (() => {
+                              const exps: any[] = campaignExpenses[c.id] || []
+                              const totalExp = exps.reduce((s, e) => s + Number(e.amount || 0), 0)
+                              return (
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                  <div style={{ flex: 1, padding: '12px 14px', backgroundColor: t.bg.page, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
+                                    <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Budget</div>
+                                    <div className="mono" style={{ fontSize: '18px', fontWeight: '700', color: t.gold }}>{formatCurrency(budgetNum)}</div>
+                                  </div>
+                                  {totalExp > 0 && (
+                                    <div style={{ flex: 1, padding: '12px 14px', backgroundColor: t.bg.page, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
+                                      <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Spent</div>
+                                      <div className="mono" style={{ fontSize: '18px', fontWeight: '700', color: totalExp > budgetNum ? t.status.danger : t.status.success }}>{formatCurrency(totalExp)}</div>
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            )}
+                              )
+                            })()}
+
+                            {/* Expenses */}
+                            {!isIntern && (() => {
+                              const exps: any[] = campaignExpenses[c.id] || []
+                              const totalExp = exps.reduce((s, e) => s + Number(e.amount || 0), 0)
+                              return (
+                                <div style={{ padding: '14px 16px', backgroundColor: t.bg.page, borderRadius: '8px', border: `1px solid ${t.border.subtle}` }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: exps.length > 0 ? '10px' : '0' }}>
+                                    <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <DollarSign size={10} /> Expenses{totalExp > 0 && <span style={{ color: t.gold }}>— {formatCurrency(totalExp)}</span>}
+                                    </div>
+                                    <button
+                                      onClick={() => { setShowAddExpense(c.id); setAddExpenseForm({ ...BLANK_EXPENSE }) }}
+                                      style={{ fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: 'transparent', border: `1px solid ${t.goldBorder}`, borderRadius: '5px', padding: '3px 8px', cursor: 'pointer' }}
+                                    >+ Add</button>
+                                  </div>
+                                  {exps.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: showAddExpense === c.id ? '10px' : '0' }}>
+                                      {exps.map((exp: any) => (
+                                        <div key={exp.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', backgroundColor: t.bg.elevated, borderRadius: '6px' }}>
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <span style={{ fontSize: '12px', color: t.text.primary }}>{exp.description}</span>
+                                            <span style={{ fontSize: '10px', color: t.text.muted, marginLeft: '6px' }}>{exp.category}{exp.vendor ? ` · ${exp.vendor}` : ''}{exp.expense_date ? ` · ${formatShortDateMT(exp.expense_date)}` : ''}</span>
+                                          </div>
+                                          <span className="mono" style={{ fontSize: '12px', fontWeight: '700', color: t.gold, flexShrink: 0 }}>{formatCurrency(Number(exp.amount))}</span>
+                                          <button onClick={async () => {
+                                            await deleteCampaignExpense(exp.id)
+                                            setCampaignExpenses(prev => ({ ...prev, [c.id]: prev[c.id].filter((e: any) => e.id !== exp.id) }))
+                                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '2px', flexShrink: 0, display: 'flex' }}>
+                                            <X size={11} />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {showAddExpense === c.id && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: exps.length > 0 ? '0' : '0' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '6px' }}>
+                                        <div>
+                                          <label style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', display: 'block', marginBottom: '3px' }}>Description *</label>
+                                          <input value={addExpenseForm.description} onChange={e => setAddExpenseForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Instagram ads" style={{ ...inputStyle, fontSize: '12px', padding: '6px 8px' }} />
+                                        </div>
+                                        <div>
+                                          <label style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', display: 'block', marginBottom: '3px' }}>Amount ($) *</label>
+                                          <input type="number" min="0" step="0.01" value={addExpenseForm.amount} onChange={e => setAddExpenseForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" style={{ ...inputStyle, fontSize: '12px', padding: '6px 8px' }} />
+                                        </div>
+                                        <div>
+                                          <label style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', display: 'block', marginBottom: '3px' }}>Category</label>
+                                          <select value={addExpenseForm.category} onChange={e => setAddExpenseForm(f => ({ ...f, category: e.target.value }))} style={{ ...selectStyle, fontSize: '12px', padding: '6px 8px' }}>
+                                            {['advertising', 'printing', 'events', 'merchandise', 'shipping', 'travel', 'other'].map(cat => (
+                                              <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <label style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', display: 'block', marginBottom: '3px' }}>Date</label>
+                                          <input type="date" value={addExpenseForm.expense_date} onChange={e => setAddExpenseForm(f => ({ ...f, expense_date: e.target.value }))} style={{ ...inputStyle, fontSize: '12px', padding: '6px 8px' }} />
+                                        </div>
+                                        <div>
+                                          <label style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', display: 'block', marginBottom: '3px' }}>Vendor</label>
+                                          <input value={addExpenseForm.vendor} onChange={e => setAddExpenseForm(f => ({ ...f, vendor: e.target.value }))} placeholder="Optional" style={{ ...inputStyle, fontSize: '12px', padding: '6px 8px' }} />
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                        <button onClick={() => setShowAddExpense(null)} style={{ ...btnSecondary, padding: '5px 10px', fontSize: '12px', minHeight: 'unset' }}>Cancel</button>
+                                        <button
+                                          disabled={!addExpenseForm.description.trim() || !addExpenseForm.amount || expenseSaving}
+                                          onClick={async () => {
+                                            if (!addExpenseForm.description.trim() || !addExpenseForm.amount) return
+                                            const client_slug = c.client_slug || ''
+                                            setExpenseSaving(true)
+                                            try {
+                                              const created = await createCampaignExpense({
+                                                campaign_id: c.id, client_slug,
+                                                description: addExpenseForm.description.trim(),
+                                                category: addExpenseForm.category,
+                                                amount: parseFloat(addExpenseForm.amount) || 0,
+                                                vendor: addExpenseForm.vendor || undefined,
+                                                expense_date: addExpenseForm.expense_date || undefined,
+                                                notes: addExpenseForm.notes || undefined,
+                                                added_by: 'internal',
+                                              })
+                                              setCampaignExpenses(prev => ({ ...prev, [c.id]: [created, ...(prev[c.id] || [])] }))
+                                              setShowAddExpense(null)
+                                              toast('Expense added')
+                                            } catch (err) { console.error(err); toast('Failed to add expense', 'error') }
+                                            setExpenseSaving(false)
+                                          }}
+                                          style={{ ...btnPrimary, padding: '5px 10px', fontSize: '12px', minHeight: 'unset', opacity: (!addExpenseForm.description.trim() || !addExpenseForm.amount || expenseSaving) ? 0.5 : 1 }}
+                                        >
+                                          {expenseSaving ? 'Saving…' : 'Add Expense'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </div>
 
                           {/* Right column: deliverables + milestones */}
@@ -788,8 +925,8 @@ export default function MarketingPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button onClick={() => setEditingCampaign(null)} style={btnSecondary}>Cancel</button>
-                <button onClick={handleSaveEdit} style={btnPrimary}>Save Changes</button>
+                <button onClick={() => setEditingCampaign(null)} style={btnSecondary} disabled={editSaving}>Cancel</button>
+                <button onClick={handleSaveEdit} style={{ ...btnPrimary, opacity: editSaving ? 0.7 : 1 }} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</button>
               </div>
             </div>
           </div>

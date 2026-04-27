@@ -5,6 +5,7 @@ import LayoutShell from '../layout-shell'
 import { completeTask, getTasks } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card } from '../lib/theme'
+import { StatsSkeleton, CardSkeleton } from '../components/LoadingSkeleton'
 import { formatShortDateMT } from '../lib/formatters'
 import { useIsMobile } from '../lib/use-is-mobile'
 
@@ -17,12 +18,13 @@ export default function InternPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [doneThisWeek, setDoneThisWeek] = useState<number | null>(null)
   const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const isMobile = useIsMobile()
 
   useEffect(() => {
     const sb = getSupabase()
     sb.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+      if (!user) { setLoading(false); return }
       const { data: p } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
       setProfile(p)
       try {
@@ -35,7 +37,8 @@ export default function InternPage() {
         weekAgo.setDate(weekAgo.getDate() - 7)
         setDoneThisWeek(completedTasks.filter((t: any) => t.completed_at && new Date(t.completed_at) >= weekAgo).length)
       } catch { /* RLS may block — show empty state */ }
-    }).catch(() => {})
+      finally { setLoading(false) }
+    }).catch(() => setLoading(false))
   }, [])
 
   async function complete(id: string) {
@@ -57,6 +60,7 @@ export default function InternPage() {
         </div>
 
         {/* Task summary */}
+        {loading ? <><StatsSkeleton /><div style={{ marginTop: '20px' }}><CardSkeleton count={3} /></div></> : (<>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '14px', marginBottom: '28px' }}>
           {[
             { label: 'Open Tasks', value: openTasks.length, color: openTasks.length > 0 ? t.gold : '#3dba78' },
@@ -111,6 +115,7 @@ export default function InternPage() {
             </a>
           ))}
         </div>
+        </>)}
       </div>
     </LayoutShell>
   )

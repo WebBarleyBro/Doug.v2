@@ -6,7 +6,7 @@ import {
   MapPin, Phone, Plus, ChevronLeft, Edit2, Trash2, ChevronRight,
   Package, ShoppingCart, Users, Activity, X, Globe, Instagram,
 } from 'lucide-react'
-import LayoutShell from '../../layout-shell'
+import LayoutShell, { useToast } from '../../layout-shell'
 import VisitLogModal from '../../components/VisitLogModal'
 import ConfirmModal from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
@@ -72,6 +72,7 @@ export default function AccountDetailPage() {
   const loadedTabsRef = useRef<Set<string>>(new Set())
   const accountNameRef = useRef<string>('')
   const isMobile = useIsMobile()
+  const toast = useToast()
   const [activityLimit, setActivityLimit] = useState(20)
 
   // Edit account modal
@@ -242,6 +243,7 @@ export default function AccountDetailPage() {
       })
       await updateAccountClients(id, editForm.client_slugs)
       setShowEdit(false)
+      toast('Account saved')
       await reloadAll()
     } catch (e: any) {
       setEditErr(e.message || 'Failed to save')
@@ -282,11 +284,12 @@ export default function AccountDetailPage() {
       setContactForm({ name: '', role: '', email: '', phone: '', category: 'general', notes: '', is_decision_maker: false })
       setAddContact(false)
       setEditingContact(null)
+      toast(editingContact ? 'Contact updated' : 'Contact added')
       loadedTabsRef.current.delete('contacts')
       const cs = await getContacts({ accountId: id })
       setContacts(cs)
       loadedTabsRef.current.add('contacts')
-    } catch (e) { console.error(e) }
+    } catch (e) { console.error(e); toast('Failed to save contact', 'error') }
     finally { setSavingContact(false) }
   }
 
@@ -563,6 +566,7 @@ export default function AccountDetailPage() {
                     setPlacementForm({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
                     setAddPlacement(false)
                     setSavingPlacement(false)
+                    toast('Placement added')
                     reloadAll()
                   }} style={btnPrimary} disabled={savingPlacement || !placementForm.client_slug || !placementForm.product_name}>
                     {savingPlacement ? 'Saving...' : 'Add Placement'}

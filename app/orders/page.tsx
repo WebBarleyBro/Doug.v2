@@ -5,7 +5,7 @@ import {
   MapPin, Calendar, Hash, Search, UserPlus, Truck, FileText,
   CheckCircle, Clock, MessageSquare,
 } from 'lucide-react'
-import LayoutShell from '../layout-shell'
+import LayoutShell, { useToast } from '../layout-shell'
 import StatCard from '../components/StatCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmModal from '../components/ConfirmModal'
@@ -265,6 +265,7 @@ export default function OrdersPage() {
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const isMobile = useIsMobile()
+  const toast = useToast()
 
   const [activeTab, setActiveTab] = useState<'direct' | 'inquiries' | 'followups'>('direct')
   const [showCreate, setShowCreate] = useState(false)
@@ -793,13 +794,13 @@ export default function OrdersPage() {
                       {ds !== 'confirmed' && ds !== 'ordered' && (
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button
-                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'confirmed' as any }); load() }}
+                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'confirmed' as any }); toast('Marked as confirmed'); load() }}
                             style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78', fontFamily: 'inherit' }}
                           >
                             ✓ Mark Confirmed
                           </button>
                           <button
-                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'ordered' as any }); load() }}
+                            onClick={async () => { await updateOrder(o.id, { distributor_status: 'ordered' as any }); toast('Marked as ordered'); load() }}
                             style={{ flex: 1, padding: '7px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.secondary, fontFamily: 'inherit' }}
                           >
                             Mark Ordered

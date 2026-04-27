@@ -35,9 +35,6 @@ export interface Client {
   state?: string
   instagram?: string
   website?: string
-  stripe_customer_id?: string
-  monthly_retainer_fee?: number
-  track_depletions?: boolean
   created_at: string
 }
 
@@ -430,16 +427,3 @@ export interface CommissionForecast {
   forecast_90d: number
 }
 
-export interface BillingDepletion {
-  id: string
-  client_slug: string
-  product_name: string
-  period_month: string // 'YYYY-MM'
-  cases_sold: number
-  sale_value: number
-  notes?: string
-  invoice_id?: string
-  submitted_by?: string
-  submitted_by_portal: boolean
-  created_at: string
-}

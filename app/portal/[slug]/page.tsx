@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
-import { getPortalData, submitClientSuggestion, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile } from '../../lib/data'
+import { getPortalData, submitClientSuggestion, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile, getCampaignExpenses } from '../../lib/data'
 import { t, card, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
 import { formatShortDateMT, startOfMonthMT, formatCurrency } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
@@ -63,6 +63,7 @@ export default function ClientPortalPage() {
   const [visitFilter, setVisitFilter] = useState<'all' | 'action' | 'wins' | 'general'>('all')
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
   const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
+  const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
   const [uploadingAsset, setUploadingAsset] = useState(false)
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
@@ -841,8 +842,12 @@ export default function ClientPortalPage() {
                         if (isExpanded) { setExpandedCampaign(null) } else {
                           setExpandedCampaign(camp.id)
                           if (!campaignAssets[camp.id]) {
-                            const asts = await getCampaignAssets(camp.id).catch(() => [])
+                            const [asts, exps] = await Promise.all([
+                              getCampaignAssets(camp.id).catch(() => []),
+                              getCampaignExpenses(camp.id).catch(() => []),
+                            ])
                             setCampaignAssets(prev => ({ ...prev, [camp.id]: asts }))
+                            setCampaignExpenses(prev => ({ ...prev, [camp.id]: exps }))
                           }
                         }
                       }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '16px 20px', textAlign: 'left' }}>
@@ -890,6 +895,31 @@ export default function ClientPortalPage() {
                               </div>
                             </div>
                           )}
+                          {/* Expenses */}
+                          {(() => {
+                            const exps: any[] = campaignExpenses[camp.id] || []
+                            const totalExp = exps.reduce((s, e) => s + Number(e.amount || 0), 0)
+                            if (exps.length === 0) return null
+                            return (
+                              <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>Campaign Spend</span>
+                                  <span className="mono" style={{ color: accent }}>{formatCurrency(totalExp)}</span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {exps.map((exp: any) => (
+                                    <div key={exp.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}` }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <span style={{ fontSize: '12px', color: t.text.primary }}>{exp.description}</span>
+                                        <span style={{ fontSize: '10px', color: t.text.muted, marginLeft: '6px' }}>{exp.category}{exp.vendor ? ` · ${exp.vendor}` : ''}{exp.expense_date ? ` · ${formatShortDateMT(exp.expense_date)}` : ''}</span>
+                                      </div>
+                                      <span className="mono" style={{ fontSize: '12px', fontWeight: '700', color: accent, flexShrink: 0 }}>{formatCurrency(Number(exp.amount))}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
                           {/* Assets */}
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
