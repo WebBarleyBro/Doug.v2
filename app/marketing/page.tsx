@@ -17,7 +17,7 @@ import {
   getCampaignExpenses, createCampaignExpense, deleteCampaignExpense,
 } from '../lib/data'
 import { t, card, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
-import { formatShortDateMT, formatCurrency, saveDateMT } from '../lib/formatters'
+import { formatShortDateMT, formatCurrency } from '../lib/formatters'
 import type { Campaign, Client, DeliverableType, DeliverableChannel, DeliverableStatus } from '../lib/types'
 
 const CAMPAIGN_TYPE_COLORS: Record<string, string> = {

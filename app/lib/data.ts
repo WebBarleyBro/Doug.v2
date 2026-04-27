@@ -995,7 +995,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
   return cached(`dashboard-stats:${userId}:${isOwner}`, 30_000, async () => {
     const sb = getSupabase()
     const monthStart = startOfMonthMT()
-    const monthEnd = endOfMonthMT()
+    const mtYear = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).slice(0, 4)
+    const ytdStart = `${mtYear}-01-01T07:00:00.000Z`
 
     // Fetch visit rows then deduplicate by date+user+account to match the visit log display
     function countDistinctVisits(rows: any[]): number {
@@ -1007,6 +1008,7 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       }).length
     }
 
+    const monthEnd = endOfMonthMT()
     // Single visit query; for non-owners team = self so one query suffices
     const [visitRows, activePlacements, openTasks, billedOrders, clients] = await Promise.all([
       isOwner
@@ -1032,9 +1034,6 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
 
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
-    const monthStart = startOfMonthMT()
-    const mtYear = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).slice(0, 4)
-    const ytdStart = `${mtYear}-01-01T07:00:00.000Z`
     const commissionThisMonth = billedOrders
       .filter(o => (o.sent_at || o.created_at || '') >= monthStart)
       .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0)
