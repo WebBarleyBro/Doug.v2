@@ -92,6 +92,7 @@ export default function MarketingPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editingCampaign, setEditingCampaign] = useState<any | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
   const [newMilestone, setNewMilestone] = useState<Record<string, string>>({})
   const [newMilestoneDue, setNewMilestoneDue] = useState<Record<string, string>>({})
   const [addingMilestone, setAddingMilestone] = useState<string | null>(null)
@@ -151,27 +152,38 @@ export default function MarketingPage() {
   async function handleSaveEdit() {
     if (!editingCampaign) return
     setEditSaving(true)
+    setEditError(null)
     try {
-      const displayName = editingCampaign.name || editingCampaign.title || ''
-      await updateCampaign(editingCampaign.id, {
-        name: displayName || undefined,
-        title: displayName || undefined,
+      const displayName = (editingCampaign.name || editingCampaign.title || '').trim()
+      // Build update with only confirmed-safe fields; omit undefined values so PostgREST ignores them
+      const updates: Record<string, any> = {
+        title: displayName || null,
         status: editingCampaign.status,
-        budget: editingCampaign.budget,
-        start_date: editingCampaign.start_date ? (editingCampaign.start_date.length === 10 ? editingCampaign.start_date : editingCampaign.start_date.slice(0, 10)) : undefined,
-        end_date: editingCampaign.end_date ? (editingCampaign.end_date.length === 10 ? editingCampaign.end_date : editingCampaign.end_date.slice(0, 10)) : undefined,
-        description: editingCampaign.description ?? undefined,
-        target_audience: editingCampaign.target_audience ?? undefined,
-        key_messages: editingCampaign.key_messages ?? undefined,
-        channels: editingCampaign.channels?.length > 0 ? editingCampaign.channels : undefined,
-        notes: editingCampaign.notes ?? undefined,
-      })
+        budget: editingCampaign.budget ?? null,
+        description: editingCampaign.description ?? null,
+        target_audience: editingCampaign.target_audience ?? null,
+        key_messages: editingCampaign.key_messages ?? null,
+        channels: editingCampaign.channels?.length > 0 ? editingCampaign.channels : null,
+        notes: editingCampaign.notes ?? null,
+      }
+      // Dates: only include if non-empty, normalize to YYYY-MM-DD
+      if (editingCampaign.start_date) {
+        updates.start_date = editingCampaign.start_date.length === 10
+          ? editingCampaign.start_date
+          : editingCampaign.start_date.slice(0, 10)
+      }
+      if (editingCampaign.end_date) {
+        updates.end_date = editingCampaign.end_date.length === 10
+          ? editingCampaign.end_date
+          : editingCampaign.end_date.slice(0, 10)
+      }
+      await updateCampaign(editingCampaign.id, updates as any)
       setEditingCampaign(null)
       toast('Campaign saved')
       await reload()
     } catch (err: any) {
-      console.error('updateCampaign', err)
-      toast(err?.message || 'Failed to save campaign', 'error')
+      console.error('[handleSaveEdit]', err)
+      setEditError(err?.message || 'Save failed — check console for details')
     } finally {
       setEditSaving(false)
     }
@@ -924,8 +936,13 @@ export default function MarketingPage() {
                   <textarea value={editingCampaign.notes || ''} onChange={e => setEditingCampaign((c: any) => ({ ...c, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'none' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button onClick={() => setEditingCampaign(null)} style={btnSecondary} disabled={editSaving}>Cancel</button>
+              {editError && (
+                <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'rgba(224,82,82,0.12)', border: '1px solid rgba(224,82,82,0.3)', fontSize: '13px', color: '#e05252' }}>
+                  {editError}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                <button onClick={() => { setEditingCampaign(null); setEditError(null) }} style={btnSecondary} disabled={editSaving}>Cancel</button>
                 <button onClick={handleSaveEdit} style={{ ...btnPrimary, opacity: editSaving ? 0.7 : 1 }} disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</button>
               </div>
             </div>

@@ -1010,7 +1010,7 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
 
     const monthEnd = endOfMonthMT()
     // Single visit query; for non-owners team = self so one query suffices
-    const [visitRows, activePlacements, openTasks, billedOrders, clients] = await Promise.all([
+    const [visitRows, activePlacements, openTasks, allOrders, clients] = await Promise.all([
       isOwner
         ? sb.from('visits').select('visited_at, user_id, account_id')
             .gte('visited_at', monthStart).lte('visited_at', monthEnd)
@@ -1020,10 +1020,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       sb.from('tasks').select('id', { count: 'exact', head: true })
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
-      sb.from('purchase_orders')
-        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status')
-        .in('status', ['sent', 'fulfilled'])
-        .then(({ data, error }) => { if (error) console.error('dashboard billedOrders:', error); return data || [] }),
+      // Use same query as finance page — includes po_line_items so resolveTotal works correctly
+      getOrders().catch((err: any) => { console.error('dashboard getOrders:', err); return [] }),
       getClients(),
     ])
     const allVisits = visitRows.data || []
@@ -1032,11 +1030,14 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       ? { count: countDistinctVisits(allVisits.filter((v: any) => v.user_id === userId)) }
       : teamVisits
 
+    // Filter to sent/fulfilled — identical to finance page logic
+    const billedOrders = (allOrders as any[]).filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
+    const effectiveDate = (o: any) => o.sent_at || o.created_at || ''
 
     const commissionThisMonth = billedOrders
-      .filter(o => (o.sent_at || o.created_at || '') >= monthStart)
-      .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0)
+      .filter(o => effectiveDate(o) >= monthStart)
+      .reduce((s: number, o: any) => s + getCommissionAmount(o, rateMap), 0)
 
     return {
       teamVisits: teamVisits.count || 0,
@@ -1045,8 +1046,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       openTasks: openTasks.count || 0,
       commissionThisMonth,
       commissionYTD: billedOrders
-        .filter(o => (o.sent_at || o.created_at || '') >= ytdStart)
-        .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0),
+        .filter(o => effectiveDate(o) >= ytdStart)
+        .reduce((s: number, o: any) => s + getCommissionAmount(o, rateMap), 0),
     }
   })
 }
