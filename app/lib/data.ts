@@ -1019,7 +1019,7 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
       sb.from('purchase_orders')
-        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status, po_line_items(cases, bottles, unit_price, total)')
+        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status')
         .in('status', ['sent', 'fulfilled'])
         .then(({ data, error }) => { if (error) console.error('dashboard billedOrders:', error); return data || [] }),
       getClients(),
@@ -1032,10 +1032,11 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
 
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
 
-    const mtNow = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
-    const thisMonth = mtNow.slice(0, 7) // "2026-04"
+    const monthStart = startOfMonthMT()
+    const mtYear = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }).slice(0, 4)
+    const ytdStart = `${mtYear}-01-01T07:00:00.000Z`
     const commissionThisMonth = billedOrders
-      .filter(o => getEffectiveOrderDate(o).slice(0, 7) === thisMonth)
+      .filter(o => (o.sent_at || o.created_at || '') >= monthStart)
       .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0)
 
     return {
@@ -1045,7 +1046,7 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       openTasks: openTasks.count || 0,
       commissionThisMonth,
       commissionYTD: billedOrders
-        .filter(o => getEffectiveOrderDate(o).startsWith(thisMonth.slice(0, 4)))
+        .filter(o => (o.sent_at || o.created_at || '') >= ytdStart)
         .reduce((s, o) => s + getCommissionAmount(o, rateMap), 0),
     }
   })
