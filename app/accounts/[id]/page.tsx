@@ -964,7 +964,7 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
             </div>
             <div>
               <label style={labelStyle}>Notes</label>
-              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'vertical' as const }} />
+              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'none' }} />
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
@@ -1002,9 +1002,15 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
                 {formatShortDateMT(visit.visited_at)}{visit.user_profiles?.name ? ` · ${visit.user_profiles.name}` : ''}
                 {allRows && allRows.length > 1 && clients && (
                   <span style={{ marginLeft: '6px' }}>
-                    {allRows.map(r => clients.find((c: any) => c.slug === r.client_slug)).filter(Boolean).map((c: any) => (
-                      <span key={c.slug} style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: c.color, marginLeft: '4px' }} title={c.name} />
-                    ))}
+                    {allRows.map(r => clients.find((c: any) => c.slug === r.client_slug)).filter(Boolean).map((c: any) => {
+                      const logo = clientLogoUrl(c)
+                      return logo ? (
+                        <img key={c.slug} src={logo} alt={c.name} title={c.name}
+                          style={{ width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: '4px', verticalAlign: 'middle' }} />
+                      ) : (
+                        <span key={c.slug} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, marginLeft: '4px', verticalAlign: 'middle' }} title={c.name} />
+                      )
+                    })}
                   </span>
                 )}
               </div>

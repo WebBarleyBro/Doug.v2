@@ -1018,11 +1018,10 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       sb.from('tasks').select('id', { count: 'exact', head: true })
         .eq('completed', false)
         .or(`user_id.eq.${userId},assigned_to.eq.${userId}`),
-      // Include po_line_items so resolveTotal works for orders where total_amount is null
       sb.from('purchase_orders')
-        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status, po_line_items(quantity, price)')
+        .select('id, client_slug, total_amount, commission_amount, sent_at, created_at, status, po_line_items(cases, bottles, unit_price, total)')
         .in('status', ['sent', 'fulfilled'])
-        .then(({ data }) => data || []),
+        .then(({ data, error }) => { if (error) console.error('dashboard billedOrders:', error); return data || [] }),
       getClients(),
     ])
     const allVisits = visitRows.data || []
