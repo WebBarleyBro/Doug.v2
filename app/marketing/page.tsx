@@ -107,10 +107,16 @@ export default function MarketingPage() {
   const [form, setForm] = useState({ ...BLANK_FORM })
 
   const reload = async () => {
-    const [c, cls] = await Promise.all([getCampaigns(), getClients()])
-    setCampaigns(c)
-    setClients(cls)
-    setLoading(false)
+    try {
+      const [c, cls] = await Promise.all([
+        getCampaigns().catch((err: any) => { console.error('getCampaigns failed:', err); return [] }),
+        getClients().catch((err: any) => { console.error('getClients failed:', err); return [] }),
+      ])
+      setCampaigns(c as any)
+      setClients(cls as any)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { reload() }, [])
@@ -154,10 +160,10 @@ export default function MarketingPage() {
     setEditSaving(true)
     setEditError(null)
     try {
-      const displayName = (editingCampaign.name || editingCampaign.title || '').trim()
+      const displayName = (editingCampaign.name || '').trim()
       // Build update with only confirmed-safe fields; omit undefined values so PostgREST ignores them
       const updates: Record<string, any> = {
-        title: displayName || null,
+        name: displayName || null,
         status: editingCampaign.status,
         budget: editingCampaign.budget ?? null,
         description: editingCampaign.description ?? null,
@@ -330,7 +336,7 @@ export default function MarketingPage() {
                           <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '6px', backgroundColor: statusStyle.bg, color: statusStyle.color, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             {c.status}
                           </span>
-                          {c.clients?.name && <span style={{ fontSize: '11px', color: t.text.muted }}>{c.clients.name}</span>}
+                          {clients.find(cl => cl.slug === c.client_slug)?.name && <span style={{ fontSize: '11px', color: t.text.muted }}>{clients.find(cl => cl.slug === c.client_slug)?.name}</span>}
                         </div>
 
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>

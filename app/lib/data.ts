@@ -848,7 +848,7 @@ export async function getCampaigns(clientSlug?: string): Promise<Campaign[]> {
   const sb = getSupabase()
   let q = sb
     .from('campaigns')
-    .select('*, campaign_milestones(*), campaign_deliverables(*), clients(id, name, color)')
+    .select('*, campaign_milestones(*), campaign_deliverables(*)')
     .order('created_at', { ascending: false })
   if (clientSlug) q = q.eq('client_slug', clientSlug)
   const { data, error } = await q
@@ -856,7 +856,7 @@ export async function getCampaigns(clientSlug?: string): Promise<Campaign[]> {
   // Fallback: campaign_deliverables table may not exist yet (run migration 023)
   let q2 = sb
     .from('campaigns')
-    .select('*, campaign_milestones(*), clients(id, name, color)')
+    .select('*, campaign_milestones(*)')
     .order('created_at', { ascending: false })
   if (clientSlug) q2 = q2.eq('client_slug', clientSlug)
   const { data: data2, error: error2 } = await q2
