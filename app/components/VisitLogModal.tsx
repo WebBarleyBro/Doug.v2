@@ -186,6 +186,10 @@ export default function VisitLogModal({
     if (!form.account_id) { setError('Please select an account.'); return }
     if (!form.visited_at) { setError('Please enter a visit date.'); return }
     if (isFutureDate(form.visited_at)) { setError('Visit date cannot be in the future.'); return }
+    if (showPlacements) {
+      const incomplete = placements.filter(p => !p.product_name.trim() || !p.client_slug)
+      if (incomplete.length > 0) { setError('Each placement needs a brand and product name.'); return }
+    }
 
     // Build per-client notes that include tasting details for that client only
     const clientNotesWithTasting: Record<string, string> = { ...form.client_notes }
@@ -532,7 +536,7 @@ export default function VisitLogModal({
             {showPlacements && (
               <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {placements.map((pl, i) => (
-                  <div key={i} style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '14px', position: 'relative' }}>
+                  <div key={i} style={{ backgroundColor: t.bg.input, border: `1px solid ${(!pl.product_name.trim() || !pl.client_slug) && error ? t.status.danger : t.border.default}`, borderRadius: '10px', padding: '14px', position: 'relative' }}>
                     {placements.length > 1 && (
                       <button type="button" onClick={() => setPlacements(ps => ps.filter((_, idx) => idx !== i))}
                         style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px' }}>
