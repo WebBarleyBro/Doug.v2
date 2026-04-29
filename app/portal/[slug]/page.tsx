@@ -639,10 +639,7 @@ export default function ClientPortalPage() {
                           <div style={{ width: '18px', height: '18px', borderRadius: '4px', border: `2px solid ${suggestForm.contact_category === 'distributor' ? accent : t.border.default}`, backgroundColor: suggestForm.contact_category === 'distributor' ? accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
                             {suggestForm.contact_category === 'distributor' && <span style={{ color: '#0c0c0a', fontSize: '12px', fontWeight: '900', lineHeight: 1 }}>✓</span>}
                           </div>
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: '600', color: suggestForm.contact_category === 'distributor' ? accent : t.text.secondary }}>This person is a distributor rep</div>
-                            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>They work for a distributor, not an account</div>
-                          </div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: suggestForm.contact_category === 'distributor' ? accent : t.text.secondary }}>This person is a distributor rep</div>
                         </button>
                       )}
                       <div>
