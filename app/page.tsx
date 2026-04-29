@@ -856,16 +856,24 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
       {/* Follow-ups */}
       {followups.length > 0 && (
         <MobileSection title={`Follow-Ups (${followups.length})`} icon={<Clock size={15} />} href="/accounts">
-          {followups.slice(0, 4).map(v => (
-            <Link key={v.id} href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
-              <MobileListItem
-                title={v.accounts?.name}
-                sub={`${relativeTimeStr(v.visited_at)} · ${v.status}`}
-                dot={t.status.warning}
-                chevron
-              />
-            </Link>
-          ))}
+          {[...followups]
+            .map(v => {
+              const days = daysAgoMT(v.visited_at) ?? 0
+              const statusScore = v.status === 'Will Order Soon' ? 40 : v.status === 'Needs Follow Up' ? 30 : 0
+              return { ...v, _urgency: statusScore + days * 5 }
+            })
+            .sort((a, b) => b._urgency - a._urgency)
+            .slice(0, 4)
+            .map(v => (
+              <Link key={v.id} href={`/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
+                <MobileListItem
+                  title={v.accounts?.name}
+                  sub={`${relativeTimeStr(v.visited_at)} · ${v.status}`}
+                  dot={t.status.warning}
+                  chevron
+                />
+              </Link>
+            ))}
         </MobileSection>
       )}
 
