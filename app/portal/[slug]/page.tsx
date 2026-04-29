@@ -602,13 +602,13 @@ export default function ClientPortalPage() {
                         {(['account', 'contact'] as const).map(type => (
                           <button key={type} onClick={() => { setSuggestType(type); setSuggestForm(f => ({ ...f, address: '', contact_person: '' })) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
                             {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
-                            {type === 'account' ? 'A Venue' : 'A Contact'}
+                            {type === 'account' ? 'An Account' : 'A Contact'}
                           </button>
                         ))}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                         <div>
-                          <label style={labelStyle}>{suggestType === 'account' ? 'Venue name *' : 'Contact name *'}</label>
+                          <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
                           <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie, Bar Manager'} style={inputStyle} />
                         </div>
                         {suggestType === 'account' ? (

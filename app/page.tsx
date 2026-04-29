@@ -239,7 +239,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
                     <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      {isAccount ? 'Venue' : 'Contact'}
+                      {isAccount ? 'Account' : 'Contact'}
                     </span>
                     <span style={{ fontSize: '11px', color: t.gold, fontWeight: '600' }}>{s.client_slug}</span>
                   </div>
@@ -738,7 +738,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
                   <span style={{ fontSize: '9px', fontWeight: '700', padding: '2px 5px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {isAccount ? 'Venue' : 'Contact'}
+                    {isAccount ? 'Account' : 'Contact'}
                   </span>
                 </div>
                 <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: s.contact_person || s.address || s.notes ? '4px' : '8px' }}>
