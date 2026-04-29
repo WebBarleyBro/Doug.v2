@@ -79,7 +79,7 @@ export default function ClientPortalPage() {
   const portalFileInputRef = useRef<HTMLInputElement>(null)
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
-  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [suggestErr, setSuggestErr] = useState('')
@@ -125,13 +125,15 @@ export default function ClientPortalPage() {
     try {
       await submitClientSuggestion({
         client_slug: slug, suggestion_type: suggestType, name: suggestForm.name,
-        address: suggestForm.address || undefined, notes: suggestForm.notes || undefined,
+        address: suggestForm.address || undefined,
+        contact_person: suggestForm.contact_person || undefined,
+        notes: suggestForm.notes || undefined,
         reason: suggestForm.reason, reason_detail: suggestForm.reason_detail || undefined,
         submitted_by_name: suggestForm.submitted_by_name || undefined,
         submitted_by_email: suggestForm.submitted_by_email || undefined,
       })
       setSubmitted(true)
-      setSuggestForm({ name: '', address: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+      setSuggestForm({ name: '', address: '', contact_person: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
   }
@@ -598,24 +600,35 @@ export default function ClientPortalPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         {(['account', 'contact'] as const).map(type => (
-                          <button key={type} onClick={() => setSuggestType(type)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
+                          <button key={type} onClick={() => { setSuggestType(type); setSuggestForm(f => ({ ...f, address: '', contact_person: '' })) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
                             {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
-                            {type === 'account' ? 'An Account' : 'A Contact'}
+                            {type === 'account' ? 'A Venue' : 'A Contact'}
                           </button>
                         ))}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                         <div>
-                          <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
-                          <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie — Bar Manager'} style={inputStyle} />
+                          <label style={labelStyle}>{suggestType === 'account' ? 'Venue name *' : 'Contact name *'}</label>
+                          <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie, Bar Manager'} style={inputStyle} />
                         </div>
-                        {suggestType === 'account' && (
+                        {suggestType === 'account' ? (
                           <div>
                             <label style={labelStyle}>Address (optional)</label>
                             <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="City or full address" style={inputStyle} />
                           </div>
+                        ) : (
+                          <div>
+                            <label style={labelStyle}>Where they work (optional)</label>
+                            <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="e.g. Molly's Bar, Fort Collins" style={inputStyle} />
+                          </div>
                         )}
                       </div>
+                      {suggestType === 'account' && (
+                        <div>
+                          <label style={labelStyle}>Contact there (optional)</label>
+                          <input value={suggestForm.contact_person} onChange={e => setSuggestForm(f => ({ ...f, contact_person: e.target.value }))} placeholder="e.g. Joe, the bar manager" style={inputStyle} />
+                        </div>
+                      )}
                       <div>
                         <label style={labelStyle}>Reason *</label>
                         <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={selectStyle}>

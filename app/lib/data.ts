@@ -1446,6 +1446,7 @@ export async function submitClientSuggestion(suggestion: {
   suggestion_type: 'account' | 'contact'
   name: string
   address?: string
+  contact_person?: string
   notes?: string
   reason: string
   reason_detail?: string

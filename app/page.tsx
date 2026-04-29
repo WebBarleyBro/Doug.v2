@@ -17,7 +17,7 @@ import {
   getOverdueAccounts, getTasks, globalSearch, completeTask,
   getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
   getPlannerStops, getPendingDistributorInquiries,
-  acknowledgeClientSuggestion, createContact, createAccount, getAccounts,
+  acknowledgeClientSuggestion, createContact, createAccount, createTask, getAccounts,
 } from './lib/data'
 import type { PlannerStop } from './lib/data'
 import { getSupabase } from './lib/supabase'
@@ -227,80 +227,80 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
           <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${t.goldBorder}` }}>
             <AlertCircle size={14} color={t.gold} />
             <span style={{ fontSize: '12px', fontWeight: '700', color: t.gold }}>
-              {suggestions.length} {suggestions.length === 1 ? 'account suggestion' : 'account suggestions'} from clients
+              {suggestions.length} {suggestions.length === 1 ? 'suggestion' : 'suggestions'} from clients
             </span>
           </div>
           {suggestions.map((s: any, i: number) => {
             const isActioning = suggestionLoading === s.id
+            const isAccount = s.suggestion_type !== 'contact'
             return (
-              <div key={s.id} style={{
-                padding: '12px 16px',
-                borderBottom: i < suggestions.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+              <div key={s.id} style={{ padding: '12px 16px', borderBottom: i < suggestions.length - 1 ? `1px solid ${t.border.subtle}` : 'none' }}>
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
-                    <span style={{ fontSize: '11px', color: t.gold, marginLeft: '8px', fontWeight: '600' }}>{s.client_slug}</span>
-                    {s.address && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{s.address}</div>}
-                    {s.reason && <div style={{ fontSize: '11px', color: t.text.secondary, marginTop: '2px' }}>{s.reason.replace(/_/g, ' ')}{s.reason_detail ? ` — ${s.reason_detail}` : ''}</div>}
-                    {s.notes && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', fontStyle: 'italic' }}>{s.notes}</div>}
-                    {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>Submitted by {s.submitted_by_name}</div>}
+                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {isAccount ? 'Venue' : 'Contact'}
+                    </span>
+                    <span style={{ fontSize: '11px', color: t.gold, fontWeight: '600' }}>{s.client_slug}</span>
                   </div>
+                  {s.address && <div style={{ fontSize: '11px', color: t.text.muted }}>{s.address}</div>}
+                  {s.reason && <div style={{ fontSize: '11px', color: t.text.secondary, marginTop: '2px' }}>{s.reason.replace(/_/g, ' ')}{s.reason_detail ? ` — ${s.reason_detail}` : ''}</div>}
+                  {s.notes && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', fontStyle: 'italic' }}>{s.notes}</div>}
+                  {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>Submitted by {s.submitted_by_name}</div>}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Save as</span>
-                    <button
-                      disabled={isActioning}
-                      onClick={async () => {
-                        setSuggestionLoading(s.id)
-                        try {
-                          const portalNotes = `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.notes ? `\n${s.notes}` : ''}`
-                          await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
-                          await acknowledgeClientSuggestion(s.id)
-                          setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                          toast(`${s.name} added as account`)
-                        } catch { toast('Failed to add account', 'error') }
-                        setSuggestionLoading(null)
-                      }}
-                      style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
-                    >
-                      {isActioning ? 'Adding…' : 'Account'}
-                    </button>
-                    <button
-                      disabled={isActioning}
-                      onClick={async () => {
-                        setSuggestionLoading(s.id)
-                        try {
-                          const accounts = await getAccounts().catch(() => [])
-                          const match = accounts.find((a: any) =>
-                            a.name.toLowerCase().includes(s.name.toLowerCase()) ||
-                            s.name.toLowerCase().includes(a.name.toLowerCase())
-                          )
-                          const notes = [
-                            s.address ? `Address: ${s.address}` : null,
-                            s.reason ? `Reason: ${s.reason.replace(/_/g, ' ')}` : null,
-                            s.reason_detail || null,
-                            s.notes || null,
-                            `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`,
-                          ].filter(Boolean).join('\n')
-                          await createContact({
-                            name: s.name,
-                            client_slug: s.client_slug,
-                            account_id: match?.id || null,
-                            category: 'general',
-                            notes,
-                          })
-                          await acknowledgeClientSuggestion(s.id)
-                          setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                          toast(`${s.name} added to contacts${match ? ` (linked to ${match.name})` : ''}`)
-                        } catch { toast('Failed to add contact', 'error') }
-                        setSuggestionLoading(null)
-                      }}
-                      style={{ fontSize: '11px', fontWeight: '600', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.secondary, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
-                    >
-                      {isActioning ? 'Adding…' : 'Contact'}
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {isAccount ? (
+                      <button
+                        disabled={isActioning}
+                        onClick={async () => {
+                          setSuggestionLoading(s.id)
+                          try {
+                            const portalNotes = `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.contact_person ? `\nContact there: ${s.contact_person}` : ''}${s.notes ? `\n${s.notes}` : ''}`
+                            const newAccount = await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
+                            const due = new Date(); due.setDate(due.getDate() + 7)
+                            await createTask({ user_id: profile.id, assigned_to: profile.id, title: `Visit ${s.name}`, description: `Suggested by ${s.client_slug}${s.submitted_by_name ? ` (${s.submitted_by_name})` : ''}${s.contact_person ? `. Ask for ${s.contact_person}.` : ''}`.trim(), priority: 'medium', due_date: due.toISOString().slice(0, 10), client_slug: s.client_slug }).catch(() => {})
+                            if (s.contact_person) {
+                              await createContact({ name: s.contact_person, client_slug: s.client_slug, account_id: (newAccount as any)?.id || null, category: 'general', notes: `Contact at ${s.name}. Suggested via portal by ${s.submitted_by_name || s.client_slug}.` }).catch(() => {})
+                            }
+                            await acknowledgeClientSuggestion(s.id)
+                            setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                            toast(`${s.name} added · task created${s.contact_person ? ` · ${s.contact_person} added as contact` : ''}`)
+                          } catch { toast('Failed to add account', 'error') }
+                          setSuggestionLoading(null)
+                        }}
+                        style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                      >
+                        {isActioning ? 'Adding…' : s.contact_person ? '+ Add Account & Contact' : '+ Add Account + Task'}
+                      </button>
+                    ) : (
+                      <button
+                        disabled={isActioning}
+                        onClick={async () => {
+                          setSuggestionLoading(s.id)
+                          try {
+                            const accounts = await getAccounts().catch(() => [])
+                            const workplaceName = s.address || ''
+                            const match = workplaceName ? accounts.find((a: any) => a.name.toLowerCase().includes(workplaceName.toLowerCase()) || workplaceName.toLowerCase().includes(a.name.toLowerCase())) : null
+                            const notes = [
+                              workplaceName ? `Works at: ${workplaceName}` : null,
+                              s.reason ? s.reason.replace(/_/g, ' ') : null,
+                              s.reason_detail || null,
+                              s.notes || null,
+                              `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`,
+                            ].filter(Boolean).join('\n')
+                            await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: 'general', notes })
+                            await acknowledgeClientSuggestion(s.id)
+                            setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                            toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
+                          } catch { toast('Failed to add contact', 'error') }
+                          setSuggestionLoading(null)
+                        }}
+                        style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                      >
+                        {isActioning ? 'Adding…' : '+ Add Contact'}
+                      </button>
+                    )}
                   </div>
                   <button
                     disabled={isActioning}
@@ -732,43 +732,60 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
           </div>
           {suggestions.map((s: any, i: number) => {
             const isActioning = suggestionLoading === s.id
+            const isAccount = s.suggestion_type !== 'contact'
             return (
               <div key={s.id} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${t.border.subtle}` : 'none' }}>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '2px' }}>{s.name}</div>
-                <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px' }}>{s.client_slug}{s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}</div>
-                {s.address && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '6px' }}>{s.address}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
+                  <span style={{ fontSize: '9px', fontWeight: '700', padding: '2px 5px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {isAccount ? 'Venue' : 'Contact'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: s.contact_person || s.address || s.notes ? '4px' : '8px' }}>
+                  {s.client_slug}{s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}
+                </div>
+                {s.address && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>{s.address}</div>}
+                {s.contact_person && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>Contact: {s.contact_person}</div>}
+                {s.notes && <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '4px' }}>{s.notes}</div>}
+                {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '8px' }}>Submitted by {s.submitted_by_name}</div>}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Save as</span>
+                  {isAccount ? (
                     <button disabled={isActioning} onClick={async () => {
                       setSuggestionLoading(s.id)
                       try {
-                        const portalNotes = `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.notes ? `\n${s.notes}` : ''}`
-                        await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
+                        const portalNotes = `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.contact_person ? `\nContact there: ${s.contact_person}` : ''}${s.notes ? `\n${s.notes}` : ''}`
+                        const newAccount = await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
+                        const due = new Date(); due.setDate(due.getDate() + 7)
+                        await createTask({ user_id: profile.id, assigned_to: profile.id, title: `Visit ${s.name}`, description: `Suggested by ${s.client_slug}${s.submitted_by_name ? ` (${s.submitted_by_name})` : ''}${s.contact_person ? `. Ask for ${s.contact_person}.` : ''}`.trim(), priority: 'medium', due_date: due.toISOString().slice(0, 10), client_slug: s.client_slug }).catch(() => {})
+                        if (s.contact_person) {
+                          await createContact({ name: s.contact_person, client_slug: s.client_slug, account_id: (newAccount as any)?.id || null, category: 'general', notes: `Contact at ${s.name}. Suggested via portal by ${s.submitted_by_name || s.client_slug}.` }).catch(() => {})
+                        }
                         await acknowledgeClientSuggestion(s.id)
                         setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                        toast(`${s.name} added as account`)
+                        toast(`${s.name} added · task created${s.contact_person ? ` · ${s.contact_person} added as contact` : ''}`)
                       } catch { toast('Failed', 'error') }
                       setSuggestionLoading(null)
                     }} style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
-                      {isActioning ? 'Adding…' : 'Account'}
+                      {isActioning ? 'Adding…' : s.contact_person ? '+ Add Account & Contact' : '+ Add Account + Task'}
                     </button>
+                  ) : (
                     <button disabled={isActioning} onClick={async () => {
                       setSuggestionLoading(s.id)
                       try {
                         const accounts = await getAccounts().catch(() => [])
-                        const match = accounts.find((a: any) => a.name.toLowerCase().includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(a.name.toLowerCase()))
-                        const notes = [s.address ? `Address: ${s.address}` : null, s.reason ? s.reason.replace(/_/g, ' ') : null, s.notes || null, `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`].filter(Boolean).join('\n')
+                        const workplaceName = s.address || ''
+                        const match = workplaceName ? accounts.find((a: any) => a.name.toLowerCase().includes(workplaceName.toLowerCase()) || workplaceName.toLowerCase().includes(a.name.toLowerCase())) : null
+                        const notes = [workplaceName ? `Works at: ${workplaceName}` : null, s.reason ? s.reason.replace(/_/g, ' ') : null, s.notes || null, `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`].filter(Boolean).join('\n')
                         await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: 'general', notes })
                         await acknowledgeClientSuggestion(s.id)
                         setSuggestions(prev => prev.filter(x => x.id !== s.id))
                         toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
                       } catch { toast('Failed', 'error') }
                       setSuggestionLoading(null)
-                    }} style={{ fontSize: '11px', fontWeight: '600', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.secondary, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
-                      {isActioning ? 'Adding…' : 'Contact'}
+                    }} style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
+                      {isActioning ? 'Adding…' : '+ Add Contact'}
                     </button>
-                  </div>
+                  )}
                   <button disabled={isActioning} onClick={async () => {
                     setSuggestionLoading(s.id)
                     await acknowledgeClientSuggestion(s.id).catch(() => {})
