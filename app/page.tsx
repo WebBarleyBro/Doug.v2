@@ -17,6 +17,7 @@ import {
   getOverdueAccounts, getTasks, globalSearch, completeTask,
   getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
   getPlannerStops, getPendingDistributorInquiries,
+  acknowledgeClientSuggestion, createContact, getAccounts,
 } from './lib/data'
 import type { PlannerStop } from './lib/data'
 import { getSupabase } from './lib/supabase'
@@ -38,6 +39,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [streak, setStreak] = useState<{ streak: number; teamWeekVisits: number; bestDay: string | null } | null>(null)
   const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestionLoading, setSuggestionLoading] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
   const [followUpAccountId, setFollowUpAccountId] = useState<string | undefined>(undefined)
@@ -225,32 +227,78 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
           <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${t.goldBorder}` }}>
             <AlertCircle size={14} color={t.gold} />
             <span style={{ fontSize: '12px', fontWeight: '700', color: t.gold }}>
-              {suggestions.length} new {suggestions.length === 1 ? 'account suggestion' : 'account suggestions'} from clients
+              {suggestions.length} {suggestions.length === 1 ? 'account suggestion' : 'account suggestions'} from clients
             </span>
           </div>
-          {suggestions.slice(0, 5).map((s: any, i: number) => (
-            <div key={s.id} style={{
-              display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
-              borderBottom: i < Math.min(suggestions.length, 5) - 1 ? `1px solid ${t.border.subtle}` : 'none',
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
-                <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '8px' }}>
-                  {s.suggestion_type === 'account' ? 'Account' : 'Contact'} · {s.client_slug}
-                </span>
-                {s.reason && (
-                  <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '6px' }}>· {s.reason.replace(/_/g, ' ')}</span>
-                )}
-              </div>
-              <Link href={`/clients/${s.client_slug}?tab=portal`} style={{
-                fontSize: '11px', fontWeight: '700', color: t.gold, textDecoration: 'none',
-                padding: '4px 10px', border: `1px solid ${t.goldBorder}`, borderRadius: '6px',
-                display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+          {suggestions.map((s: any, i: number) => {
+            const isActioning = suggestionLoading === s.id
+            return (
+              <div key={s.id} style={{
+                padding: '12px 16px',
+                borderBottom: i < suggestions.length - 1 ? `1px solid ${t.border.subtle}` : 'none',
               }}>
-                Review <ChevronRight size={11} />
-              </Link>
-            </div>
-          ))}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '8px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
+                    <span style={{ fontSize: '11px', color: t.gold, marginLeft: '8px', fontWeight: '600' }}>{s.client_slug}</span>
+                    {s.address && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{s.address}</div>}
+                    {s.reason && <div style={{ fontSize: '11px', color: t.text.secondary, marginTop: '2px' }}>{s.reason.replace(/_/g, ' ')}{s.reason_detail ? ` — ${s.reason_detail}` : ''}</div>}
+                    {s.notes && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', fontStyle: 'italic' }}>{s.notes}</div>}
+                    {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>Submitted by {s.submitted_by_name}</div>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    disabled={isActioning}
+                    onClick={async () => {
+                      setSuggestionLoading(s.id)
+                      try {
+                        // Find a matching account by name to link the contact to
+                        const accounts = await getAccounts().catch(() => [])
+                        const match = accounts.find((a: any) =>
+                          a.name.toLowerCase().includes(s.name.toLowerCase()) ||
+                          s.name.toLowerCase().includes(a.name.toLowerCase())
+                        )
+                        const notes = [
+                          s.address ? `Address: ${s.address}` : null,
+                          s.reason ? `Reason: ${s.reason.replace(/_/g, ' ')}` : null,
+                          s.reason_detail || null,
+                          s.notes || null,
+                          `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`,
+                        ].filter(Boolean).join('\n')
+                        await createContact({
+                          name: s.name,
+                          client_slug: s.client_slug,
+                          account_id: match?.id || null,
+                          category: 'general',
+                          notes,
+                        })
+                        await acknowledgeClientSuggestion(s.id)
+                        setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                        toast(`${s.name} added to contacts${match ? ` (linked to ${match.name})` : ''}`)
+                      } catch { toast('Failed to add contact', 'error') }
+                      setSuggestionLoading(null)
+                    }}
+                    style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                  >
+                    {isActioning ? 'Adding…' : '+ Add to Contacts'}
+                  </button>
+                  <button
+                    disabled={isActioning}
+                    onClick={async () => {
+                      setSuggestionLoading(s.id)
+                      await acknowledgeClientSuggestion(s.id).catch(() => {})
+                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                      setSuggestionLoading(null)
+                    }}
+                    style={{ fontSize: '11px', fontWeight: '600', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.muted, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -576,12 +624,14 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
 
 function MobileDashboard({ profile }: { profile: UserProfile }) {
   const { showVisitLog, setShowVisitLog } = useApp()
+  const toast = useToast()
   const [stats, setStats] = useState<any>(null)
   const [commission, setCommission] = useState(0)
   const [schedule, setSchedule] = useState<any>(null)
   const [followups, setFollowups] = useState<any[]>([])
   const [overdue, setOverdue] = useState<any[]>([])
   const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestionLoading, setSuggestionLoading] = useState<string | null>(null)
   const [pendingInquiries, setPendingInquiries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [visitModal, setVisitModal] = useState(false)
@@ -655,24 +705,47 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
 
       {profile.role === 'owner' && suggestions.length > 0 && (
         <div style={{ marginBottom: '16px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: `1px solid ${t.goldBorder}` }}>
             <AlertCircle size={13} color={t.gold} />
             <span style={{ fontSize: '12px', fontWeight: '700', color: t.gold, flex: 1 }}>
-              {suggestions.length} new {suggestions.length === 1 ? 'suggestion' : 'suggestions'}
+              {suggestions.length} {suggestions.length === 1 ? 'suggestion' : 'suggestions'} from clients
             </span>
           </div>
-          {suggestions.slice(0, 3).map((s: any, i: number) => (
-            <Link key={s.id} href={`/clients/${s.client_slug}?tab=portal`} style={{
-              display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', textDecoration: 'none',
-              borderTop: `1px solid ${t.border.subtle}`,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                <div style={{ fontSize: '11px', color: t.text.muted }}>{s.client_slug} · {s.reason?.replace(/_/g, ' ')}</div>
+          {suggestions.map((s: any, i: number) => {
+            const isActioning = suggestionLoading === s.id
+            return (
+              <div key={s.id} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${t.border.subtle}` : 'none' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '2px' }}>{s.name}</div>
+                <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px' }}>{s.client_slug}{s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}</div>
+                {s.address && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '6px' }}>{s.address}</div>}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button disabled={isActioning} onClick={async () => {
+                    setSuggestionLoading(s.id)
+                    try {
+                      const accounts = await getAccounts().catch(() => [])
+                      const match = accounts.find((a: any) => a.name.toLowerCase().includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(a.name.toLowerCase()))
+                      const notes = [s.address ? `Address: ${s.address}` : null, s.reason ? s.reason.replace(/_/g, ' ') : null, s.notes || null, `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`].filter(Boolean).join('\n')
+                      await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: 'general', notes })
+                      await acknowledgeClientSuggestion(s.id)
+                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                      toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
+                    } catch { toast('Failed', 'error') }
+                    setSuggestionLoading(null)
+                  }} style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
+                    {isActioning ? 'Adding…' : '+ Add to Contacts'}
+                  </button>
+                  <button disabled={isActioning} onClick={async () => {
+                    setSuggestionLoading(s.id)
+                    await acknowledgeClientSuggestion(s.id).catch(() => {})
+                    setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                    setSuggestionLoading(null)
+                  }} style={{ fontSize: '11px', fontWeight: '600', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.muted, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
+                    Dismiss
+                  </button>
+                </div>
               </div>
-              <ChevronRight size={13} color={t.text.muted} />
-            </Link>
-          ))}
+            )
+          })}
         </div>
       )}
 

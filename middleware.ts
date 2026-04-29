@@ -4,7 +4,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Public paths that don't need auth
   const isPublic = pathname.startsWith('/login') ||
     pathname.startsWith('/portal') ||
     pathname.startsWith('/taste') ||
@@ -17,7 +16,6 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // If env vars missing, let the page load and show the error
   if (!supabaseUrl || !supabaseKey) {
     if (!isPublic) return NextResponse.redirect(new URL('/login', request.url))
     return response
@@ -40,6 +38,19 @@ export async function middleware(request: NextRequest) {
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  // Portal users should only see their portal — redirect them away from staff pages
+  if (user && !isPublic) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role, client_slug')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'portal' && profile?.client_slug) {
+      return NextResponse.redirect(new URL(`/portal/${profile.client_slug}`, request.url))
+    }
   }
 
   return response
