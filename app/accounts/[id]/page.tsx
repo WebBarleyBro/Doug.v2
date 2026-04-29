@@ -1006,7 +1006,7 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
                       const logo = clientLogoUrl(c)
                       return logo ? (
                         <img key={c.slug} src={logo} alt={c.name} title={c.name}
-                          style={{ width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: '4px', verticalAlign: 'middle' }} />
+                          style={{ display: 'inline-block', width: '16px', height: '16px', objectFit: 'contain', borderRadius: '3px', backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: '4px', verticalAlign: 'middle' }} />
                       ) : (
                         <span key={c.slug} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color, marginLeft: '4px', verticalAlign: 'middle' }} title={c.name} />
                       )

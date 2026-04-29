@@ -17,7 +17,7 @@ import {
   getOverdueAccounts, getTasks, globalSearch, completeTask,
   getVisitStreak, getClientSuggestions, clearFollowUp, dismissFollowUp,
   getPlannerStops, getPendingDistributorInquiries,
-  acknowledgeClientSuggestion, createContact, getAccounts,
+  acknowledgeClientSuggestion, createContact, createAccount, getAccounts,
 } from './lib/data'
 import type { PlannerStop } from './lib/data'
 import { getSupabase } from './lib/supabase'
@@ -247,13 +247,29 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                     {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>Submitted by {s.submitted_by_name}</div>}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button
                     disabled={isActioning}
                     onClick={async () => {
                       setSuggestionLoading(s.id)
                       try {
-                        // Find a matching account by name to link the contact to
+                        const portalNotes = `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.notes ? `\n${s.notes}` : ''}`
+                        await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
+                        await acknowledgeClientSuggestion(s.id)
+                        setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                        toast(`${s.name} added as account`)
+                      } catch { toast('Failed to add account', 'error') }
+                      setSuggestionLoading(null)
+                    }}
+                    style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                  >
+                    {isActioning ? 'Adding…' : '+ Add to Accounts'}
+                  </button>
+                  <button
+                    disabled={isActioning}
+                    onClick={async () => {
+                      setSuggestionLoading(s.id)
+                      try {
                         const accounts = await getAccounts().catch(() => [])
                         const match = accounts.find((a: any) =>
                           a.name.toLowerCase().includes(s.name.toLowerCase()) ||
@@ -279,7 +295,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                       } catch { toast('Failed to add contact', 'error') }
                       setSuggestionLoading(null)
                     }}
-                    style={{ fontSize: '11px', fontWeight: '700', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
+                    style={{ fontSize: '11px', fontWeight: '600', padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.secondary, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}
                   >
                     {isActioning ? 'Adding…' : '+ Add to Contacts'}
                   </button>
@@ -718,7 +734,20 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                 <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '2px' }}>{s.name}</div>
                 <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px' }}>{s.client_slug}{s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}</div>
                 {s.address && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '6px' }}>{s.address}</div>}
-                <div style={{ display: 'flex', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button disabled={isActioning} onClick={async () => {
+                    setSuggestionLoading(s.id)
+                    try {
+                      const portalNotes = `Suggested via client portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}${s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}${s.notes ? `\n${s.notes}` : ''}`
+                      await createAccount({ name: s.name, address: s.address || undefined, account_type: 'on_premise', notes: portalNotes })
+                      await acknowledgeClientSuggestion(s.id)
+                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                      toast(`${s.name} added as account`)
+                    } catch { toast('Failed', 'error') }
+                    setSuggestionLoading(null)
+                  }} style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
+                    {isActioning ? 'Adding…' : '+ Add to Accounts'}
+                  </button>
                   <button disabled={isActioning} onClick={async () => {
                     setSuggestionLoading(s.id)
                     try {
@@ -731,7 +760,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                       toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
                     } catch { toast('Failed', 'error') }
                     setSuggestionLoading(null)
-                  }} style={{ fontSize: '11px', fontWeight: '700', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.goldBorder}`, background: t.goldDim, color: t.gold, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
+                  }} style={{ fontSize: '11px', fontWeight: '600', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${t.border.default}`, background: 'transparent', color: t.text.secondary, cursor: isActioning ? 'default' : 'pointer', opacity: isActioning ? 0.6 : 1 }}>
                     {isActioning ? 'Adding…' : '+ Add to Contacts'}
                   </button>
                   <button disabled={isActioning} onClick={async () => {
