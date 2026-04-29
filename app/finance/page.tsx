@@ -51,7 +51,7 @@ export default function FinancePage() {
       getOrders().catch(e => { console.error('finance/orders:', e); return [] }),
     ]).then(([cls, ords]) => {
         setClients(cls)
-        const billed = ords.filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
+        const billed = ords.filter((o: any) => o.status === 'sent')
         setOrders(billed)
 
         const rateMapTrend = Object.fromEntries(cls.map((c: any) => [c.slug, c.commission_rate || 0]))

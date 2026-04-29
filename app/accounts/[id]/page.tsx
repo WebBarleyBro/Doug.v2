@@ -105,7 +105,7 @@ export default function AccountDetailPage() {
 
   // Placements
   const [addPlacement, setAddPlacement] = useState(false)
-  const [placementForm, setPlacementForm] = useState({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
+  const [placementForm, setPlacementForm] = useState({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
   const [savingPlacement, setSavingPlacement] = useState(false)
   const [placementProducts, setPlacementProducts] = useState<any[]>([])
 
@@ -304,7 +304,7 @@ export default function AccountDetailPage() {
   }
 
   const days = daysAgoMT(account.last_visited)
-  const overdueClr = overdueColor(days)
+  const overdueClr = overdueColor(days, account.visit_frequency_days)
   const pad = isMobile ? '16px' : '32px 36px'
 
   const dedupedVisits = Object.values(
@@ -549,6 +549,11 @@ export default function AccountDetailPage() {
                     <input type="number" value={placementForm.price_point} onChange={e => setPlacementForm(f => ({ ...f, price_point: e.target.value }))}
                       placeholder="0.00" step="0.01" style={inputStyle} />
                   </div>
+                  <div style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}>
+                    <label style={labelStyle}>Notes (optional)</label>
+                    <textarea value={placementForm.notes} onChange={e => setPlacementForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Shelf location, details about the placement..." rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px', justifyContent: 'flex-end' }}>
                   <button onClick={() => setAddPlacement(false)} style={btnSecondary}>Cancel</button>
@@ -561,9 +566,10 @@ export default function AccountDetailPage() {
                       product_name: placementForm.product_name,
                       placement_type: placementForm.placement_type as any,
                       price_point: placementForm.price_point ? parseFloat(placementForm.price_point) : undefined,
+                      notes: placementForm.notes || undefined,
                       status: 'committed',
                     })
-                    setPlacementForm({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '' })
+                    setPlacementForm({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
                     setAddPlacement(false)
                     setSavingPlacement(false)
                     toast('Placement added')

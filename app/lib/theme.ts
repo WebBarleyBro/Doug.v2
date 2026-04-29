@@ -321,17 +321,30 @@ export function skeletonBlock(width = '100%', height = '16px', borderRadius = '6
   }
 }
 
-export function overdueColor(daysAgo: number | null): string {
+export function overdueColor(daysAgo: number | null, frequency?: number | null): string {
   if (daysAgo === null) return t.text.muted
-  if (daysAgo <= 14) return t.status.success
-  if (daysAgo <= 30) return t.status.warning
-  return t.status.danger
+  if (!frequency) {
+    // No frequency: fall back to absolute thresholds
+    if (daysAgo <= 14) return t.status.success
+    if (daysAgo <= 30) return t.status.warning
+    return t.status.danger
+  }
+  const daysOverdue = daysAgo - frequency
+  if (daysOverdue < -1) return t.status.success   // green: more than 1 day until due
+  if (daysOverdue < 7) return t.status.warning    // yellow: due tomorrow through 6 days late
+  return t.status.danger                           // red: 7+ days overdue
 }
 
-export function overdueColorBg(daysAgo: number | null): string {
+export function overdueColorBg(daysAgo: number | null, frequency?: number | null): string {
   if (daysAgo === null) return 'rgba(255,255,255,0.06)'
-  if (daysAgo <= 14) return t.status.successBg
-  if (daysAgo <= 30) return t.status.warningBg
+  if (!frequency) {
+    if (daysAgo <= 14) return t.status.successBg
+    if (daysAgo <= 30) return t.status.warningBg
+    return t.status.dangerBg
+  }
+  const daysOverdue = daysAgo - frequency
+  if (daysOverdue < -1) return t.status.successBg
+  if (daysOverdue < 7) return t.status.warningBg
   return t.status.dangerBg
 }
 

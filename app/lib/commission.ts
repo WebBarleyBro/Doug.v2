@@ -11,7 +11,7 @@ type OrderLike = {
   po_line_items?: unknown[];
 };
 
-const ELIGIBLE_STATUSES = new Set(["sent", "fulfilled"]);
+const ELIGIBLE_STATUSES = new Set(["sent"]);
 
 export function isCommissionEligible(status?: string | null): boolean {
   return ELIGIBLE_STATUSES.has((status || "").toLowerCase());

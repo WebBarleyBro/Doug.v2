@@ -9,9 +9,10 @@ rules:
 ## Calculation (Immutable)
 ```
 commission_amount = total_amount × client.commission_rate
-Eligible statuses: 'sent' | 'fulfilled'
+Eligible statuses: 'sent' only
 ```
-- Draft, cancelled, and null-status orders earn $0 commission
+- Draft, fulfilled, cancelled, and null-status orders earn $0 commission
+- 'fulfilled' is NOT eligible — fulfillment happens between distributor/supplier and account with no reliable timestamp
 - Never default to 0 silently — throw if commission_rate is missing for a client
 
 ## App-Layer Calculation
@@ -42,5 +43,5 @@ FROM clients c
 WHERE c.slug = po.client_slug
   AND (po.commission_amount IS NULL OR po.commission_amount = 0)
   AND COALESCE(po.total_amount, 0) > 0
-  AND po.status IN ('sent', 'fulfilled');
+  AND po.status IN ('sent');
 ```

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Search, Check, Plus, AlertCircle, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { t, inputStyle, labelStyle, btnPrimary, modalOverlay, mobileSheetContent } from '../lib/theme'
 import { logVisit, getAccounts, getClients, getProducts, createPlacement } from '../lib/data'
+import { invalidatePrefix } from '../lib/cache'
 import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
 import type { Account, Client, Product, VisitStatus, PlacementType, PlacementStatus } from '../lib/types'
@@ -241,6 +242,7 @@ export default function VisitLogModal({
         notes: p.notes || undefined,
         shelf_date: saveDateMT(form.visited_at),
       })))
+      if (validPlacements.length > 0) invalidatePrefix('placements')
 
       setSaved(true)
       setTimeout(() => { onClose(); onSuccess?.() }, 1200)

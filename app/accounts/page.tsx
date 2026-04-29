@@ -18,7 +18,7 @@ import type { Account, Client, UserProfile } from '../lib/types'
 
 function AccountCard({ account, clients }: { account: any; clients: Client[] }) {
   const days = daysAgoMT(account.last_visited)
-  const color = overdueColor(days)
+  const color = overdueColor(days, account.visit_frequency_days)
   const slugs = account.account_clients?.map((ac: any) => ac.client_slug) || []
   const accountClients = clients.filter(c => slugs.includes(c.slug))
 

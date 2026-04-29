@@ -32,6 +32,25 @@ export async function getClient(slug: string): Promise<Client | null> {
   return data
 }
 
+export async function createClient(client: {
+  name: string
+  slug: string
+  order_type: 'direct' | 'distributor'
+  commission_rate: number
+  color: string
+  contact_name?: string
+  contact_email?: string
+  territory?: string
+  notes?: string
+}): Promise<Client> {
+  const sb = getSupabase()
+  const { data, error } = await sb.from('clients').insert({ ...client, active: true }).select().single()
+  if (error) throw error
+  invalidate('clients')
+  invalidatePrefix('dashboard-stats')
+  return data
+}
+
 export async function updateClient(id: string, updates: Partial<Client>) {
   const sb = getSupabase()
   const { error } = await sb.from('clients').update(updates).eq('id', id)
@@ -177,7 +196,7 @@ export function getOverdueAccounts(): Promise<Account[]> {
       if (!a.last_visited) return false  // never visited — not overdue, just unvisited
       const days = daysAgoMT(a.last_visited)
       const freq = a.visit_frequency_days || 21
-      return days !== null && days >= freq
+      return days !== null && days >= freq - 1  // include accounts due tomorrow
     }).slice(0, 20)
   })
 }
@@ -1020,8 +1039,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       ? { count: countDistinctVisits(allVisits.filter((v: any) => v.user_id === userId)) }
       : teamVisits
 
-    // Filter to sent/fulfilled — identical to finance page logic
-    const billedOrders = (allOrders as any[]).filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
+    // Filter to sent only — commission is earned on sent, not fulfilled
+    const billedOrders = (allOrders as any[]).filter((o: any) => o.status === 'sent')
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
     const effectiveDate = (o: any) => o.sent_at || o.created_at || ''
 
@@ -1181,7 +1200,7 @@ export async function getCommissionTrend(sinceDate?: Date, untilDate?: Date) {
   let q = sb
     .from('purchase_orders')
     .select('created_at, sent_at, commission_amount, total_amount, client_slug, po_number, deliver_to_name')
-    .in('status', ['sent', 'fulfilled'])
+    .in('status', ['sent'])
     .gte('created_at', since.toISOString())
   if (untilDate) q = q.lte('created_at', untilDate.toISOString())
   const { data, error } = await q.order('created_at')

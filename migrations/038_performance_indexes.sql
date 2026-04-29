@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_accounts_last_visited
 
 -- placements: active placements per brand (most common read)
 CREATE INDEX IF NOT EXISTS idx_placements_client_active
-  ON placements(client_slug, status, updated_at DESC)
+  ON placements(client_slug, status)
   WHERE lost_at IS NULL;
 
 -- placements: account placements tab

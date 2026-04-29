@@ -588,7 +588,7 @@ export default function PlannerPage() {
                               <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{acc.name}</div>
                               {acc.address && <div style={{ fontSize: '11px', color: t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.address}</div>}
                             </div>
-                            <div style={{ fontSize: '11px', color: overdueColor(days), flexShrink: 0, fontFamily: 'var(--font-mono)' }}>
+                            <div style={{ fontSize: '11px', color: overdueColor(days, acc.visit_frequency_days), flexShrink: 0, fontFamily: 'var(--font-mono)' }}>
                               {days === null ? 'never' : `${days}d ago`}
                             </div>
                           </button>
@@ -640,7 +640,7 @@ export default function PlannerPage() {
                         }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '13px', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</div>
-                            <div style={{ fontSize: '10px', color: overdueColor(days), fontFamily: 'var(--font-mono)' }}>
+                            <div style={{ fontSize: '10px', color: overdueColor(days, acc.visit_frequency_days), fontFamily: 'var(--font-mono)' }}>
                               {days === null ? 'never' : `${days}d ago`}
                             </div>
                           </div>
@@ -725,7 +725,7 @@ export default function PlannerPage() {
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '12px', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</div>
-                        <div style={{ fontSize: '10px', color: overdueColor(days), fontFamily: 'var(--font-mono)' }}>
+                        <div style={{ fontSize: '10px', color: overdueColor(days, acc.visit_frequency_days), fontFamily: 'var(--font-mono)' }}>
                           {days === null ? 'never' : `${days}d ago`}
                         </div>
                       </div>

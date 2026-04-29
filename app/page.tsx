@@ -593,7 +593,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {overdue.slice(0, 8).map((acc: any) => {
                   const days = daysAgoMT(acc.last_visited)
-                  const color = overdueColor(days)
+                  const color = overdueColor(days, acc.visit_frequency_days)
                   return (
                     <Link key={acc.id} href={`/accounts/${acc.id}`} style={{
                       backgroundColor: t.bg.card, border: `1px solid ${t.border.subtle}`, borderRadius: '8px',
@@ -879,7 +879,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                 <MobileListItem
                   title={acc.name}
                   sub={days === null ? 'Never visited' : `${days} days ago`}
-                  dot={overdueColor(days)}
+                  dot={overdueColor(days, acc.visit_frequency_days)}
                   chevron
                 />
               </Link>
