@@ -380,7 +380,7 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     const since = nDaysAgoMT(90)
     const { data, error } = await sb
       .from('visits')
-      .select('*, accounts(id, name, address, account_type, visit_frequency_days), user_profiles(id, name)')
+      .select('*, accounts(id, name, address, account_type, visit_frequency_days)')
       .in('status', ['Will Order Soon', 'Needs Follow Up'])
       .is('follow_up_cleared_at', null)
       .is('follow_up_dismissed_at', null)
@@ -390,11 +390,19 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     if (error) throw error
     // One entry per account — keep the most recent (already sorted desc)
     const seen = new Set<string>()
-    return (data || []).filter((v: any) => {
+    const visits = (data || []).filter((v: any) => {
       if (!v.account_id || seen.has(v.account_id)) return false
       seen.add(v.account_id)
       return true
     })
+    // Fetch rep names separately to avoid PostgREST FK inference issues
+    const userIds = [...new Set(visits.map((v: any) => v.user_id).filter(Boolean))]
+    if (userIds.length > 0) {
+      const { data: profiles } = await sb.from('user_profiles').select('id, name').in('id', userIds)
+      const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]))
+      return visits.map((v: any) => ({ ...v, user_profiles: profileMap[v.user_id] || null }))
+    }
+    return visits
   })
 }
 
