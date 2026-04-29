@@ -361,7 +361,7 @@ export function getFollowUpVisits(): Promise<Visit[]> {
     const since = nDaysAgoMT(90)
     const { data, error } = await sb
       .from('visits')
-      .select('*, accounts(id, name, address, account_type, visit_frequency_days)')
+      .select('*, accounts(id, name, address, account_type, visit_frequency_days), user_profiles(id, name)')
       .in('status', ['Will Order Soon', 'Needs Follow Up'])
       .is('follow_up_cleared_at', null)
       .is('follow_up_dismissed_at', null)
@@ -369,23 +369,13 @@ export function getFollowUpVisits(): Promise<Visit[]> {
       .order('visited_at', { ascending: false })
       .limit(200)
     if (error) throw error
-    const rows = data || []
     // One entry per account — keep the most recent (already sorted desc)
     const seen = new Set<string>()
-    const visits = rows.filter((v: any) => {
+    return (data || []).filter((v: any) => {
       if (!v.account_id || seen.has(v.account_id)) return false
       seen.add(v.account_id)
       return true
     })
-    if (visits.length > 0) {
-      const userIds = [...new Set(visits.map((v: any) => v.user_id).filter(Boolean))]
-      if (userIds.length > 0) {
-        const { data: profiles } = await sb.from('user_profiles').select('id, name').in('id', userIds)
-        const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]))
-        visits.forEach((v: any) => { v.user_profiles = profileMap[v.user_id] || null })
-      }
-    }
-    return visits
   })
 }
 
