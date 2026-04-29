@@ -861,6 +861,7 @@ export default function ClientPortalPage() {
                               {camp.campaign_type && <span style={{ marginRight: '10px' }}>{camp.campaign_type}</span>}
                               {camp.start_date && <span>{camp.start_date}{camp.end_date ? ` → ${camp.end_date}` : ''}</span>}
                             </div>
+
                           </div>
                           <span style={{ color: t.text.muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
                         </div>
