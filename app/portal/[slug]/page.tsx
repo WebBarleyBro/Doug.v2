@@ -79,7 +79,7 @@ export default function ClientPortalPage() {
   const portalFileInputRef = useRef<HTMLInputElement>(null)
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
-  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', contact_category: 'general', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [suggestErr, setSuggestErr] = useState('')
@@ -127,13 +127,14 @@ export default function ClientPortalPage() {
         client_slug: slug, suggestion_type: suggestType, name: suggestForm.name,
         address: suggestForm.address || undefined,
         contact_person: suggestForm.contact_person || undefined,
+        contact_category: suggestForm.contact_category || 'general',
         notes: suggestForm.notes || undefined,
         reason: suggestForm.reason, reason_detail: suggestForm.reason_detail || undefined,
         submitted_by_name: suggestForm.submitted_by_name || undefined,
         submitted_by_email: suggestForm.submitted_by_email || undefined,
       })
       setSubmitted(true)
-      setSuggestForm({ name: '', address: '', contact_person: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+      setSuggestForm({ name: '', address: '', contact_person: '', contact_category: 'general', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
   }
@@ -628,6 +629,21 @@ export default function ClientPortalPage() {
                           <label style={labelStyle}>Contact there (optional)</label>
                           <input value={suggestForm.contact_person} onChange={e => setSuggestForm(f => ({ ...f, contact_person: e.target.value }))} placeholder="e.g. Joe, the bar manager" style={inputStyle} />
                         </div>
+                      )}
+                      {suggestType === 'contact' && (
+                        <button
+                          type="button"
+                          onClick={() => setSuggestForm(f => ({ ...f, contact_category: f.contact_category === 'distributor' ? 'general' : 'distributor' }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${suggestForm.contact_category === 'distributor' ? accent + '66' : t.border.default}`, backgroundColor: suggestForm.contact_category === 'distributor' ? accent + '18' : 'transparent', textAlign: 'left', width: '100%' }}
+                        >
+                          <div style={{ width: '18px', height: '18px', borderRadius: '4px', border: `2px solid ${suggestForm.contact_category === 'distributor' ? accent : t.border.default}`, backgroundColor: suggestForm.contact_category === 'distributor' ? accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+                            {suggestForm.contact_category === 'distributor' && <span style={{ color: '#0c0c0a', fontSize: '12px', fontWeight: '900', lineHeight: 1 }}>✓</span>}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: suggestForm.contact_category === 'distributor' ? accent : t.text.secondary }}>This person is a distributor rep</div>
+                            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '1px' }}>They work for a distributor, not an account</div>
+                          </div>
+                        </button>
                       )}
                       <div>
                         <label style={labelStyle}>Reason *</label>

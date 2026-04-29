@@ -236,11 +236,16 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
             return (
               <div key={s.id} style={{ padding: '12px 16px', borderBottom: i < suggestions.length - 1 ? `1px solid ${t.border.subtle}` : 'none' }}>
                 <div style={{ marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
                     <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {isAccount ? 'Account' : 'Contact'}
                     </span>
+                    {!isAccount && s.contact_category === 'distributor' && (
+                      <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(233,153,40,0.15)', color: t.gold, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Distributor Rep
+                      </span>
+                    )}
                     <span style={{ fontSize: '11px', color: t.gold, fontWeight: '600' }}>{s.client_slug}</span>
                   </div>
                   {s.address && <div style={{ fontSize: '11px', color: t.text.muted }}>{s.address}</div>}
@@ -289,7 +294,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                               s.notes || null,
                               `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`,
                             ].filter(Boolean).join('\n')
-                            await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: 'general', notes })
+                            await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, notes })
                             await acknowledgeClientSuggestion(s.id)
                             setSuggestions(prev => prev.filter(x => x.id !== s.id))
                             toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
@@ -735,11 +740,16 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
             const isAccount = s.suggestion_type !== 'contact'
             return (
               <div key={s.id} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${t.border.subtle}` : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{s.name}</span>
                   <span style={{ fontSize: '9px', fontWeight: '700', padding: '2px 5px', borderRadius: '4px', backgroundColor: isAccount ? 'rgba(74,158,255,0.12)' : 'rgba(100,200,100,0.12)', color: isAccount ? '#4a9eff' : '#4caf50', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     {isAccount ? 'Account' : 'Contact'}
                   </span>
+                  {!isAccount && s.contact_category === 'distributor' && (
+                    <span style={{ fontSize: '9px', fontWeight: '700', padding: '2px 5px', borderRadius: '4px', backgroundColor: 'rgba(233,153,40,0.15)', color: t.gold, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Dist. Rep
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: s.contact_person || s.address || s.notes ? '4px' : '8px' }}>
                   {s.client_slug}{s.reason ? ` · ${s.reason.replace(/_/g, ' ')}` : ''}
@@ -776,7 +786,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                         const workplaceName = s.address || ''
                         const match = workplaceName ? accounts.find((a: any) => a.name.toLowerCase().includes(workplaceName.toLowerCase()) || workplaceName.toLowerCase().includes(a.name.toLowerCase())) : null
                         const notes = [workplaceName ? `Works at: ${workplaceName}` : null, s.reason ? s.reason.replace(/_/g, ' ') : null, s.notes || null, `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`].filter(Boolean).join('\n')
-                        await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: 'general', notes })
+                        await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, notes })
                         await acknowledgeClientSuggestion(s.id)
                         setSuggestions(prev => prev.filter(x => x.id !== s.id))
                         toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
