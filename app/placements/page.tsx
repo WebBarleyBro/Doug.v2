@@ -19,7 +19,6 @@ export default function PlacementsPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
-  const [clientProducts, setClientProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -38,14 +37,17 @@ export default function PlacementsPage() {
   const [editModal, setEditModal] = useState<{ open: boolean; placement?: any }>({ open: false })
   const [editForm, setEditForm] = useState({ product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    account_id: '',
-    client_slug: '',
-    product_name: '',
-    placement_type: 'shelf',
-    price_point: '',
-    notes: '',
-  })
+  interface PlacementRow {
+    client_slug: string
+    product_name: string
+    placement_type: string
+    price_point: string
+    notes: string
+  }
+  const emptyRow = (): PlacementRow => ({ client_slug: '', product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
+  const [createAccountId, setCreateAccountId] = useState('')
+  const [rows, setRows] = useState<PlacementRow[]>([emptyRow()])
+  const [rowProducts, setRowProducts] = useState<Record<string, any[]>>({})
 
   const load = useCallback(async () => {
     try {
@@ -68,14 +70,10 @@ export default function PlacementsPage() {
     }
   }, [showCreate, accounts.length])
 
-  // Load products when brand is selected
-  useEffect(() => {
-    if (form.client_slug) {
-      getProducts(form.client_slug).then(setClientProducts).catch(() => setClientProducts([]))
-    } else {
-      setClientProducts([])
-    }
-  }, [form.client_slug])
+  function ensureRowProducts(slug: string) {
+    if (!slug || rowProducts[slug]) return
+    getProducts(slug).then(prods => setRowProducts(prev => ({ ...prev, [slug]: prods }))).catch(() => {})
+  }
 
   function openEdit(p: any) {
     setEditForm({ product_name: p.product_name || '', placement_type: p.placement_type || 'shelf', price_point: p.price_point != null ? String(p.price_point) : '', notes: p.notes || '' })
@@ -101,21 +99,25 @@ export default function PlacementsPage() {
   }
 
   async function handleCreate() {
-    if (!form.account_id || !form.client_slug || !form.product_name) return
+    const valid = rows.filter(r => r.client_slug && r.product_name.trim())
+    if (!createAccountId || valid.length === 0) return
     setCreating(true)
     try {
-      await createPlacement({
-        account_id: form.account_id,
-        client_slug: form.client_slug,
-        product_name: form.product_name,
-        placement_type: form.placement_type as any,
-        price_point: form.price_point ? parseFloat(form.price_point) : undefined,
+      await Promise.all(valid.map(r => createPlacement({
+        account_id: createAccountId,
+        client_slug: r.client_slug,
+        product_name: r.product_name.trim(),
+        placement_type: r.placement_type as any,
+        price_point: r.price_point ? parseFloat(r.price_point) : undefined,
+        notes: r.notes || undefined,
         status: 'committed',
-      })
+      })))
       setShowCreate(false)
-      setForm({ account_id: '', client_slug: '', product_name: '', placement_type: 'shelf', price_point: '', notes: '' })
+      setCreateAccountId('')
+      setRows([emptyRow()])
+      setRowProducts({})
       load()
-      toast('Placement added')
+      toast(valid.length > 1 ? `${valid.length} placements added` : 'Placement added')
     } catch (e) { console.error(e); toast('Failed to save', 'error') }
     finally { setCreating(false) }
   }
@@ -271,59 +273,101 @@ export default function PlacementsPage() {
         {/* Create Placement Modal */}
         {showCreate && (
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px' }}>
+            <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>New Placement</h3>
-                <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
+                <button onClick={() => { setShowCreate(false); setCreateAccountId(''); setRows([emptyRow()]); setRowProducts({}) }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer' }}><X size={18} /></button>
               </div>
+
+              {/* Shared account */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>Account</label>
+                <select value={createAccountId} onChange={e => setCreateAccountId(e.target.value)} style={selectStyle}>
+                  <option value="">Select account...</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+
+              {/* Placement rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Account</label>
-                  <select value={form.account_id} onChange={e => setForm(f => ({ ...f, account_id: e.target.value }))} style={selectStyle}>
-                    <option value="">Select account...</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Brand</label>
-                  <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
-                    <option value="">Select brand...</option>
-                    {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Product Name</label>
-                  {clientProducts.length > 0 ? (
-                    <select value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} style={selectStyle}>
-                      <option value="">Select product...</option>
-                      {clientProducts.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" value={form.product_name} onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))} placeholder="e.g. Barley Bros Wheat Whiskey 750ml" style={inputStyle} />
-                  )}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={labelStyle}>Placement Type</label>
-                    <select value={form.placement_type} onChange={e => setForm(f => ({ ...f, placement_type: e.target.value }))} style={selectStyle}>
-                      {PLACEMENT_TYPES.map(pt => <option key={pt} value={pt}>{PLACEMENT_TYPE_LABELS[pt]}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Price Point (optional)</label>
-                    <input type="number" value={form.price_point} onChange={e => setForm(f => ({ ...f, price_point: e.target.value }))} placeholder="0.00" step="0.01" style={inputStyle} />
-                  </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>Notes</label>
-                  <input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." style={inputStyle} />
-                </div>
+                {rows.map((row, i) => {
+                  const prods = rowProducts[row.client_slug] || []
+                  const client = clients.find(c => c.slug === row.client_slug)
+                  return (
+                    <div key={i} style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '14px', position: 'relative' }}>
+                      {rows.length > 1 && (
+                        <button type="button" onClick={() => setRows(rs => rs.filter((_, idx) => idx !== i))}
+                          style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px' }}>
+                          <X size={14} />
+                        </button>
+                      )}
+                      {rows.length > 1 && (
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }}>
+                          Placement {i + 1}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div>
+                          <label style={labelStyle}>Brand</label>
+                          <select value={row.client_slug}
+                            onChange={e => {
+                              const slug = e.target.value
+                              setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, client_slug: slug, product_name: '' }))
+                              ensureRowProducts(slug)
+                            }}
+                            style={selectStyle}>
+                            <option value="">Select brand...</option>
+                            {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Product</label>
+                          {prods.length > 0 ? (
+                            <select value={row.product_name} onChange={e => setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, product_name: e.target.value }))} style={selectStyle}>
+                              <option value="">Select product...</option>
+                              {prods.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                            </select>
+                          ) : (
+                            <input type="text" value={row.product_name}
+                              onChange={e => setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, product_name: e.target.value }))}
+                              placeholder={row.client_slug ? 'Product name...' : 'Select a brand first'}
+                              style={{ ...inputStyle, color: !row.client_slug ? t.text.muted : undefined }}
+                            />
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label style={labelStyle}>Type</label>
+                            <select value={row.placement_type} onChange={e => setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, placement_type: e.target.value }))} style={selectStyle}>
+                              {PLACEMENT_TYPES.map(pt => <option key={pt} value={pt}>{PLACEMENT_TYPE_LABELS[pt]}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Price Point (optional)</label>
+                            <input type="number" value={row.price_point} onChange={e => setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, price_point: e.target.value }))} placeholder="0.00" step="0.01" style={inputStyle} />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Notes (optional)</label>
+                          <input type="text" value={row.notes} onChange={e => setRows(rs => rs.map((r, idx) => idx !== i ? r : { ...r, notes: e.target.value }))} placeholder="e.g. Front-of-bar..." style={inputStyle} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
+
+              <button type="button" onClick={() => setRows(rs => [...rs, emptyRow()])}
+                style={{ marginTop: '10px', width: '100%', fontSize: '12px', color: t.gold, background: 'none', border: `1px dashed ${t.border.default}`, borderRadius: '8px', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <Plus size={13} /> Add another placement
+              </button>
+
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>
-                <button onClick={handleCreate} disabled={creating || !form.account_id || !form.client_slug || !form.product_name}
-                  style={{ ...btnPrimary, opacity: (creating || !form.account_id || !form.client_slug || !form.product_name) ? 0.6 : 1 }}>
-                  {creating ? 'Saving...' : 'Add Placement'}
+                <button onClick={() => { setShowCreate(false); setCreateAccountId(''); setRows([emptyRow()]); setRowProducts({}) }} style={btnSecondary}>Cancel</button>
+                <button onClick={handleCreate}
+                  disabled={creating || !createAccountId || rows.every(r => !r.client_slug || !r.product_name.trim())}
+                  style={{ ...btnPrimary, opacity: (creating || !createAccountId || rows.every(r => !r.client_slug || !r.product_name.trim())) ? 0.6 : 1 }}>
+                  {creating ? 'Saving...' : rows.filter(r => r.client_slug && r.product_name.trim()).length > 1 ? `Add ${rows.filter(r => r.client_slug && r.product_name.trim()).length} Placements` : 'Add Placement'}
                 </button>
               </div>
             </div>
