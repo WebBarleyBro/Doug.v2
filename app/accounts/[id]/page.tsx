@@ -23,7 +23,7 @@ import { t, card, btnPrimary, btnSecondary, btnIcon, badge, inputStyle, labelSty
 import { formatShortDateMT, daysAgoMT, formatCurrency, resolveTotal } from '../../lib/formatters'
 import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
-import type { UserProfile, Client } from '../../lib/types'
+import type { UserProfile, Client, VisitStatus } from '../../lib/types'
 import { useIsMobile } from '../../lib/use-is-mobile'
 
 declare global { interface Window { google: any } }
@@ -957,7 +957,7 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
         await Promise.all(allRows.map(r =>
           updateVisit(r.id, {
             visited_at: form.visited_at || undefined,
-            status: form.status || undefined,
+            status: (form.status || undefined) as VisitStatus | undefined,
             notes: brandNotes[r.id] ?? r.notes ?? undefined,
             client_slug: r.client_slug,
           })
