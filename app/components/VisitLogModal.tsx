@@ -551,7 +551,7 @@ export default function VisitLogModal({
                       <div style={{ marginBottom: '10px' }}>
                         <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Brand</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {(form.client_slugs.length > 0 ? clients.filter(c => form.client_slugs.includes(c.slug)) : clients).map(c => (
+                          {clients.map(c => (
                             <button key={c.slug} type="button" onClick={() => { setPlacements(ps => ps.map((p, idx) => idx !== i ? p : { ...p, client_slug: c.slug, product_name: '' })); ensureProducts(c.slug) }}
                               style={{
                                 padding: '5px 12px', borderRadius: '16px', fontSize: '12px', cursor: 'pointer',

@@ -12,7 +12,7 @@ import ConfirmModal from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
 import {
   getAccount, getVisits, getPlacements, getOrders, getContacts,
-  deleteVisitGroup, updateVisitGroup, createContact, updateContact, deleteContact,
+  deleteVisitGroup, updateVisitGroup, updateVisit, createContact, updateContact, deleteContact,
   createPlacement, getProducts, getClients, updateAccount, updateAccountClients,
   deleteAccount,
 } from '../../lib/data'
@@ -933,6 +933,9 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ visited_at: '', status: '', notes: '' })
+  const [brandNotes, setBrandNotes] = useState<Record<string, string>>({})
+
+  const isMultiBrand = (allRows?.length ?? 1) > 1
 
   function openEdit() {
     setForm({
@@ -940,13 +943,29 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
       status: visit.status || 'General Check-In',
       notes: visit.notes || '',
     })
+    if (isMultiBrand && allRows) {
+      setBrandNotes(Object.fromEntries(allRows.map(r => [r.id, r.notes || ''])))
+    }
     setEditing(true)
   }
 
   async function handleSave() {
     setSaving(true)
     try {
-      await onSave({ visited_at: form.visited_at || undefined, status: form.status || undefined, notes: form.notes || undefined })
+      if (isMultiBrand && allRows) {
+        // Update shared fields (date + status) on all rows, notes per-row
+        await Promise.all(allRows.map(r =>
+          updateVisit(r.id, {
+            visited_at: form.visited_at || undefined,
+            status: form.status || undefined,
+            notes: brandNotes[r.id] ?? r.notes ?? undefined,
+            client_slug: r.client_slug,
+          })
+        ))
+        onSave({})
+      } else {
+        await onSave({ visited_at: form.visited_at || undefined, status: form.status || undefined, notes: form.notes || undefined })
+      }
       setEditing(false)
     } finally { setSaving(false) }
   }
@@ -968,10 +987,28 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
                 </select>
               </div>
             </div>
-            <div>
-              <label style={labelStyle}>Notes</label>
-              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'none' }} />
-            </div>
+            {isMultiBrand && allRows ? (
+              allRows.map(r => {
+                const client = clients?.find((c: any) => c.slug === r.client_slug)
+                return (
+                  <div key={r.id}>
+                    <label style={{ ...labelStyle, color: client?.color || t.text.muted }}>
+                      {client?.name || r.client_slug} Notes
+                    </label>
+                    <textarea
+                      value={brandNotes[r.id] ?? ''}
+                      onChange={e => setBrandNotes(n => ({ ...n, [r.id]: e.target.value }))}
+                      rows={2} style={{ ...inputStyle, resize: 'none' }}
+                    />
+                  </div>
+                )
+              })
+            ) : (
+              <div>
+                <label style={labelStyle}>Notes</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'none' }} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
               <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
