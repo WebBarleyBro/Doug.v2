@@ -79,7 +79,9 @@ export default function ClientPortalPage() {
   const portalFileInputRef = useRef<HTMLInputElement>(null)
   const [showSuggest, setShowSuggest] = useState(false)
   const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
-  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', contact_category: 'general', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', contact_category: 'general', contact_phone: '', contact_email: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const suggestNameRef = useRef<HTMLInputElement>(null)
+  const suggestAcRef = useRef<any>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [suggestErr, setSuggestErr] = useState('')
@@ -119,6 +121,52 @@ export default function ClientPortalPage() {
     })
   }, [slug])
 
+  // Google Places autocomplete on account name field
+  useEffect(() => {
+    if (suggestType !== 'account') {
+      if (suggestAcRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(suggestAcRef.current)
+      }
+      suggestAcRef.current = null
+      return
+    }
+    let alive = true
+    function initAC() {
+      if (!alive || !suggestNameRef.current || suggestAcRef.current) return
+      suggestAcRef.current = new window.google.maps.places.Autocomplete(suggestNameRef.current, {
+        types: ['establishment'],
+        componentRestrictions: { country: 'us' },
+        fields: ['name', 'formatted_address'],
+      })
+      suggestAcRef.current.addListener('place_changed', () => {
+        const place = suggestAcRef.current.getPlace()
+        setSuggestForm(f => ({
+          ...f,
+          name: place.name || f.name,
+          address: place.formatted_address || f.address,
+        }))
+      })
+    }
+    if (!document.getElementById('gm-places-script')) {
+      const script = document.createElement('script')
+      script.id = 'gm-places-script'
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`
+      script.async = true
+      document.head.appendChild(script)
+    }
+    const interval = setInterval(() => {
+      if (window.google?.maps?.places) { clearInterval(interval); initAC() }
+    }, 100)
+    return () => {
+      alive = false
+      clearInterval(interval)
+      if (suggestAcRef.current && window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(suggestAcRef.current)
+      }
+      suggestAcRef.current = null
+    }
+  }, [suggestType])
+
   async function handleSuggest() {
     if (!suggestForm.name.trim() || !suggestForm.reason) { setSuggestErr('Name and reason are required'); return }
     setSubmitting(true); setSuggestErr('')
@@ -128,13 +176,15 @@ export default function ClientPortalPage() {
         address: suggestForm.address || undefined,
         contact_person: suggestForm.contact_person || undefined,
         contact_category: suggestForm.contact_category || 'general',
+        contact_phone: suggestForm.contact_phone || undefined,
+        contact_email: suggestForm.contact_email || undefined,
         notes: suggestForm.notes || undefined,
         reason: suggestForm.reason, reason_detail: suggestForm.reason_detail || undefined,
         submitted_by_name: suggestForm.submitted_by_name || undefined,
         submitted_by_email: suggestForm.submitted_by_email || undefined,
       })
       setSubmitted(true)
-      setSuggestForm({ name: '', address: '', contact_person: '', contact_category: 'general', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+      setSuggestForm({ name: '', address: '', contact_person: '', contact_category: 'general', contact_phone: '', contact_email: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
   }
@@ -601,7 +651,7 @@ export default function ClientPortalPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         {(['account', 'contact'] as const).map(type => (
-                          <button key={type} onClick={() => { setSuggestType(type); setSuggestForm(f => ({ ...f, address: '', contact_person: '' })) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
+                          <button key={type} onClick={() => { setSuggestType(type); setSuggestForm(f => ({ ...f, address: '', contact_person: '', contact_phone: '', contact_email: '' })) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
                             {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
                             {type === 'account' ? 'An Account' : 'A Contact'}
                           </button>
@@ -610,7 +660,7 @@ export default function ClientPortalPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                         <div>
                           <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
-                          <input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie, Bar Manager'} style={inputStyle} />
+                          <input ref={suggestType === 'account' ? suggestNameRef : undefined} value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie, Bar Manager'} style={inputStyle} />
                         </div>
                         {suggestType === 'account' ? (
                           <div>
@@ -622,6 +672,18 @@ export default function ClientPortalPage() {
                             <label style={labelStyle}>Where they work (optional)</label>
                             <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="e.g. Molly's Bar, Fort Collins" style={inputStyle} />
                           </div>
+                        )}
+                        {suggestType === 'contact' && (
+                          <>
+                            <div>
+                              <label style={labelStyle}>Phone (optional)</label>
+                              <input type="tel" value={suggestForm.contact_phone} onChange={e => setSuggestForm(f => ({ ...f, contact_phone: e.target.value }))} placeholder="e.g. (720) 555-1234" style={inputStyle} />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Email (optional)</label>
+                              <input type="email" value={suggestForm.contact_email} onChange={e => setSuggestForm(f => ({ ...f, contact_email: e.target.value }))} placeholder="e.g. jamie@thebar.com" style={inputStyle} />
+                            </div>
+                          </>
                         )}
                       </div>
                       {suggestType === 'account' && (

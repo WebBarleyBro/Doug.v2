@@ -1465,6 +1465,8 @@ export async function submitClientSuggestion(suggestion: {
   address?: string
   contact_person?: string
   contact_category?: string
+  contact_phone?: string
+  contact_email?: string
   notes?: string
   reason: string
   reason_detail?: string

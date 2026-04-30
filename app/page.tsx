@@ -294,7 +294,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                               s.notes || null,
                               `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`,
                             ].filter(Boolean).join('\n')
-                            await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, notes })
+                            await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, phone: s.contact_phone || undefined, email: s.contact_email || undefined, notes })
                             await acknowledgeClientSuggestion(s.id)
                             setSuggestions(prev => prev.filter(x => x.id !== s.id))
                             toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
@@ -756,6 +756,8 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                 </div>
                 {s.address && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>{s.address}</div>}
                 {s.contact_person && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>Contact: {s.contact_person}</div>}
+                {s.contact_phone && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>📞 {s.contact_phone}</div>}
+                {s.contact_email && <div style={{ fontSize: '11px', color: t.text.secondary, marginBottom: '4px' }}>✉ {s.contact_email}</div>}
                 {s.notes && <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '4px' }}>{s.notes}</div>}
                 {s.submitted_by_name && <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '8px' }}>Submitted by {s.submitted_by_name}</div>}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
@@ -786,7 +788,7 @@ function MobileDashboard({ profile }: { profile: UserProfile }) {
                         const workplaceName = s.address || ''
                         const match = workplaceName ? accounts.find((a: any) => a.name.toLowerCase().includes(workplaceName.toLowerCase()) || workplaceName.toLowerCase().includes(a.name.toLowerCase())) : null
                         const notes = [workplaceName ? `Works at: ${workplaceName}` : null, s.reason ? s.reason.replace(/_/g, ' ') : null, s.notes || null, `Suggested via portal${s.submitted_by_name ? ` by ${s.submitted_by_name}` : ''}`].filter(Boolean).join('\n')
-                        await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, notes })
+                        await createContact({ name: s.name, client_slug: s.client_slug, account_id: match?.id || null, category: (s.contact_category || 'general') as any, phone: s.contact_phone || undefined, email: s.contact_email || undefined, notes })
                         await acknowledgeClientSuggestion(s.id)
                         setSuggestions(prev => prev.filter(x => x.id !== s.id))
                         toast(`${s.name} added to contacts${match ? ` · linked to ${match.name}` : ''}`)
