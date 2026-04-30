@@ -47,6 +47,7 @@ const ownerNav = [
   { href: '/orders',      label: 'Orders',      icon: ShoppingCart },
   { href: '/finance',     label: 'Finance',     icon: DollarSign },
   { href: '/analytics',   label: 'Analytics',   icon: BarChart3 },
+  { href: '/growth',      label: 'Growth',      icon: TrendingUp },
   { href: '/calendar',    label: 'Calendar',    icon: Calendar },
   { href: '/contacts',    label: 'Contacts',    icon: UserCircle },
   { href: '/marketing',   label: 'Marketing',   icon: Megaphone },
@@ -61,6 +62,7 @@ const repNav = [
   { href: '/clients',    label: 'Clients',    icon: Users },
   { href: '/placements', label: 'Placements', icon: Package },
   { href: '/orders',     label: 'Orders',     icon: ShoppingCart },
+  { href: '/growth',     label: 'Growth',     icon: TrendingUp },
   { href: '/calendar',   label: 'Calendar',   icon: Calendar },
   { href: '/contacts',   label: 'Contacts',   icon: UserCircle },
 ]

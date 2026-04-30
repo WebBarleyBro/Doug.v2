@@ -25,6 +25,9 @@ import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client, VisitStatus } from '../../lib/types'
 import { useIsMobile } from '../../lib/use-is-mobile'
+import { getAccountZones } from '../../lib/concentric/data'
+import { PostureBadge, channelLabel, healthColor } from '../../growth/_components'
+import type { ZoneTargetAccount, Zone, Market } from '../../lib/concentric/types'
 
 declare global { interface Window { google: any } }
 
@@ -53,7 +56,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   other:       t.text.muted,
 }
 
-const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts'] as const
+const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts', 'growth'] as const
 type Tab = typeof TABS[number]
 
 export default function AccountDetailPage() {
@@ -64,6 +67,7 @@ export default function AccountDetailPage() {
   const [placements, setPlacements] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
+  const [accountZones, setAccountZones] = useState<(ZoneTargetAccount & { zones: Zone & { markets: Market } })[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tab, setTab] = useState<Tab>('activity')
@@ -164,6 +168,10 @@ export default function AccountDetailPage() {
       if (t === 'contacts') {
         const cs = await getContacts({ accountId: id })
         setContacts(cs)
+      }
+      if (t === 'growth') {
+        const zones = await getAccountZones(id)
+        setAccountZones(zones as any)
       }
     } catch (e) { console.error(e) }
   }, [id])
@@ -638,6 +646,60 @@ export default function AccountDetailPage() {
           </div>
         )}
 
+        {tab === 'growth' && (
+          <div>
+            <div style={{ marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Zone Memberships</h3>
+              <p style={{ fontSize: '12px', color: t.text.muted }}>Concentric Growth zones this account belongs to</p>
+            </div>
+            {accountZones.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: '48px 24px',
+                border: `2px dashed ${t.border.default}`, borderRadius: '12px',
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.secondary, marginBottom: '6px' }}>
+                  Not in any Target Set
+                </div>
+                <div style={{ fontSize: '12px', color: t.text.muted }}>
+                  Add this account to a zone from the <Link href="/growth/markets" style={{ color: t.gold, textDecoration: 'none' }}>Markets</Link> section.
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {accountZones.map(az => {
+                  const zone = az.zones
+                  const market = zone?.markets
+                  if (!zone || !market) return null
+                  return (
+                    <Link key={az.id} href={`/growth/zones/${zone.id}`} style={{ textDecoration: 'none' }}>
+                      <div style={{
+                        ...card, padding: '14px 18px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary }}>{zone.name}</span>
+                            <PostureBadge posture={zone.posture} size="xs" />
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: t.text.muted }}>
+                            <span>{market.name}</span>
+                            <span style={{ color: t.border.default }}>·</span>
+                            <span>Phase {zone.phase}</span>
+                            <span style={{ color: t.border.default }}>·</span>
+                            <span>{channelLabel(zone.channel)}</span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, textAlign: 'right' }}>
+                          Added {new Date(az.added_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <ConfirmModal
           isOpen={!!deleteContactTarget}
