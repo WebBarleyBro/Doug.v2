@@ -20,14 +20,15 @@ async function getAuthedUser(cookieStore: Awaited<ReturnType<typeof cookies>>) {
 // GET: return live metrics without saving a snapshot
 export async function GET(
   _req: Request,
-  { params }: { params: { zoneId: string } },
+  { params }: { params: Promise<{ zoneId: string }> },
 ) {
   try {
+    const { zoneId } = await params
     const cookieStore = await cookies()
     if (!await getAuthedUser(cookieStore)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const metrics = await computeZoneMetrics(params.zoneId)
+    const metrics = await computeZoneMetrics(zoneId)
     return NextResponse.json({ metrics })
   } catch (err: any) {
     console.error('growth.metrics.get', err)
@@ -38,7 +39,7 @@ export async function GET(
 // POST: compute metrics and save snapshot for today
 export async function POST(
   _req: Request,
-  { params }: { params: { zoneId: string } },
+  { params }: { params: Promise<{ zoneId: string }> },
 ) {
   try {
     const cookieStore = await cookies()
@@ -46,7 +47,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { zoneId } = params
+    const { zoneId } = await params
     if (!zoneId) return NextResponse.json({ error: 'Missing zoneId' }, { status: 400 })
 
     const metrics = await computeZoneMetrics(zoneId)

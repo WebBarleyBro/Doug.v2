@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Star, MapPin } from 'lucide-react'
@@ -11,7 +11,7 @@ import { PostureBadge, healthColor, channelLabel } from '../_components'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../lib/concentric/types'
 import type { Client } from '../../lib/types'
 
-export default function MarketsPage() {
+function MarketsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -216,4 +216,8 @@ export default function MarketsPage() {
       </div>
     </LayoutShell>
   )
+}
+
+export default function MarketsPage() {
+  return <Suspense><MarketsContent /></Suspense>
 }

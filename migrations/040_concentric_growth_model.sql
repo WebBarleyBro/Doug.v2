@@ -32,15 +32,19 @@ CREATE INDEX IF NOT EXISTS idx_markets_priority ON markets(priority) WHERE prior
 
 ALTER TABLE markets ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "markets_select" ON markets FOR SELECT USING (
+DROP POLICY IF EXISTS "markets_select" ON markets;
+CREATE POLICY "markets_select" ON markets FOR SELECT USING (
   get_my_role() IN ('owner', 'admin', 'rep')
   OR (get_my_role() = 'portal' AND client_slug = get_my_client_slug())
 );
-CREATE POLICY IF NOT EXISTS "markets_insert" ON markets FOR INSERT
+DROP POLICY IF EXISTS "markets_insert" ON markets;
+CREATE POLICY "markets_insert" ON markets FOR INSERT
   WITH CHECK (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "markets_update" ON markets FOR UPDATE
+DROP POLICY IF EXISTS "markets_update" ON markets;
+CREATE POLICY "markets_update" ON markets FOR UPDATE
   USING (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "markets_delete" ON markets FOR DELETE
+DROP POLICY IF EXISTS "markets_delete" ON markets;
+CREATE POLICY "markets_delete" ON markets FOR DELETE
   USING (get_my_role() IN ('owner', 'admin'));
 
 -- ─── zones ───────────────────────────────────────────────────────────────────
@@ -69,18 +73,22 @@ CREATE INDEX IF NOT EXISTS idx_zones_phase   ON zones(phase);
 
 ALTER TABLE zones ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "zones_select" ON zones FOR SELECT USING (
+DROP POLICY IF EXISTS "zones_select" ON zones;
+CREATE POLICY "zones_select" ON zones FOR SELECT USING (
   get_my_role() IN ('owner', 'admin', 'rep')
   OR (get_my_role() = 'portal' AND EXISTS (
     SELECT 1 FROM markets m
     WHERE m.id = zones.market_id AND m.client_slug = get_my_client_slug()
   ))
 );
-CREATE POLICY IF NOT EXISTS "zones_insert" ON zones FOR INSERT
+DROP POLICY IF EXISTS "zones_insert" ON zones;
+CREATE POLICY "zones_insert" ON zones FOR INSERT
   WITH CHECK (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "zones_update" ON zones FOR UPDATE
+DROP POLICY IF EXISTS "zones_update" ON zones;
+CREATE POLICY "zones_update" ON zones FOR UPDATE
   USING (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "zones_delete" ON zones FOR DELETE
+DROP POLICY IF EXISTS "zones_delete" ON zones;
+CREATE POLICY "zones_delete" ON zones FOR DELETE
   USING (get_my_role() IN ('owner', 'admin'));
 
 -- ─── zone_target_accounts ────────────────────────────────────────────────────
@@ -107,7 +115,8 @@ CREATE INDEX IF NOT EXISTS idx_zta_account ON zone_target_accounts(account_id);
 
 ALTER TABLE zone_target_accounts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "zta_select" ON zone_target_accounts FOR SELECT USING (
+DROP POLICY IF EXISTS "zta_select" ON zone_target_accounts;
+CREATE POLICY "zta_select" ON zone_target_accounts FOR SELECT USING (
   get_my_role() IN ('owner', 'admin', 'rep')
   OR (get_my_role() = 'portal' AND EXISTS (
     SELECT 1 FROM zones z
@@ -116,11 +125,14 @@ CREATE POLICY IF NOT EXISTS "zta_select" ON zone_target_accounts FOR SELECT USIN
   ))
 );
 -- Reps can add/remove accounts from target sets
-CREATE POLICY IF NOT EXISTS "zta_insert" ON zone_target_accounts FOR INSERT
+DROP POLICY IF EXISTS "zta_insert" ON zone_target_accounts;
+CREATE POLICY "zta_insert" ON zone_target_accounts FOR INSERT
   WITH CHECK (get_my_role() IN ('owner', 'admin', 'rep'));
-CREATE POLICY IF NOT EXISTS "zta_update" ON zone_target_accounts FOR UPDATE
+DROP POLICY IF EXISTS "zta_update" ON zone_target_accounts;
+CREATE POLICY "zta_update" ON zone_target_accounts FOR UPDATE
   USING (get_my_role() IN ('owner', 'admin', 'rep'));
-CREATE POLICY IF NOT EXISTS "zta_delete" ON zone_target_accounts FOR DELETE
+DROP POLICY IF EXISTS "zta_delete" ON zone_target_accounts;
+CREATE POLICY "zta_delete" ON zone_target_accounts FOR DELETE
   USING (get_my_role() IN ('owner', 'admin'));
 
 -- ─── account_product_qualifications ──────────────────────────────────────────
@@ -142,42 +154,47 @@ CREATE INDEX IF NOT EXISTS idx_apq_client  ON account_product_qualifications(cli
 
 ALTER TABLE account_product_qualifications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "apq_select" ON account_product_qualifications FOR SELECT USING (
+DROP POLICY IF EXISTS "apq_select" ON account_product_qualifications;
+CREATE POLICY "apq_select" ON account_product_qualifications FOR SELECT USING (
   get_my_role() IN ('owner', 'admin', 'rep')
   OR (get_my_role() = 'portal' AND client_slug = get_my_client_slug())
 );
-CREATE POLICY IF NOT EXISTS "apq_insert" ON account_product_qualifications FOR INSERT
+DROP POLICY IF EXISTS "apq_insert" ON account_product_qualifications;
+CREATE POLICY "apq_insert" ON account_product_qualifications FOR INSERT
   WITH CHECK (get_my_role() IN ('owner', 'admin', 'rep'));
-CREATE POLICY IF NOT EXISTS "apq_update" ON account_product_qualifications FOR UPDATE
+DROP POLICY IF EXISTS "apq_update" ON account_product_qualifications;
+CREATE POLICY "apq_update" ON account_product_qualifications FOR UPDATE
   USING (get_my_role() IN ('owner', 'admin', 'rep'));
-CREATE POLICY IF NOT EXISTS "apq_delete" ON account_product_qualifications FOR DELETE
+DROP POLICY IF EXISTS "apq_delete" ON account_product_qualifications;
+CREATE POLICY "apq_delete" ON account_product_qualifications FOR DELETE
   USING (get_my_role() IN ('owner', 'admin'));
 
 -- ─── zone_metric_snapshots ───────────────────────────────────────────────────
 -- One row per zone per day, written by the nightly cron job (service role).
 -- UI derives trend signals from snapshot history; no status side effects here.
 CREATE TABLE IF NOT EXISTS zone_metric_snapshots (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  zone_id              UUID NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
-  snapshot_date        DATE NOT NULL,
-  reach_pct            NUMERIC,
-  velocity             NUMERIC,
-  velocity_index       NUMERIC,
-  retention_pct        NUMERIC,
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  zone_id               UUID NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+  snapshot_date         DATE NOT NULL,
+  reach_pct             NUMERIC,
+  velocity              NUMERIC,
+  velocity_index        NUMERIC,
+  retention_pct         NUMERIC,
   retention_reorder_pct NUMERIC,
-  retention_menu_pct   NUMERIC,
-  health_score         NUMERIC,
-  active_accounts      INT,
-  target_set_size      INT,
-  total_cases_90d      NUMERIC,
-  computed_at          TIMESTAMPTZ DEFAULT NOW(),
+  retention_menu_pct    NUMERIC,
+  health_score          NUMERIC,
+  active_accounts       INT,
+  target_set_size       INT,
+  total_cases_90d       NUMERIC,
+  computed_at           TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(zone_id, snapshot_date)
 );
 CREATE INDEX IF NOT EXISTS idx_zms_zone_date ON zone_metric_snapshots(zone_id, snapshot_date DESC);
 
 ALTER TABLE zone_metric_snapshots ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "zms_select" ON zone_metric_snapshots FOR SELECT USING (
+DROP POLICY IF EXISTS "zms_select" ON zone_metric_snapshots;
+CREATE POLICY "zms_select" ON zone_metric_snapshots FOR SELECT USING (
   get_my_role() IN ('owner', 'admin', 'rep')
   OR (get_my_role() = 'portal' AND EXISTS (
     SELECT 1 FROM zones z
@@ -187,11 +204,14 @@ CREATE POLICY IF NOT EXISTS "zms_select" ON zone_metric_snapshots FOR SELECT USI
 );
 -- Snapshots are written by the nightly cron via service role (bypasses RLS).
 -- These restrictive policies cover any manual writes from authenticated sessions.
-CREATE POLICY IF NOT EXISTS "zms_insert" ON zone_metric_snapshots FOR INSERT
+DROP POLICY IF EXISTS "zms_insert" ON zone_metric_snapshots;
+CREATE POLICY "zms_insert" ON zone_metric_snapshots FOR INSERT
   WITH CHECK (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "zms_update" ON zone_metric_snapshots FOR UPDATE
+DROP POLICY IF EXISTS "zms_update" ON zone_metric_snapshots;
+CREATE POLICY "zms_update" ON zone_metric_snapshots FOR UPDATE
   USING (get_my_role() IN ('owner', 'admin'));
-CREATE POLICY IF NOT EXISTS "zms_delete" ON zone_metric_snapshots FOR DELETE
+DROP POLICY IF EXISTS "zms_delete" ON zone_metric_snapshots;
+CREATE POLICY "zms_delete" ON zone_metric_snapshots FOR DELETE
   USING (get_my_role() IN ('owner', 'admin'));
 
 -- ─── Seed data ────────────────────────────────────────────────────────────────

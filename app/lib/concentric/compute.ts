@@ -99,7 +99,7 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
 
   // 5. Active menu placements for on-premise zones
   const isOnPremise = zone.channel === 'on_premise' || zone.channel === 'both'
-  let menuAccountIds = new Set<string>()
+  const menuAccountIds = new Set<string>()
   if (isOnPremise) {
     const { data: menuPlacements } = await sb
       .from('placements')

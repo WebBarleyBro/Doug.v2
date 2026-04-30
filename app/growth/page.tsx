@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { TrendingUp, AlertTriangle, Star, Plus } from 'lucide-react'
@@ -65,7 +65,7 @@ function buildAttentionItems(
   return items.sort((a, b) => a.severity - b.severity)
 }
 
-export default function GrowthOverviewPage() {
+function GrowthOverviewContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -379,4 +379,8 @@ export default function GrowthOverviewPage() {
       </div>
     </LayoutShell>
   )
+}
+
+export default function GrowthOverviewPage() {
+  return <Suspense><GrowthOverviewContent /></Suspense>
 }

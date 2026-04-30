@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import LayoutShell from '../../../layout-shell'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -18,7 +18,7 @@ const POSTURE_OPTIONS = [
   { value: 'monitoring', label: 'Monitoring — reactive only' },
 ]
 
-export default function NewZonePage() {
+function NewZoneContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const defaultMarket = searchParams.get('market') ?? ''
@@ -220,4 +220,8 @@ export default function NewZonePage() {
       </div>
     </LayoutShell>
   )
+}
+
+export default function NewZonePage() {
+  return <Suspense><NewZoneContent /></Suspense>
 }
