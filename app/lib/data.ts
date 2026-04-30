@@ -1047,8 +1047,8 @@ export function getDashboardStats(userId: string, isOwner: boolean) {
       ? { count: countDistinctVisits(allVisits.filter((v: any) => v.user_id === userId)) }
       : teamVisits
 
-    // Filter to sent only — commission is earned on sent, not fulfilled
-    const billedOrders = (allOrders as any[]).filter((o: any) => o.status === 'sent')
+    // Count sent + fulfilled — both represent real revenue; use sent_at for period bucketing
+    const billedOrders = (allOrders as any[]).filter((o: any) => o.status === 'sent' || o.status === 'fulfilled')
     const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
     const effectiveDate = (o: any) => o.sent_at || o.created_at || ''
 
@@ -1208,7 +1208,7 @@ export async function getCommissionTrend(sinceDate?: Date, untilDate?: Date) {
   let q = sb
     .from('purchase_orders')
     .select('created_at, sent_at, commission_amount, total_amount, client_slug, po_number, deliver_to_name')
-    .in('status', ['sent'])
+    .in('status', ['sent', 'fulfilled'])
     .gte('created_at', since.toISOString())
   if (untilDate) q = q.lte('created_at', untilDate.toISOString())
   const { data, error } = await q.order('created_at')

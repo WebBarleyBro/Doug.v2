@@ -9,10 +9,12 @@ rules:
 ## Calculation (Immutable)
 ```
 commission_amount = total_amount × client.commission_rate
-Eligible statuses: 'sent' only
+Eligible statuses: 'sent' | 'fulfilled'
+Period bucketing: use sent_at (not fulfilled_at) — fulfillment timing is unreliable
 ```
-- Draft, fulfilled, cancelled, and null-status orders earn $0 commission
-- 'fulfilled' is NOT eligible — fulfillment happens between distributor/supplier and account with no reliable timestamp
+- Draft and cancelled orders earn $0 commission
+- 'fulfilled' IS eligible — it means the order was sent AND delivered; count it
+- Period is determined by sent_at, falling back to created_at — never fulfilled_at
 - Never default to 0 silently — throw if commission_rate is missing for a client
 
 ## App-Layer Calculation
@@ -43,5 +45,5 @@ FROM clients c
 WHERE c.slug = po.client_slug
   AND (po.commission_amount IS NULL OR po.commission_amount = 0)
   AND COALESCE(po.total_amount, 0) > 0
-  AND po.status IN ('sent');
+  AND po.status IN ('sent', 'fulfilled');
 ```

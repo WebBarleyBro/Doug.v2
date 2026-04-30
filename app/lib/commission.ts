@@ -11,7 +11,10 @@ type OrderLike = {
   po_line_items?: unknown[];
 };
 
-const ELIGIBLE_STATUSES = new Set(["sent"]);
+// 'fulfilled' counts too — it means the order was sent AND delivered.
+// We use sent_at (not fulfilled_at) for period bucketing so timing is correct.
+// Only 'draft' and 'cancelled' are ineligible.
+const ELIGIBLE_STATUSES = new Set(["sent", "fulfilled"]);
 
 export function isCommissionEligible(status?: string | null): boolean {
   return ELIGIBLE_STATUSES.has((status || "").toLowerCase());
