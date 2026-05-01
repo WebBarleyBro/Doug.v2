@@ -357,9 +357,9 @@ function MarketDetailContent() {
     try {
       const targets = await getZoneTargetAccounts(zoneId)
       const targetIds = targets.map(ta => ta.account_id).filter(Boolean)
-      let placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
-      let lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
-      let ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
+      const placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
+      const lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
+      const ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
       if (clientSlug && targetIds.length > 0) {
         const sb = getSupabase()
         const [plRes, vRes, orRes] = await Promise.all([
@@ -407,9 +407,9 @@ function MarketDetailContent() {
   async function reloadZoneTargets(zoneId: string, clientSlug: string) {
     const targets = await getZoneTargetAccounts(zoneId)
     const targetIds = targets.map(ta => ta.account_id).filter(Boolean)
-    let placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
-    let lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
-    let ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
+    const placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
+    const lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
+    const ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
     if (clientSlug && targetIds.length > 0) {
       const sb = getSupabase()
       const [plRes, vRes, orRes] = await Promise.all([

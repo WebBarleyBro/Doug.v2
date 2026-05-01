@@ -6,7 +6,7 @@ import LayoutShell from '../layout-shell'
 import { getVisits } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
 import { t, card, badge } from '../lib/theme'
-import { formatShortDateMT, nDaysAgoMT, todayMT } from '../lib/formatters'
+import { nDaysAgoMT, todayMT } from '../lib/formatters'
 import type { UserProfile } from '../lib/types'
 
 export default function VisitsPage() {

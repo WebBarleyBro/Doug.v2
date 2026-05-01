@@ -8,9 +8,8 @@ import { formatShortDateMT, startOfMonthMT, formatCurrency } from '../../lib/for
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   MapPin, Package, LogOut, ChevronDown, ChevronUp, CheckCircle, Send,
-  Building2, User, ExternalLink, Upload, FileDown, Calendar, Star,
+  Building2, User, ExternalLink, Upload, FileDown, Calendar,
   AlertCircle, Folder, Download, Shield, TrendingUp, BarChart2,
-  Plus, X, Check,
 } from 'lucide-react'
 import type { ClientFile, ClientFileType } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
@@ -64,7 +63,7 @@ export default function ClientPortalPage() {
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
   const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
   const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
-  const [uploadingAsset, setUploadingAsset] = useState(false)
+  const [_uploadingAsset, setUploadingAsset] = useState(false)
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
   const [clientFiles, setClientFiles] = useState<ClientFile[]>([])
@@ -234,20 +233,20 @@ export default function ClientPortalPage() {
     </div>
   )
 
-  const { client, visits, placements, orders, events, campaigns, registrations, visitTrend } = data
+  const { client, visits, placements, orders, campaigns, registrations } = data
   const accent = client?.color || t.gold
   const logoUrl = client ? clientLogoUrl(client) : null
   const isDistributorClient = client?.order_type === 'distributor'
   const monthStart = startOfMonthMT()
-  const monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
+  const _monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
   const activePlacements = placements.filter((p: any) => !p.lost_at)
   const nonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
   const actionVisits = visits.filter((v: any) => ACTION_STATUSES.includes(v.status))
   const winVisits = visits.filter((v: any) => WIN_STATUSES.includes(v.status))
   const generalVisits = visits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))
-  const filteredVisits = visitFilter === 'action' ? actionVisits : visitFilter === 'wins' ? winVisits : visitFilter === 'general' ? generalVisits : visits
-  const warmAccountCount = new Set(actionVisits.map((v: any) => v.account_id).filter(Boolean)).size
-  const warmAccounts = Object.values(
+  const _filteredVisits = visitFilter === 'action' ? actionVisits : visitFilter === 'wins' ? winVisits : visitFilter === 'general' ? generalVisits : visits
+  const _warmAccountCount = new Set(actionVisits.map((v: any) => v.account_id).filter(Boolean)).size
+  const _warmAccounts = Object.values(
     actionVisits.reduce((acc: any, v: any) => {
       if (!v.account_id || acc[v.account_id]) return acc
       acc[v.account_id] = v; return acc
@@ -354,6 +353,7 @@ export default function ClientPortalPage() {
       <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: `0 ${isMobile ? '16px' : '32px'}`, height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt={client?.name} style={{ height: '32px', width: 'auto', maxWidth: '100px', objectFit: 'contain' }} />
           ) : (
             <div style={{ width: 32, height: 32, borderRadius: '7px', background: `linear-gradient(135deg, ${accent} 0%, ${accent}99 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>
@@ -1231,7 +1231,12 @@ export default function ClientPortalPage() {
                   const ftLabels: Record<string, string> = { logo: 'Logo', compliance: 'Compliance', photo: 'Photo', brand_asset: 'Brand Asset', other: 'File' }
                   return (
                     <div key={f.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
-                      {isImage && <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.elevated }}><img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></div>}
+                      {isImage && (
+                        <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.elevated }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        </div>
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
