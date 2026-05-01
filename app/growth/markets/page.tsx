@@ -48,9 +48,13 @@ function MarketsContent() {
   }
 
   const filtered = markets.filter(m => {
-    if (filterClient && m.client_slug !== filterClient) return false
     if (filterPriority && !m.priority) return false
     if (filterSearch && !m.name.toLowerCase().includes(filterSearch.toLowerCase())) return false
+    if (filterClient) {
+      // Filter to territories that have zones for this client
+      const mz = zones.filter(z => z.market_id === m.id && z.client_slug === filterClient)
+      if (mz.length === 0) return false
+    }
     return true
   })
 
@@ -64,13 +68,6 @@ function MarketsContent() {
     if (scores.length === 0) return null
     return scores.reduce((a, b) => a + b, 0) / scores.length
   }
-
-  // Group filtered markets by client, preserving client order
-  const clientGroups = clients
-    .map(c => ({ client: c, markets: filtered.filter(m => m.client_slug === c.slug) }))
-    .filter(g => g.markets.length > 0)
-
-  const showClientHeaders = !filterClient && clientGroups.length > 1
 
   return (
     <LayoutShell>
@@ -110,7 +107,7 @@ function MarketsContent() {
           />
           <select value={filterClient} onChange={e => setFilter('client', e.target.value)}
             style={{ padding: '6px 10px', borderRadius: '7px', fontSize: '12px', border: `1px solid ${t.border.default}`, backgroundColor: t.bg.input, color: t.text.secondary, outline: 'none' }}>
-            <option value="">All Clients</option>
+            <option value="">All Brands</option>
             {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </select>
           <button onClick={() => setFilter('priority', !filterPriority)} style={{
@@ -145,100 +142,89 @@ function MarketsContent() {
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-            {clientGroups.map(({ client, markets: clientMarkets }) => {
-              const clientColor = client.color || t.gold
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+            {filtered.map(m => {
+              const mzones = marketZones(m.id)
+              const health = avgHealth(m.id)
+              const geo = [
+                ...(m.cities?.slice(0, 2) ?? []),
+                m.counties?.length ? `${m.counties.length} count${m.counties.length !== 1 ? 'ies' : 'y'}` : '',
+                ...(m.states ?? []),
+              ].filter(Boolean).join(', ')
+              // Distinct clients in this territory
+              const zoneClients = [...new Set(mzones.map(z => z.client_slug).filter(Boolean))] as string[]
+
               return (
-                <div key={client.slug}>
-                  {/* Client section header */}
-                  {showClientHeaders && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
-                      <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none' }}>
-                        <span style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>{client.name}</span>
-                      </Link>
-                      <span style={{ fontSize: '12px', color: t.text.muted }}>{clientMarkets.length} territor{clientMarkets.length !== 1 ? 'ies' : 'y'}</span>
-                      <div style={{ flex: 1, height: '1px', backgroundColor: t.border.subtle }} />
-                      <Link href={`/growth/markets/new?client=${client.slug}`} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                        fontSize: '11px', fontWeight: '600', color: t.text.muted,
-                        textDecoration: 'none', padding: '3px 8px', borderRadius: '5px',
-                        border: `1px solid ${t.border.subtle}`,
-                      }}>
-                        <Plus size={10} /> New Territory
-                      </Link>
+                <Link key={m.id} href={`/growth/markets/${m.id}`} style={{ textDecoration: 'none' }}>
+                  <div style={{
+                    ...card, padding: '16px 18px', cursor: 'pointer',
+                    borderLeft: `3px solid ${t.gold}`,
+                    transition: 'border-color 150ms ease',
+                  }}>
+                    {/* Client dots */}
+                    {zoneClients.length > 0 && (
+                      <div style={{ display: 'flex', gap: '5px', marginBottom: '6px' }}>
+                        {zoneClients.map(slug => {
+                          const cl = clients.find(c => c.slug === slug)
+                          return cl ? (
+                            <span key={slug} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: cl.color || t.gold, fontWeight: '700' }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: cl.color || t.gold, display: 'inline-block' }} />
+                              {cl.name}
+                            </span>
+                          ) : null
+                        })}
+                      </div>
+                    )}
+                    {/* Header row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                          {m.priority && <Star size={12} color={t.gold} fill={t.gold} />}
+                          <span style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>{m.name}</span>
+                        </div>
+                        {geo ? (
+                          <span style={{ fontSize: '11px', color: t.text.muted }}>{geo}</span>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: t.border.hover, fontStyle: 'italic' }}>No location set</span>
+                        )}
+                      </div>
+                      {health !== null && (
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
+                          <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(health), lineHeight: 1 }}>
+                            {Math.round(health)}
+                          </div>
+                          <div style={{ fontSize: '9px', color: t.text.muted, fontWeight: '600' }}>AVG HEALTH</div>
+                        </div>
+                      )}
                     </div>
-                  )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
-                    {clientMarkets.map(m => {
-                      const mzones = marketZones(m.id)
-                      const health = avgHealth(m.id)
-                      const geo = [
-                        ...(m.cities?.slice(0, 2) ?? []),
-                        m.counties?.length ? `${m.counties.length} count${m.counties.length !== 1 ? 'ies' : 'y'}` : '',
-                        ...(m.states ?? []),
-                      ].filter(Boolean).join(', ')
-
-                      return (
-                        <Link key={m.id} href={`/growth/markets/${m.id}`} style={{ textDecoration: 'none' }}>
-                          <div style={{
-                            ...card, padding: '16px 18px', cursor: 'pointer',
-                            borderLeft: `3px solid ${clientColor}`,
-                            transition: 'border-color 150ms ease',
-                          }}>
-                            {/* Header row */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                                  {m.priority && <Star size={12} color={t.gold} fill={t.gold} />}
-                                  <span style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>{m.name}</span>
-                                </div>
-                                {geo ? (
-                                  <span style={{ fontSize: '11px', color: t.text.muted }}>{geo}</span>
-                                ) : (
-                                  <span style={{ fontSize: '11px', color: t.border.hover, fontStyle: 'italic' }}>No location set</span>
-                                )}
-                              </div>
-                              {health !== null && (
-                                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
-                                  <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(health), lineHeight: 1 }}>
-                                    {Math.round(health)}
-                                  </div>
-                                  <div style={{ fontSize: '9px', color: t.text.muted, fontWeight: '600' }}>AVG HEALTH</div>
-                                </div>
+                    {/* Focus area chips */}
+                    {mzones.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
+                        {mzones.map(z => {
+                          const zSnap = snapshots[z.id]
+                          const hs = zSnap?.health_score ?? null
+                          const zClient = clients.find(c => c.slug === z.client_slug)
+                          return (
+                            <div key={z.id} style={{
+                              display: 'flex', alignItems: 'center', gap: '5px',
+                              padding: '3px 8px', borderRadius: '6px', fontSize: '11px',
+                              backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
+                            }}>
+                              {zClient && <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: zClient.color || t.gold, display: 'inline-block' }} />}
+                              <span style={{ color: t.text.secondary }}>{channelLabel(z.channel)}</span>
+                              {hs !== null && (
+                                <span style={{ color: healthColor(hs), fontWeight: '700' }}>{Math.round(hs)}</span>
                               )}
                             </div>
-
-                            {/* Focus area chips */}
-                            {mzones.length > 0 ? (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
-                                {mzones.map(z => {
-                                  const zSnap = snapshots[z.id]
-                                  const hs = zSnap?.health_score ?? null
-                                  return (
-                                    <div key={z.id} style={{
-                                      display: 'flex', alignItems: 'center', gap: '5px',
-                                      padding: '3px 8px', borderRadius: '6px', fontSize: '11px',
-                                      backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
-                                    }}>
-                                      <span style={{ color: t.text.secondary }}>{channelLabel(z.channel)}</span>
-                                      {hs !== null && (
-                                        <span style={{ color: healthColor(hs), fontWeight: '700' }}>{Math.round(hs)}</span>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginTop: '8px' }}>No focus areas yet</div>
-                            )}
-                          </div>
-                        </Link>
-                      )
-                    })}
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginTop: '8px' }}>No focus areas yet</div>
+                    )}
                   </div>
-                </div>
+                </Link>
               )
             })}
           </div>

@@ -1,12 +1,10 @@
 'use client'
 import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { ChevronLeft, X, Plus, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronLeft, X, Search } from 'lucide-react'
 import LayoutShell from '../../../layout-shell'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
-import { getClients } from '../../../lib/data'
 import { createMarket } from '../../../lib/concentric/data'
-import type { Client } from '../../../lib/types'
 
 function TagInput({
   label, values, onChange,
@@ -55,10 +53,7 @@ function TagInput({
 
 function NewMarketContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const defaultClient = searchParams.get('client') ?? ''
 
-  const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -68,7 +63,6 @@ function NewMarketContent() {
 
   const [form, setForm] = useState({
     name: '',
-    client_slug: defaultClient,
     priority: false,
     cities: [] as string[],
     counties: [] as string[],
@@ -78,8 +72,6 @@ function NewMarketContent() {
     default_retention_threshold: 65,
     notes: '',
   })
-
-  useEffect(() => { getClients().then(setClients).catch(() => {}) }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -141,13 +133,11 @@ function NewMarketContent() {
     e.preventDefault()
     setError('')
     if (!form.name.trim()) { setError('Name is required.'); return }
-    if (!form.client_slug) { setError('Client is required.'); return }
 
     setSaving(true)
     try {
       const market = await createMarket({
         name: form.name.trim(),
-        client_slug: form.client_slug,
         priority: form.priority,
         cities: form.cities,
         counties: form.counties,
@@ -180,44 +170,12 @@ function NewMarketContent() {
 
         <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>New Territory</h1>
         <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '24px' }}>
-          A territory is a geographic area owned by one client. Focus areas live inside it.
+          A territory is a geographic area. Any client brand can have focus areas within it.
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-          {/* Step 1: Pick a client */}
-          <div>
-            <label style={{ ...labelStyle, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-              Client Brand *
-            </label>
-            <p style={{ fontSize: '11px', color: t.text.muted, marginBottom: '10px', marginTop: '2px' }}>
-              This territory will belong to this client permanently.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }}>
-              {clients.map(c => {
-                const selected = form.client_slug === c.slug
-                const color = (c as any).color || t.gold
-                return (
-                  <button key={c.slug} type="button" onClick={() => setForm(f => ({ ...f, client_slug: c.slug }))}
-                    style={{
-                      padding: '12px 14px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
-                      border: `2px solid ${selected ? color : t.border.default}`,
-                      backgroundColor: selected ? color + '15' : t.bg.input,
-                      transition: 'all 120ms ease',
-                    }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                      <span style={{ fontSize: '13px', fontWeight: selected ? '700' : '500', color: selected ? color : t.text.primary }}>
-                        {c.name}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Step 2: Location search */}
+          {/* Location search */}
           <div>
             <label style={{ ...labelStyle, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
               Location

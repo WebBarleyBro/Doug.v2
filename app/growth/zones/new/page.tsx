@@ -37,6 +37,7 @@ function NewZoneContent() {
 
   const [form, setForm] = useState({
     market_id: defaultMarket,
+    client_slug: defaultClient,
     name: channelDefaultName('on_premise'),
     channel: 'on_premise',
     velocity_target: '',
@@ -50,27 +51,15 @@ function NewZoneContent() {
     Promise.all([getMarkets(), getClients()]).then(([allMarkets, allClients]) => {
       setMarkets(allMarkets)
       setClients(allClients)
-      if (!defaultMarket && defaultClient) {
-        const clientMarkets = allMarkets.filter(m => m.client_slug === defaultClient)
-        if (clientMarkets.length === 1) {
-          setForm(f => ({ ...f, market_id: clientMarkets[0].id }))
-        }
-      }
     }).catch(() => {})
   }, [defaultMarket, defaultClient])
 
   function handleClientSelect(slug: string) {
     setSelectedClient(slug)
-    // Clear territory selection if it doesn't belong to the new client
-    const currentMarket = markets.find(m => m.id === form.market_id)
-    if (currentMarket && currentMarket.client_slug !== slug) {
-      setForm(f => ({ ...f, market_id: '' }))
-    }
+    setForm(f => ({ ...f, client_slug: slug }))
   }
 
-  const visibleMarkets = selectedClient
-    ? markets.filter(m => m.client_slug === selectedClient)
-    : []
+  const visibleMarkets = markets
 
   const selectedMarket = markets.find(m => m.id === form.market_id)
 
@@ -90,6 +79,7 @@ function NewZoneContent() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (!form.client_slug) { setError('Select a client brand.'); return }
     if (!form.market_id) { setError('Select a territory.'); return }
     if (!form.name.trim()) { setError('Name is required.'); return }
     if (!form.velocity_target || Number(form.velocity_target) <= 0) {
@@ -100,6 +90,7 @@ function NewZoneContent() {
     try {
       const zone = await createZone({
         market_id: form.market_id,
+        client_slug: form.client_slug,
         name: form.name.trim(),
         channel: form.channel,
         velocity_target: Number(form.velocity_target),
@@ -168,13 +159,13 @@ function NewZoneContent() {
           <div>
             <label style={labelStyle}>Territory *</label>
             <select value={form.market_id} onChange={e => setForm(f => ({ ...f, market_id: e.target.value }))} style={selectStyle} required>
-              <option value="">{selectedClient ? 'Select territory…' : 'Select a client first…'}</option>
+              <option value="">Select territory…</option>
               {visibleMarkets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            {visibleMarkets.length === 0 && selectedClient && markets.length > 0 && (
+            {markets.length === 0 && (
               <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>
-                No territories for this client yet.{' '}
-                <Link href={`/growth/markets/new`} style={{ color: t.gold }}>Create one first →</Link>
+                No territories yet.{' '}
+                <Link href="/growth/markets/new" style={{ color: t.gold }}>Create one first →</Link>
               </div>
             )}
           </div>

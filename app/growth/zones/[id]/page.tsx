@@ -72,8 +72,9 @@ export default function ZoneDetailPage() {
         getZone(id), getLatestSnapshot(id), getZoneSnapshots(id, 30),
         getZoneTargetAccounts(id), getAccounts({ limit: 500 }), getClients(),
       ])
-      if (z?.markets?.client_slug) {
-        getProducts(z.markets.client_slug).then(prods => setProducts(prods.filter(p => p.active !== false))).catch(() => {})
+      const clientSlug = z?.client_slug ?? z?.markets?.client_slug ?? null
+      if (clientSlug) {
+        getProducts(clientSlug).then(prods => setProducts(prods.filter(p => p.active !== false))).catch(() => {})
       }
       if (!z) { router.push('/growth'); return }
       setZone(z)
@@ -81,7 +82,7 @@ export default function ZoneDetailPage() {
       setSparkData(snaps)
       setTargetAccounts(targets)
       setAllAccounts(accounts)
-      setClient(clients.find(c => c.slug === z.markets?.client_slug) ?? null)
+      setClient(clients.find(c => c.slug === clientSlug) ?? null)
       setEditForm({
         name: z.name, channel: z.channel,
         velocity_target: z.velocity_target,
@@ -92,7 +93,6 @@ export default function ZoneDetailPage() {
       })
 
       // Enrich target accounts with client-specific placements, visits, orders
-      const clientSlug = z.markets?.client_slug
       const targetIds = targets.map(t => t.account_id).filter(Boolean)
       if (clientSlug && targetIds.length > 0) {
         const sb = getSupabase()

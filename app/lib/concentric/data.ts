@@ -46,7 +46,7 @@ export async function getMarket(id: string): Promise<(Market & { zones: Zone[] }
 
 export async function createMarket(payload: {
   name: string
-  client_slug: string
+  client_slug?: string
   priority?: boolean
   cities?: string[]
   counties?: string[]
@@ -84,6 +84,7 @@ export async function deleteMarket(id: string): Promise<void> {
 
 export function getZones(filters?: {
   marketId?: string
+  clientSlug?: string
   posture?: string
   phase?: number
 }): Promise<(Zone & { markets: Market })[]> {
@@ -91,8 +92,9 @@ export function getZones(filters?: {
   return cached(key, 2 * 60_000, async () => {
     const sb = getSupabase()
     let q = sb.from('zones').select('*, markets(*)').order('phase').order('name')
-    if (filters?.marketId) q = q.eq('market_id', filters.marketId)
-    if (filters?.posture)  q = q.eq('posture', filters.posture)
+    if (filters?.marketId)  q = q.eq('market_id', filters.marketId)
+    if (filters?.clientSlug) q = q.eq('client_slug', filters.clientSlug)
+    if (filters?.posture)   q = q.eq('posture', filters.posture)
     if (filters?.phase !== undefined) q = q.eq('phase', filters.phase)
     const { data, error } = await q
     if (error) throw error
@@ -125,6 +127,7 @@ export async function getZone(id: string): Promise<(Zone & { markets: Market }) 
 
 export async function createZone(payload: {
   market_id: string
+  client_slug: string
   name: string
   channel: string
   phase?: number

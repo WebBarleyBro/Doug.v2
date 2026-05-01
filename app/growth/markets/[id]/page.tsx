@@ -53,6 +53,7 @@ export default function MarketDetailPage() {
   const [saving, setSaving] = useState(false)
   const [deleteMarketModal, setDeleteMarketModal] = useState(false)
   const [deleteZoneId, setDeleteZoneId] = useState<string | null>(null)
+  const [activeClientTab, setActiveClientTab] = useState<string>('')
 
   const editGeoInputRef = useRef<HTMLInputElement>(null)
   const editAcRef = useRef<any>(null)
@@ -171,8 +172,6 @@ export default function MarketDetailPage() {
   if (loading) return <LayoutShell><div style={{ padding: '48px', color: t.text.muted, textAlign: 'center' }}>Loading…</div></LayoutShell>
   if (!market) return null
 
-  const client = clients.find(c => c.slug === market.client_slug)
-  const clientColor = client?.color || t.gold
   const geoParts = [
     ...(market.cities ?? []),
     ...(market.counties?.map(c => `${c} County`) ?? []),
@@ -181,6 +180,13 @@ export default function MarketDetailPage() {
   ].filter(Boolean)
   const geoSummary = geoParts.slice(0, 4).join(', ') + (geoParts.length > 4 ? ` +${geoParts.length - 4} more` : '')
 
+  // Focus area client tabs
+  const zoneSlugs = [...new Set((market.zones || []).map(z => (z as any).client_slug as string | null).filter(Boolean))] as string[]
+  const territoryClients = clients.filter(c => zoneSlugs.includes(c.slug))
+  const filteredZones = activeClientTab
+    ? (market.zones || []).filter(z => (z as any).client_slug === activeClientTab)
+    : (market.zones || [])
+
   return (
     <LayoutShell>
       <div style={{ padding: '0' }}>
@@ -188,10 +194,6 @@ export default function MarketDetailPage() {
         {/* Breadcrumb */}
         <div style={{ padding: '10px 40px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: t.text.muted }}>
           <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
-          {client && <>
-            <span>›</span>
-            <Link href={`/growth?client=${client.slug}`} style={{ color: clientColor, textDecoration: 'none', fontWeight: '600' }}>{client.name}</Link>
-          </>}
           <span>›</span>
           <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
           <span>›</span>
@@ -203,21 +205,11 @@ export default function MarketDetailPage() {
           {!editing ? (
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-              marginBottom: '24px', paddingBottom: '20px',
-              borderBottom: `1px solid ${t.border.subtle}`, borderLeft: `4px solid ${clientColor}`,
-              paddingLeft: '16px', backgroundColor: clientColor + '06', borderRadius: '0 8px 8px 0', padding: '16px 16px 16px 16px',
+              marginBottom: '24px', padding: '16px',
+              borderBottom: `1px solid ${t.border.subtle}`, borderLeft: `4px solid ${t.gold}`,
+              backgroundColor: t.gold + '06', borderRadius: '0 8px 8px 0',
             }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-                  {client && (
-                    <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
-                      <span style={{ fontSize: '11px', fontWeight: '700', color: clientColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{client.name}</span>
-                    </Link>
-                  )}
-                  <span style={{ fontSize: '11px', color: t.border.hover }}>›</span>
-                  <span style={{ fontSize: '11px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Territory</span>
-                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   {market.priority && <Star size={16} color={t.gold} fill={t.gold} />}
                   <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', margin: 0 }}>{market.name}</h1>
@@ -308,11 +300,39 @@ export default function MarketDetailPage() {
                 </Link>
               </div>
 
+              {/* Client toggle tabs — only shown when 2+ clients have zones here */}
+              {territoryClients.length > 1 && (
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <button onClick={() => setActiveClientTab('')} style={{
+                    padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                    border: `1px solid ${!activeClientTab ? t.gold : t.border.default}`,
+                    backgroundColor: !activeClientTab ? t.goldDim : 'transparent',
+                    color: !activeClientTab ? t.gold : t.text.muted,
+                  }}>All</button>
+                  {territoryClients.map(c => {
+                    const color = c.color || t.gold
+                    const active = activeClientTab === c.slug
+                    return (
+                      <button key={c.slug} onClick={() => setActiveClientTab(active ? '' : c.slug)} style={{
+                        padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                        border: `1px solid ${active ? color : t.border.default}`,
+                        backgroundColor: active ? color + '18' : 'transparent',
+                        color: active ? color : t.text.muted,
+                        display: 'flex', alignItems: 'center', gap: '5px',
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color, display: 'inline-block' }} />
+                        {c.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
               {(market.zones || []).length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
                   <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
                   <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
-                    A focus area tracks on-premise or off-premise performance within this territory.
+                    A focus area tracks one brand's on-premise or off-premise performance within this territory.
                   </div>
                   <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
                     <Plus size={14} /> Create First Focus Area
@@ -320,13 +340,22 @@ export default function MarketDetailPage() {
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                  {(market.zones || []).map(z => {
+                  {filteredZones.map(z => {
                     const snap = snapshots[z.id]
                     const hs = snap?.health_score ?? null
+                    const zClientSlug = (z as any).client_slug
+                    const zClient = clients.find(c => c.slug === zClientSlug)
+                    const zColor = zClient?.color || t.gold
                     return (
                       <div key={z.id} style={{ position: 'relative' }}>
                         <Link href={`/growth/zones/${z.id}`} style={{ textDecoration: 'none', display: 'block' }}>
                           <div style={{ ...card, padding: '16px 18px', borderTop: `2px solid ${healthColor(hs)}`, paddingRight: '34px' }}>
+                            {zClient && !activeClientTab && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
+                                <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: zColor }} />
+                                <span style={{ fontSize: '10px', color: zColor, fontWeight: '700' }}>{zClient.name}</span>
+                              </div>
+                            )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                               <div>
                                 <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>{z.name}</div>

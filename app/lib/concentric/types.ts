@@ -7,7 +7,7 @@ export type AccountZoneStatus = 'active' | 'lapsed' | 'dormant' | 'untouched'
 export interface Market {
   id: string
   name: string
-  client_slug: string
+  client_slug?: string | null
   priority: boolean
   cities: string[]
   counties: string[]
@@ -23,6 +23,7 @@ export interface Market {
 export interface Zone {
   id: string
   market_id: string
+  client_slug: string | null
   name: string
   channel: ZoneChannel
   phase: number

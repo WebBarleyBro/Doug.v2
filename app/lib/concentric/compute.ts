@@ -55,7 +55,8 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
 
   const zone = zoneRaw as Zone & { markets: Market }
   const market = zone.markets
-  const clientSlug = market.client_slug
+  const clientSlug = zone.client_slug ?? market.client_slug ?? null
+  if (!clientSlug) throw new Error(`Zone ${zoneId} has no client_slug`)
 
   const effectiveReachThreshold = zone.reach_threshold ?? market.default_reach_threshold
   const effectiveRetentionThreshold = zone.retention_threshold ?? market.default_retention_threshold
@@ -268,11 +269,11 @@ export async function computeSupplyHeadroom(clientSlug: string): Promise<SupplyH
 
   const available = (settings as any)?.available_cases_90d ?? null
 
-  // Get all active/maintaining zones for this client (via their markets)
+  // Get all active/maintaining zones for this client (using zone's own client_slug)
   const { data: zonesRaw } = await sb
     .from('zones')
-    .select('id, projected_monthly_cases, posture, markets!inner(client_slug)')
-    .eq('markets.client_slug', clientSlug)
+    .select('id, projected_monthly_cases, posture')
+    .eq('client_slug', clientSlug)
     .in('posture', ['active', 'maintaining'])
 
   const zones = zonesRaw || []
