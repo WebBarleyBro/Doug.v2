@@ -646,60 +646,99 @@ export default function AccountDetailPage() {
           </div>
         )}
 
-        {tab === 'growth' && (
-          <div>
-            <div style={{ marginBottom: '14px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Zone Memberships</h3>
-              <p style={{ fontSize: '12px', color: t.text.muted }}>Concentric Growth zones this account belongs to</p>
-            </div>
-            {accountZones.length === 0 ? (
-              <div style={{
-                textAlign: 'center', padding: '48px 24px',
-                border: `2px dashed ${t.border.default}`, borderRadius: '12px',
-              }}>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.secondary, marginBottom: '6px' }}>
-                  Not in any Target Set
-                </div>
-                <div style={{ fontSize: '12px', color: t.text.muted }}>
-                  Add this account to a zone from the <Link href="/growth/markets" style={{ color: t.gold, textDecoration: 'none' }}>Markets</Link> section.
-                </div>
+        {tab === 'growth' && (() => {
+          // Collect every client slug with any activity at this account
+          const slugSet = new Set<string>([
+            ...accountZones.map(az => az.zones?.markets?.client_slug).filter((s): s is string => !!s),
+            ...placements.filter(p => !p.lost_at).map(p => p.client_slug).filter(Boolean),
+            ...orders.map(o => o.client_slug).filter(Boolean),
+            ...visits.map(v => v.client_slug).filter(Boolean),
+          ])
+
+          if (slugSet.size === 0) {
+            return (
+              <div style={{ textAlign: 'center', padding: '48px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.secondary, marginBottom: '6px' }}>No growth activity yet</div>
+                <div style={{ fontSize: '12px', color: t.text.muted }}>Log a visit, add a placement, or add this account to a focus area.</div>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {accountZones.map(az => {
-                  const zone = az.zones
-                  const market = zone?.markets
-                  if (!zone || !market) return null
-                  return (
-                    <Link key={az.id} href={`/growth/zones/${zone.id}`} style={{ textDecoration: 'none' }}>
-                      <div style={{
-                        ...card, padding: '14px 18px',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                            <span style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary }}>{zone.name}</span>
-                            <PostureBadge posture={zone.posture} size="xs" />
+            )
+          }
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {Array.from(slugSet).map(slug => {
+                const client = clients.find(c => c.slug === slug)
+                const clientColor = (client as any)?.color || t.gold
+                const cPlacements = placements.filter(p => p.client_slug === slug && !p.lost_at)
+                const cOrders = orders.filter(o => o.client_slug === slug).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                const cZones = accountZones.filter(az => az.zones?.markets?.client_slug === slug)
+                const lastOrder = cOrders[0]
+
+                return (
+                  <div key={slug} style={{ ...card, padding: '16px 20px', borderLeft: `3px solid ${clientColor}` }}>
+                    {/* Client header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                      <div style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: clientColor }} />
+                      <span style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary }}>{client?.name || slug}</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                      {/* Placements */}
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Placements</div>
+                        {cPlacements.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            {cPlacements.slice(0, 3).map((p: any) => (
+                              <div key={p.id} style={{ fontSize: '12px', color: t.text.primary }}>
+                                <span style={{ fontWeight: '600' }}>{p.product_name || 'Product'}</span>
+                                <span style={{ fontSize: '10px', color: t.text.muted, marginLeft: '5px' }}>{p.status?.replace('_', ' ')}</span>
+                              </div>
+                            ))}
+                            {cPlacements.length > 3 && <div style={{ fontSize: '10px', color: t.text.muted }}>+{cPlacements.length - 3} more</div>}
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: t.text.muted }}>
-                            <span>{market.name}</span>
-                            <span style={{ color: t.border.default }}>·</span>
-                            <span>Phase {zone.phase}</span>
-                            <span style={{ color: t.border.default }}>·</span>
-                            <span>{channelLabel(zone.channel)}</span>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '11px', color: t.text.muted, textAlign: 'right' }}>
-                          Added {new Date(az.added_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                        </div>
+                        ) : (
+                          <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>None yet</div>
+                        )}
                       </div>
-                    </Link>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+
+                      {/* Orders */}
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Orders</div>
+                        {lastOrder ? (
+                          <div>
+                            <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary }}>
+                              {resolveTotal(lastOrder) > 0 ? formatCurrency(resolveTotal(lastOrder)) : lastOrder.status}
+                            </div>
+                            <div style={{ fontSize: '10px', color: t.text.muted }}>
+                              {formatShortDateMT(lastOrder.created_at)} · {lastOrder.status}
+                            </div>
+                            {cOrders.length > 1 && <div style={{ fontSize: '10px', color: t.text.muted }}>{cOrders.length} total</div>}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>None yet</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Focus area links (subtle context, not the main story) */}
+                    {cZones.length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '10px', borderTop: `1px solid ${t.border.subtle}` }}>
+                        <span style={{ fontSize: '10px', color: t.text.muted }}>In target set:</span>
+                        {cZones.map(az => (
+                          <Link key={az.id} href={`/growth/zones/${az.zones?.id}`} style={{ textDecoration: 'none' }}>
+                            <span style={{ fontSize: '10px', color: clientColor, fontWeight: '600' }}>
+                              {az.zones?.markets?.name} → {az.zones?.name}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         <ConfirmModal
           isOpen={!!deleteContactTarget}
