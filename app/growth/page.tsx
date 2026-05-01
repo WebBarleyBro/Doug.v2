@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Settings, AlertTriangle, ChevronRight, MapPin } from 'lucide-react'
 import {
@@ -44,10 +44,7 @@ function TerritoryCard({
 
   const color = healthColor(avgHealth)
 
-  // Single zone → go straight to zone detail. Multiple → territory detail.
-  const href = zones.length === 1
-    ? `/growth/zones/${zones[0].id}`
-    : `/growth/markets/${market.id}`
+  const href = `/growth/markets/${market.id}`
 
   const geoParts = [
     ...(market.cities ?? []),
@@ -141,15 +138,12 @@ function TerritoryCard({
 
 function GrowthDashboardContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [zones, setZones] = useState<ZoneWithMarket[]>([])
   const [markets, setMarkets] = useState<Market[]>([])
   const [snapshots, setSnapshots] = useState<Record<string, ZoneMetricSnapshot>>({})
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
-
-  const filterClient = searchParams.get('client') ?? ''
 
   const load = useCallback(async () => {
     try {
@@ -189,7 +183,6 @@ function GrowthDashboardContent() {
 
   // Client filter tabs filter territories that contain zones for the selected client
   const filteredEntries = marketEntries
-    .filter(e => !filterClient || e.zones.some(z => z.client_slug === filterClient))
     .sort((a, b) => {
       const scoreA = a.zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
       const scoreB = b.zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
@@ -218,9 +211,8 @@ function GrowthDashboardContent() {
     if (hs === null || hs >= 50) return []
     const c = clients.find(cl => cl.slug === z.client_slug)
     const marketId = z.markets?.id
-    const href = marketId
-      ? `/growth/markets/${marketId}?client=${z.client_slug ?? ''}`
-      : `/growth/zones/${z.id}`
+    if (!marketId) return []
+    const href = `/growth/markets/${marketId}?client=${z.client_slug ?? ''}`
     return [{ id: z.id, href, title: `${c?.name ?? z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)}` }]
   })
 
@@ -297,53 +289,23 @@ function GrowthDashboardContent() {
             }}>
               <Settings size={12} /> Manage
             </Link>
-            <Link href="/growth/zones/new" style={{
+            <Link href="/growth/markets/new" style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '8px 18px', borderRadius: '9px', fontSize: '13px', fontWeight: '700',
               backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
             }}>
-              <Plus size={14} /> New Focus Area
+              <Plus size={14} /> New Territory
             </Link>
           </div>
         </div>
-
-        {/* Client filter tabs */}
-        {clientsWithZones.length > 0 && (
-          <div style={{ display: 'flex', borderBottom: `1px solid ${t.border.subtle}`, padding: '0 40px' }}>
-            {[{ slug: '', name: 'All Brands', color: undefined as string | undefined },
-              ...clientsWithZones.map(c => ({ slug: c.slug, name: c.name, color: c.color || t.gold })),
-            ].map(c => {
-              const active = c.slug === '' ? !filterClient : filterClient === c.slug
-              return (
-                <button key={c.slug}
-                  onClick={() => c.slug ? router.push(`/growth?client=${c.slug}`) : router.push('/growth')}
-                  style={{
-                    padding: '10px 18px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
-                    border: 'none', borderBottom: `2px solid ${active ? (c.color || t.gold) : 'transparent'}`,
-                    backgroundColor: 'transparent',
-                    color: active ? (c.color || t.text.primary) : t.text.muted,
-                    transition: 'color 150ms, border-color 150ms',
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    marginBottom: '-1px',
-                  }}>
-                  {c.color && c.slug && <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: c.color, display: 'inline-block' }} />}
-                  {c.name}
-                </button>
-              )
-            })}
-          </div>
-        )}
 
         {/* Content */}
         <div style={{ padding: '24px 40px' }}>
           {marketEntries.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '80px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '14px' }}>
               <div style={{ fontSize: '16px', fontWeight: '800', color: t.text.secondary, marginBottom: '8px' }}>No territories yet</div>
-              <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '440px', margin: '0 auto 8px' }}>
-                Growth tracks sales performance by geography. Start by creating a territory, then add target accounts and track metrics.
-              </div>
-              <div style={{ fontSize: '12px', color: t.border.hover, maxWidth: '440px', margin: '0 auto 24px' }}>
-                Territory → Focus Area → Target Accounts → Metrics
+              <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '440px', margin: '0 auto 24px' }}>
+                Create a territory to start tracking performance by geography. Add brands and accounts to each territory.
               </div>
               <Link href="/growth/markets/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 22px', borderRadius: '8px', fontWeight: '700', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
                 <Plus size={13} /> Create First Territory
@@ -352,15 +314,7 @@ function GrowthDashboardContent() {
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
               {filteredEntries.map(({ market, zones: mZones }) => {
-                // When a brand tab is active, only show that brand's zones and metrics
-                const visibleZones = filterClient
-                  ? mZones.filter(z => z.client_slug === filterClient)
-                  : mZones
-                // Client color for border/ring
-                const activeClient = filterClient ? clients.find(c => c.slug === filterClient) : null
-                const cardColor = activeClient?.color || t.gold
-                // When "All Brands" is active, show which brands have zones in this territory
-                const chips: { name: string; color: string }[] = filterClient ? [] : (() => {
+                const chips: { name: string; color: string }[] = (() => {
                   const slugs = [...new Set(mZones.map(z => z.client_slug).filter(Boolean))] as string[]
                   return slugs.map(s => {
                     const c = clients.find(cl => cl.slug === s)
@@ -371,9 +325,9 @@ function GrowthDashboardContent() {
                   <TerritoryCard
                     key={market.id}
                     market={market}
-                    zones={visibleZones}
+                    zones={mZones}
                     snapshots={snapshots}
-                    clientColor={cardColor}
+                    clientColor={t.gold}
                     clientChips={chips.length > 0 ? chips : undefined}
                   />
                 )
