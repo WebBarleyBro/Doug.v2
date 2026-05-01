@@ -563,6 +563,7 @@ export async function createOrder(order: {
   order_type?: 'direct' | 'distributor'
   distributor_email?: string
   distributor_rep_name?: string
+  discount_amount?: number
 }): Promise<PurchaseOrder> {
   const sb = getSupabase()
   const resolveLineTotal = (li: typeof order.line_items[0]) => {
@@ -571,7 +572,9 @@ export async function createOrder(order: {
     if (cases + bottles > 0) return cases * li.price + bottles * (li.bottle_price || 0)
     return li.quantity * li.price
   }
-  const total = order.line_items.reduce((sum, li) => sum + resolveLineTotal(li), 0)
+  const gross = order.line_items.reduce((sum, li) => sum + resolveLineTotal(li), 0)
+  const discountAmt = order.discount_amount || 0
+  const total = gross - discountAmt
   const commission = total * order.commission_rate
 
   const { data: po, error } = await sb
@@ -588,6 +591,7 @@ export async function createOrder(order: {
       status: 'draft',
       total: total,
       total_amount: total,
+      discount_amount: discountAmt,
       commission_amount: commission,
       follow_up_status: 'not_started',
       notes: order.notes,

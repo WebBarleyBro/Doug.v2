@@ -70,7 +70,7 @@ function NewZoneContent() {
 
   const visibleMarkets = selectedClient
     ? markets.filter(m => m.client_slug === selectedClient)
-    : markets
+    : []
 
   const selectedMarket = markets.find(m => m.id === form.market_id)
 

@@ -2,27 +2,59 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Settings, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Plus, Settings, AlertTriangle, ChevronRight, MapPin } from 'lucide-react'
 import {
-  RadialBarChart, RadialBar, ResponsiveContainer, Tooltip,
+  RadialBarChart, RadialBar, ResponsiveContainer,
 } from 'recharts'
 import LayoutShell from '../layout-shell'
 import { t } from '../lib/theme'
 import { getClients } from '../lib/data'
-import { getAllZones, getLatestSnapshotsByZone } from '../lib/concentric/data'
+import { getMarkets, getAllZones, getLatestSnapshotsByZone } from '../lib/concentric/data'
 import { HealthRing, healthColor, healthBg, channelLabel } from './_components'
 import type { Zone, Market, ZoneMetricSnapshot } from '../lib/concentric/types'
 import type { Client } from '../lib/types'
 
 type ZoneWithMarket = Zone & { markets: Market }
 
-function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetricSnapshot | null }) {
+// ─── Territory Card ───────────────────────────────────────────────────────────
+
+function TerritoryCard({
+  market,
+  zones,
+  snapshots,
+  clientColor,
+}: {
+  market: Market
+  zones: ZoneWithMarket[]
+  snapshots: Record<string, ZoneMetricSnapshot>
+  clientColor: string
+}) {
   const [hovered, setHovered] = useState(false)
-  const hs = snapshot?.health_score ?? null
-  const color = healthColor(hs)
+
+  const validSnaps = zones.map(z => snapshots[z.id]).filter(Boolean) as ZoneMetricSnapshot[]
+  const scores = validSnaps.map(s => s.health_score).filter((h): h is number => h != null)
+  const avgHealth = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+  const totalAccounts = validSnaps.reduce((s, sn) => s + (sn.target_set_size ?? 0), 0)
+  const activeAccounts = validSnaps.reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
+  const avgReach  = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.reach_pct ?? 0), 0) / validSnaps.length : null
+  const avgVelIdx = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.velocity_index ?? 0), 0) / validSnaps.length : null
+  const avgRet    = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.retention_pct ?? 0), 0) / validSnaps.length : null
+
+  const color = healthColor(avgHealth)
+
+  // Single zone → go straight to zone detail. Multiple → territory detail.
+  const href = zones.length === 1
+    ? `/growth/zones/${zones[0].id}`
+    : `/growth/markets/${market.id}`
+
+  const geoParts = [
+    ...(market.cities ?? []),
+    ...(market.counties?.map(c => `${c} County`) ?? []),
+    ...(market.states ?? []),
+  ].slice(0, 3)
 
   return (
-    <Link href={`/growth/zones/${zone.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -37,48 +69,52 @@ function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetr
           boxShadow: hovered ? `0 8px 28px rgba(0,0,0,0.35), 0 0 0 1px ${color}20` : 'none',
         }}
       >
-        {/* Name row + health ring */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-          <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>
-                {zone.name}
-              </span>
+        {/* Name + health */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+          <div style={{ flex: 1, paddingRight: '12px', minWidth: 0 }}>
+            <div style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em', marginBottom: '3px' }}>
+              {market.name}
             </div>
-            <div style={{ fontSize: '10px', color: t.text.muted }}>
-              {zone.markets?.name} · {channelLabel(zone.channel)}
-            </div>
+            {geoParts.length > 0 && (
+              <div style={{ fontSize: '10px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <MapPin size={9} />
+                {geoParts.join(' · ')}
+              </div>
+            )}
+            {zones.length > 1 && (
+              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>
+                {zones.map(z => channelLabel(z.channel)).join(' + ')}
+              </div>
+            )}
           </div>
-          <HealthRing score={hs} size={58} strokeWidth={5} showLabel={false} />
+          <HealthRing score={avgHealth} size={58} strokeWidth={5} showLabel={false} />
         </div>
 
         {/* Metric bars */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '12px' }}>
-          {[
-            { label: 'REACH', v: snapshot?.reach_pct },
-            { label: 'VEL', v: snapshot?.velocity_index },
-            { label: 'RET', v: snapshot?.retention_pct },
-          ].map(m => (
-            <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '8px', color: t.text.muted, fontWeight: '700', width: '22px', letterSpacing: '0.07em', flexShrink: 0 }}>
-                {m.label}
-              </span>
-              <div style={{ flex: 1, height: '3px', borderRadius: '2px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
-                {m.v != null && (
-                  <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, backgroundColor: healthColor(m.v), borderRadius: '2px' }} />
-                )}
+        {validSnaps.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '12px' }}>
+            {[
+              { label: 'REACH', v: avgReach },
+              { label: 'VEL', v: avgVelIdx },
+              { label: 'RET', v: avgRet },
+            ].map(m => (
+              <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '8px', color: t.text.muted, fontWeight: '700', width: '22px', letterSpacing: '0.07em', flexShrink: 0 }}>{m.label}</span>
+                <div style={{ flex: 1, height: '3px', borderRadius: '2px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
+                  {m.v != null && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, backgroundColor: healthColor(m.v), borderRadius: '2px' }} />}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null ? healthColor(m.v) : t.text.muted, width: '30px', textAlign: 'right', flexShrink: 0 }}>
+                  {m.v != null ? `${Math.round(m.v)}%` : '—'}
+                </span>
               </div>
-              <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null ? healthColor(m.v) : t.text.muted, width: '30px', textAlign: 'right', flexShrink: 0 }}>
-                {m.v != null ? `${Math.round(m.v)}%` : '—'}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${t.border.subtle}`, paddingTop: '9px' }}>
           <span style={{ fontSize: '10px', color: t.text.muted }}>
-            {snapshot?.target_set_size ?? 0} targets · {snapshot?.active_accounts ?? 0} active
+            {totalAccounts > 0 ? `${totalAccounts} targets · ${activeAccounts} active` : zones.length === 0 ? 'No focus areas yet' : 'No target accounts yet'}
           </span>
           <ChevronRight size={11} color={t.text.muted} style={{ opacity: hovered ? 1 : 0.4, transition: 'opacity 150ms' }} />
         </div>
@@ -87,10 +123,10 @@ function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetr
   )
 }
 
-function AddZoneCard({ clientSlug }: { clientSlug: string }) {
+function AddTerritoryCard({ clientSlug }: { clientSlug: string }) {
   const [hovered, setHovered] = useState(false)
   return (
-    <Link href={`/growth/zones/new?client=${clientSlug}`} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link href={`/growth/markets/new?client=${clientSlug}`} style={{ textDecoration: 'none', display: 'block' }}>
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -104,19 +140,20 @@ function AddZoneCard({ clientSlug }: { clientSlug: string }) {
         }}
       >
         <Plus size={14} color={hovered ? t.gold : t.text.muted} />
-        <span style={{ fontSize: '12px', fontWeight: '600', color: hovered ? t.gold : t.text.muted }}>
-          Add focus area
-        </span>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: hovered ? t.gold : t.text.muted }}>Add territory</span>
       </div>
     </Link>
   )
 }
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 function GrowthDashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const [zones, setZones] = useState<ZoneWithMarket[]>([])
+  const [markets, setMarkets] = useState<Market[]>([])
   const [snapshots, setSnapshots] = useState<Record<string, ZoneMetricSnapshot>>({})
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,9 +162,12 @@ function GrowthDashboardContent() {
 
   const load = useCallback(async () => {
     try {
-      const [allZones, allClients] = await Promise.all([getAllZones(), getClients()])
+      const [allZones, allMarkets, allClients] = await Promise.all([
+        getAllZones(), getMarkets(), getClients(),
+      ])
       const snaps = await getLatestSnapshotsByZone(allZones.map(z => z.id))
       setZones(allZones)
+      setMarkets(allMarkets)
       setClients(allClients)
       setSnapshots(snaps)
     } catch (e) { console.error('growth.overview', e) }
@@ -136,22 +176,49 @@ function GrowthDashboardContent() {
 
   useEffect(() => { load() }, [load])
 
-  const clientsWithZones = clients.filter(c => zones.some(z => z.markets?.client_slug === c.slug))
-  const visibleClients = filterClient ? clients.filter(c => c.slug === filterClient) : clients
+  // Build a map: marketId → { market, zones[] }
+  const marketEntries = (() => {
+    const zonesByMarket = new Map<string, ZoneWithMarket[]>()
+    for (const z of zones) {
+      if (!z.markets?.id) continue
+      if (!zonesByMarket.has(z.markets.id)) zonesByMarket.set(z.markets.id, [])
+      zonesByMarket.get(z.markets.id)!.push(z)
+    }
+    // Merge with all markets so markets with no zones still appear
+    return markets.map(m => ({
+      market: m,
+      zones: zonesByMarket.get(m.id) ?? [],
+    }))
+  })()
 
-  function zonesForClient(slug: string) {
-    return zones
-      .filter(z => z.markets?.client_slug === slug)
-      .sort((a, b) => (snapshots[b.id]?.health_score ?? -1) - (snapshots[a.id]?.health_score ?? -1))
+  const clientsWithMarkets = clients.filter(c =>
+    marketEntries.some(e => e.market.client_slug === c.slug)
+  )
+
+  const visibleClients = filterClient
+    ? clientsWithMarkets.filter(c => c.slug === filterClient)
+    : clientsWithMarkets
+
+  function territoriesForClient(slug: string) {
+    return marketEntries
+      .filter(e => e.market.client_slug === slug)
+      .sort((a, b) => {
+        // Sort by avg health desc, then name
+        const scoreA = a.zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
+        const scoreB = b.zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
+        const avgA = scoreA.length > 0 ? scoreA.reduce((x, y) => x + y, 0) / scoreA.length : -1
+        const avgB = scoreB.length > 0 ? scoreB.reduce((x, y) => x + y, 0) / scoreB.length : -1
+        return avgB - avgA
+      })
   }
 
+  // Portfolio stats
   const allScores = zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
   const avgHealth = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null
   const totalAccounts = Object.values(snapshots).reduce((s, sn) => s + (sn.target_set_size ?? 0), 0)
   const totalActive = Object.values(snapshots).reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
 
-  // Radial bar data: one bar per client showing their avg health
-  const clientRadialData = clientsWithZones.map(c => {
+  const clientRadialData = clientsWithMarkets.map(c => {
     const cZones = zones.filter(z => z.markets?.client_slug === c.slug)
     const scores = cZones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
     const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
@@ -160,13 +227,10 @@ function GrowthDashboardContent() {
 
   const attentionItems = zones.flatMap(z => {
     const snap = snapshots[z.id]
-    const hs = snap?.health_score ?? null
-    // Only flag zones that have actual data — skip brand-new zones
     if (!snap || (snap.target_set_size ?? 0) === 0) return []
-    const issues: string[] = []
-    if (hs !== null && hs < 50) issues.push(`Health ${Math.round(hs)}`)
-    if (issues.length === 0) return []
-    return [{ id: z.id, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: issues.join(' · ') }]
+    const hs = snap.health_score ?? null
+    if (hs === null || hs >= 50) return []
+    return [{ id: z.id, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)}` }]
   })
 
   if (loading) return (
@@ -192,21 +256,16 @@ function GrowthDashboardContent() {
             <HealthRing score={avgHealth} size={72} strokeWidth={6} />
             <div>
               <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>Portfolio Health</div>
-              <div style={{ fontSize: '12px', color: t.text.muted }}>{zones.length} focus area{zones.length !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: '12px', color: t.text.muted }}>{marketEntries.length} territor{marketEntries.length !== 1 ? 'ies' : 'y'}</div>
             </div>
           </div>
 
-          {/* Client radial bars (only when 2+ clients with zones) */}
+          {/* Client radial bars */}
           {clientRadialData.length >= 2 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingRight: '28px', borderRight: `1px solid ${t.border.subtle}`, marginRight: '28px' }}>
               <div style={{ width: 100, height: 72 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart
-                    innerRadius={14} outerRadius={48}
-                    data={clientRadialData}
-                    startAngle={90} endAngle={-270}
-                    barSize={7}
-                  >
+                  <RadialBarChart innerRadius={14} outerRadius={48} data={clientRadialData} startAngle={90} endAngle={-270} barSize={7}>
                     <RadialBar dataKey="value" background={{ fill: 'rgba(255,255,255,0.04)' }} cornerRadius={4} />
                   </RadialBarChart>
                 </ResponsiveContainer>
@@ -226,9 +285,9 @@ function GrowthDashboardContent() {
           {/* Stats */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flex: 1 }}>
             {[
-              { label: 'Focus Areas', val: zones.length },
-              { label: 'Accounts', val: totalAccounts },
-              { label: 'Active Accts', val: totalActive },
+              { label: 'Territories', val: marketEntries.length },
+              { label: 'Accounts',    val: totalAccounts },
+              { label: 'Active',      val: totalActive },
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>{s.val}</div>
@@ -245,23 +304,23 @@ function GrowthDashboardContent() {
               border: `1px solid ${t.border.default}`, backgroundColor: 'transparent',
               color: t.text.muted, textDecoration: 'none',
             }}>
-              <Settings size={12} /> Territories
+              <Settings size={12} /> Manage
             </Link>
-            <Link href="/growth/zones/new" style={{
+            <Link href="/growth/markets/new" style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '8px 18px', borderRadius: '9px', fontSize: '13px', fontWeight: '700',
               backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
             }}>
-              <Plus size={14} /> New Focus Area
+              <Plus size={14} /> New Territory
             </Link>
           </div>
         </div>
 
         {/* Client filter tabs */}
-        {clientsWithZones.length > 1 && (
+        {clientsWithMarkets.length > 1 && (
           <div style={{ display: 'flex', borderBottom: `1px solid ${t.border.subtle}`, padding: '0 40px' }}>
             {[{ slug: '', name: 'All Clients', color: undefined as string | undefined },
-              ...clientsWithZones.map(c => ({ slug: c.slug, name: c.name, color: c.color || t.gold }))
+              ...clientsWithMarkets.map(c => ({ slug: c.slug, name: c.name, color: c.color || t.gold })),
             ].map(c => {
               const active = c.slug === '' ? !filterClient : filterClient === c.slug
               return (
@@ -286,11 +345,11 @@ function GrowthDashboardContent() {
 
         {/* Content */}
         <div style={{ padding: '24px 40px' }}>
-          {zones.length === 0 ? (
+          {marketEntries.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '80px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '14px' }}>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: t.text.secondary, marginBottom: '8px' }}>No territories yet</div>
               <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '440px', margin: '0 auto 8px' }}>
-                Growth tracks sales performance by geography and channel. Start by creating a territory, then define on-premise and off-premise focus areas within it.
+                Growth tracks sales performance by geography. Start by creating a territory, then add target accounts and track metrics.
               </div>
               <div style={{ fontSize: '12px', color: t.border.hover, maxWidth: '440px', margin: '0 auto 24px' }}>
                 Territory → Focus Area → Target Accounts → Metrics
@@ -302,9 +361,10 @@ function GrowthDashboardContent() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
               {visibleClients.map(client => {
-                const clientZones = zonesForClient(client.slug)
+                const entries = territoriesForClient(client.slug)
                 const clientColor = client.color || t.gold
-                const scores = clientZones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
+                const cZones = zones.filter(z => z.markets?.client_slug === client.slug)
+                const scores = cZones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
                 const clientAvg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
 
                 return (
@@ -318,13 +378,19 @@ function GrowthDashboardContent() {
                         </span>
                       )}
                       <div style={{ flex: 1, height: '1px', backgroundColor: t.border.subtle }} />
-                      {clientZones.length === 0 && <span style={{ fontSize: '11px', color: t.text.muted }}>no focus areas yet</span>}
+                      {entries.length === 0 && <span style={{ fontSize: '11px', color: t.text.muted }}>no territories yet</span>}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-                      {clientZones.map(z => (
-                        <ZoneCard key={z.id} zone={z} snapshot={snapshots[z.id] ?? null} />
+                      {entries.map(({ market, zones: mZones }) => (
+                        <TerritoryCard
+                          key={market.id}
+                          market={market}
+                          zones={mZones}
+                          snapshots={snapshots}
+                          clientColor={clientColor}
+                        />
                       ))}
-                      <AddZoneCard clientSlug={client.slug} />
+                      <AddTerritoryCard clientSlug={client.slug} />
                     </div>
                   </div>
                 )

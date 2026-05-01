@@ -191,6 +191,10 @@ export function generatePONumber(): string {
   return `PO-${ymd}-${rand}`
 }
 
+export function resolveNetTotal(o: { po_line_items?: any[]; total_amount?: any; total?: any; discount_amount?: any }): number {
+  return resolveTotal(o) - (Number(o.discount_amount) || 0)
+}
+
 export function resolveTotal(o: { po_line_items?: any[]; total_amount?: any; total?: any }): number {
   const items: any[] = o.po_line_items || []
   if (items.length > 0) {

@@ -6,7 +6,8 @@ import { Pencil, Trash2, RefreshCw, Plus, X, Search } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
-import { getAccounts, getClients } from '../../../lib/data'
+import { getAccounts, getClients, getProducts } from '../../../lib/data'
+import type { Product } from '../../../lib/types'
 import { getSupabase } from '../../../lib/supabase'
 import {
   getZone, updateZone, deleteZone,
@@ -41,6 +42,10 @@ export default function ZoneDetailPage() {
   const [lastVisitByAccount, setLastVisitByAccount] = useState<Record<string, { visited_at: string; status: string }>>({})
   const [ordersByAccount, setOrdersByAccount] = useState<Record<string, { status: string; total_amount: number | null }[]>>({})
 
+  const [products, setProducts] = useState<Product[]>([])
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
+  const [productsByAccount, setProductsByAccount] = useState<Record<string, Set<string>>>({})
+
   const [loading, setLoading] = useState(true)
   const [computing, setComputing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -67,6 +72,9 @@ export default function ZoneDetailPage() {
         getZone(id), getLatestSnapshot(id), getZoneSnapshots(id, 30),
         getZoneTargetAccounts(id), getAccounts({ limit: 500 }), getClients(),
       ])
+      if (z?.markets?.client_slug) {
+        getProducts(z.markets.client_slug).then(prods => setProducts(prods.filter(p => p.active !== false))).catch(() => {})
+      }
       if (!z) { router.push('/growth'); return }
       setZone(z)
       setSnapshot(snap)
@@ -94,7 +102,7 @@ export default function ZoneDetailPage() {
           sb.from('visits').select('account_id, visited_at, status')
             .eq('client_slug', clientSlug).in('account_id', targetIds)
             .order('visited_at', { ascending: false }),
-          sb.from('purchase_orders').select('account_id, status, total_amount')
+          sb.from('purchase_orders').select('account_id, status, total_amount, po_line_items(product_name)')
             .eq('client_slug', clientSlug).in('account_id', targetIds)
             .in('status', ['sent', 'fulfilled', 'draft'])
             .order('created_at', { ascending: false }),
@@ -109,13 +117,19 @@ export default function ZoneDetailPage() {
           if (!vByAcct[v.account_id]) vByAcct[v.account_id] = v
         }
         const oByAcct: Record<string, { status: string; total_amount: number | null }[]> = {}
+        const prdByAcct: Record<string, Set<string>> = {}
         for (const o of orRes.data ?? []) {
           if (!oByAcct[o.account_id]) oByAcct[o.account_id] = []
           oByAcct[o.account_id].push(o)
+          if (!prdByAcct[o.account_id]) prdByAcct[o.account_id] = new Set()
+          for (const li of (o as any).po_line_items ?? []) {
+            if (li.product_name) prdByAcct[o.account_id].add(li.product_name)
+          }
         }
         setPlacementsByAccount(pByAcct)
         setLastVisitByAccount(vByAcct)
         setOrdersByAccount(oByAcct)
+        setProductsByAccount(prdByAcct)
       }
     } catch (e) { console.error('zone.detail', e) }
     finally { setLoading(false) }
@@ -207,6 +221,12 @@ export default function ZoneDetailPage() {
     const q = accountSearch.toLowerCase()
     return allAccounts.filter(a => !targetAccountIds.has(a.id) && (a.name.toLowerCase().includes(q) || (a.address ?? '').toLowerCase().includes(q))).slice(0, 20)
   }, [allAccounts, targetAccountIds, accountSearch])
+
+  const filteredTargetAccounts = useMemo(() =>
+    selectedProduct
+      ? targetAccounts.filter(ta => productsByAccount[ta.account_id]?.has(selectedProduct))
+      : targetAccounts,
+  [targetAccounts, selectedProduct, productsByAccount])
 
   const hasGeoTags = useMemo(() => {
     if (!zone?.markets) return false
@@ -425,7 +445,9 @@ export default function ZoneDetailPage() {
               <div>
                 <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Target Set</h2>
                 <p style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>
-                  {targetAccounts.length} account{targetAccounts.length !== 1 ? 's' : ''} being actively worked
+                  {selectedProduct
+                    ? `${filteredTargetAccounts.length} of ${targetAccounts.length} ordered ${selectedProduct}`
+                    : `${targetAccounts.length} account${targetAccounts.length !== 1 ? 's' : ''} being actively worked`}
                 </p>
               </div>
               <button onClick={() => setAddAccountModal(true)} style={{
@@ -436,6 +458,22 @@ export default function ZoneDetailPage() {
                 <Plus size={12} /> Add
               </button>
             </div>
+
+            {/* Product filter */}
+            {products.length > 0 && (
+              <div style={{ marginTop: '10px' }}>
+                <select
+                  value={selectedProduct ?? ''}
+                  onChange={e => setSelectedProduct(e.target.value || null)}
+                  style={{ ...selectStyle, fontSize: '12px' }}
+                >
+                  <option value="">All products</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {targetAccounts.length === 0 ? (
               <div style={{
@@ -454,7 +492,12 @@ export default function ZoneDetailPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
-                {targetAccounts.map(ta => {
+                {filteredTargetAccounts.length === 0 && selectedProduct ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '16px', textAlign: 'center', borderRadius: '8px', border: `1px dashed ${t.border.default}` }}>
+                    No accounts in this territory have ordered {selectedProduct} yet.
+                  </div>
+                ) : null}
+                {filteredTargetAccounts.map(ta => {
                   const acct = ta.accounts
                   if (!acct) return null
                   const daysSince = acct.last_visited

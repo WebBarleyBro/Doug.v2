@@ -18,7 +18,7 @@ import { invalidatePrefix } from '../lib/cache'
 import AddAccountModal from '../components/AddAccountModal'
 import type { Product } from '../lib/types'
 import { t, card, badge, btnPrimary, btnSecondary, inputStyle, labelStyle, selectStyle } from '../lib/theme'
-import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
+import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal, resolveNetTotal } from '../lib/formatters'
 import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from '../lib/commission'
 import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl } from '../lib/constants'
@@ -307,6 +307,7 @@ export default function OrdersPage() {
     distributor_email: '',
     distributor_rep_name: '',
     line_items: [{ product_name: '', quantity: 1, price: 0 }],
+    discount: 0,
   })
 
   const load = useCallback(async () => {
@@ -362,7 +363,7 @@ export default function OrdersPage() {
   const directOrders = orders.filter(o => !o.order_type || o.order_type === 'direct' || o.po_number?.startsWith('PO-'))
   const inquiryOrders = orders.filter(o => o.order_type === 'distributor' || o.po_number?.startsWith('OI-'))
   const monthDirectSent = directOrders.filter(o => o.status === 'sent' && getEffectiveOrderDate(o) >= monthStart)
-  const monthRevenue = monthDirectSent.reduce((s, o) => s + resolveTotal(o), 0)
+  const monthRevenue = monthDirectSent.reduce((s, o) => s + resolveNetTotal(o), 0)
   const rateMap = Object.fromEntries(clients.map(c => [c.slug, c.commission_rate || 0]))
   const monthCommission = orders
     .filter(o => isCommissionEligible(o.status) && getEffectiveOrderDate(o) >= monthStart)
@@ -390,7 +391,7 @@ export default function OrdersPage() {
     }))
   }
 
-  const orderTotal = form.line_items.reduce((s, li) => {
+  const orderGross = form.line_items.reduce((s, li) => {
     const prod = clientProducts.find(p => p.name === li.product_name)
     const cases = (li as any).cases || 0
     const bottles = (li as any).bottles || 0
@@ -400,6 +401,8 @@ export default function OrdersPage() {
       : (prod?.price && (prod as any).case_count ? prod.price / (prod as any).case_count : 0)
     return s + cases * casePrice + bottles * bottlePrice
   }, 0)
+  const orderDiscount = (form as any).discount || 0
+  const orderTotal = orderGross - orderDiscount
   const selectedClient = clients.find(c => c.slug === form.client_slug)
 
   function resetForm() {
@@ -408,6 +411,7 @@ export default function OrdersPage() {
       deliver_to_phone: '', po_number: orderType === 'direct' ? nextPONum : nextOINum, notes: '',
       distributor_rep_id: '', distributor_email: '', distributor_rep_name: '',
       line_items: [{ product_name: '', quantity: 1, price: 0 }],
+      discount: 0,
     })
   }
 
@@ -428,7 +432,9 @@ export default function OrdersPage() {
       const bottlePrice = prod?.bottle_price ?? 0
       return cases * casePrice + bottles * bottlePrice
     }
-    const total = lineItems.reduce((s, li) => s + resolveLineTotal(li), 0)
+    const grossTotal = lineItems.reduce((s, li) => s + resolveLineTotal(li), 0)
+    const discountAmt = (form as any).discount || 0
+    const total = grossTotal - discountAmt
 
     const itemLines = lineItems.map(li => {
       const prod = clientProducts.find((p: any) => p.name === li.product_name)
@@ -456,6 +462,8 @@ export default function OrdersPage() {
       'Line Items:',
       itemLines || '  (no items)',
       '',
+      discountAmt > 0 ? `Subtotal: $${grossTotal.toFixed(2)}` : null,
+      discountAmt > 0 ? `Discount: -$${discountAmt.toFixed(2)}` : null,
       `Total: $${total.toFixed(2)}`,
       form.notes ? `\nNotes: ${form.notes}` : null,
       '',
@@ -498,6 +506,7 @@ export default function OrdersPage() {
     <tbody>${htmlRows}</tbody>
   </table>
   <div style="background:#161614;border-radius:8px;padding:14px 18px;margin-bottom:24px">
+    ${discountAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding-bottom:6px"><span style="font-size:13px;color:#5a5754">Subtotal</span><span style="font-size:13px;color:#9a9790">$${grossTotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;padding-bottom:6px"><span style="font-size:13px;color:#5a5754">Discount</span><span style="font-size:13px;color:#e05252">−$${discountAmt.toFixed(2)}</span></div>` : ''}
     <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a26;padding-top:8px">
       <span style="font-size:15px;font-weight:700;color:#d4a843">Total</span>
       <span style="font-size:18px;font-weight:800;color:#eceae4">$${total.toFixed(2)}</span>
@@ -545,6 +554,7 @@ export default function OrdersPage() {
           }
         }),
         commission_rate: selectedClient?.commission_rate || 0,
+        discount_amount: (form as any).discount || 0,
         ...extra,
       })
       if (orderType === 'direct') await updateOrder(newOrder.id, { status: 'sent' })
@@ -636,7 +646,7 @@ export default function OrdersPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {tabOrders.map(o => {
               const client = clients.find(c => c.slug === o.client_slug)
-              const total = resolveTotal(o)
+              const total = resolveNetTotal(o)
               const isSelected = selectedOrder?.id === o.id
               const isInquiry = o.order_type === 'distributor' || o.po_number?.startsWith('OI-')
               return (
@@ -711,7 +721,7 @@ export default function OrdersPage() {
       {selectedOrder && (() => {
         const o = selectedOrder
         const client = clients.find(c => c.slug === o.client_slug)
-        const total = resolveTotal(o)
+        const total = resolveNetTotal(o)
         const items: any[] = o.po_line_items || []
         const isInquiry = o.order_type === 'distributor' || o.po_number?.startsWith('OI-')
         return (
@@ -853,7 +863,13 @@ export default function OrdersPage() {
                   )}
                 </div>
 
-                {/* Total */}
+                {/* Discount + Total */}
+                {Number(o.discount_amount || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 4px' }}>
+                    <span style={{ fontSize: '12px', color: t.text.muted }}>Discount</span>
+                    <span className="mono" style={{ fontSize: '14px', color: t.status.danger }}>− {formatCurrency(Number(o.discount_amount))}</span>
+                  </div>
+                )}
                 <div style={{ padding: '16px 20px', borderRadius: '8px', border: `1px solid ${t.goldBorder}`, backgroundColor: t.goldDim, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: t.gold }}>Order Total</span>
                   <span className="mono" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(total)}</span>
@@ -1198,10 +1214,39 @@ export default function OrdersPage() {
                 </button>
               </div>
 
-              {orderTotal > 0 && (
-                <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${t.goldBorder}` }}>
-                  <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
-                  <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
+              {/* Discount */}
+              {orderGross > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Discount ($) — optional</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={(form as any).discount || ''}
+                    onChange={e => setForm(f => ({ ...f, discount: parseFloat(e.target.value) || 0 } as any))}
+                    placeholder="0.00"
+                    style={{ ...inputStyle, fontSize: '14px' }}
+                  />
+                </div>
+              )}
+
+              {orderGross > 0 && (
+                <div style={{ backgroundColor: t.bg.input, borderRadius: '8px', padding: '14px 16px', marginBottom: '16px', border: `1px solid ${t.goldBorder}` }}>
+                  {orderDiscount > 0 && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '11px', color: t.text.muted }}>Subtotal</div>
+                        <div className="mono" style={{ fontSize: '14px', color: t.text.secondary }}>{formatCurrency(orderGross)}</div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '11px', color: t.text.muted }}>Discount</div>
+                        <div className="mono" style={{ fontSize: '14px', color: t.status.danger }}>− {formatCurrency(orderDiscount)}</div>
+                      </div>
+                      <div style={{ borderTop: `1px solid ${t.goldBorder}`, paddingTop: '8px' }} />
+                    </>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '11px', color: t.text.muted }}>Order Total</div>
+                    <div className="mono" style={{ fontSize: '20px', fontWeight: '700', color: t.text.primary }}>{formatCurrency(orderTotal)}</div>
+                  </div>
                 </div>
               )}
 
@@ -1338,6 +1383,7 @@ export default function OrdersPage() {
                         line_items: resolvedItems,
                         commission_rate: selectedClient?.commission_rate || 0,
                         order_type: 'direct',
+                        discount_amount: (form as any).discount || 0,
                       })
                       await updateOrder(newOrder.id, { status: 'sent' })
                       invalidatePrefix('dashboard-stats')

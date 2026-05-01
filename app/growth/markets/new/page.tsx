@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronLeft, X, Plus, Search } from 'lucide-react'
 import LayoutShell from '../../../layout-shell'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -53,8 +53,11 @@ function TagInput({
   )
 }
 
-export default function NewMarketPage() {
+function NewMarketContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const defaultClient = searchParams.get('client') ?? ''
+
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -65,7 +68,7 @@ export default function NewMarketPage() {
 
   const [form, setForm] = useState({
     name: '',
-    client_slug: '',
+    client_slug: defaultClient,
     priority: false,
     cities: [] as string[],
     counties: [] as string[],
@@ -342,4 +345,8 @@ export default function NewMarketPage() {
       </div>
     </LayoutShell>
   )
+}
+
+export default function NewMarketPage() {
+  return <Suspense><NewMarketContent /></Suspense>
 }

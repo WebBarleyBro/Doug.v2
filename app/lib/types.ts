@@ -169,6 +169,7 @@ export interface PurchaseOrder {
   last_resent_at?: string
   last_resent_to?: string
   notes?: string
+  discount_amount?: number
   created_at: string
   sent_at?: string
   // joined

@@ -89,7 +89,7 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
   const cutoff90 = daysAgo(90)
   const { data: orders90Raw } = await sb
     .from('purchase_orders')
-    .select('id, account_id, sent_at, created_at, po_line_items(quantity)')
+    .select('id, account_id, sent_at, created_at, po_line_items(cases,bottles,quantity)')
     .eq('client_slug', clientSlug)
     .in('account_id', accountIds)
     .in('status', ['sent', 'fulfilled'])
@@ -134,7 +134,9 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
     const orders_90d = acctOrders90.length
     const cases_90d = acctOrders90.reduce((sum, o) => {
       const qty = ((o as any).po_line_items || []).reduce(
-        (s: number, li: any) => s + (Number(li.quantity) || 0), 0,
+        (s: number, li: any) =>
+          s + (Number(li.cases) || 0) + (Number(li.bottles) || 0) + (Number(li.quantity) || 0),
+        0,
       )
       return sum + qty
     }, 0)
