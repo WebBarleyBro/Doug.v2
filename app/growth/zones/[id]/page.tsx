@@ -7,6 +7,7 @@ import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
 import { getAccounts, getClients } from '../../../lib/data'
+import { getSupabase } from '../../../lib/supabase'
 import {
   getZone, updateZone, deleteZone,
   getZoneTargetAccounts, addAccountToZone, removeAccountFromZone,
@@ -16,6 +17,7 @@ import {
   PostureBadge, HealthRing, TrendBadge, MetricTile, Sparkline,
   channelLabel, healthColor, healthBg, AccountStatusBadge,
 } from '../../_components'
+import { ChevronRight } from 'lucide-react'
 import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip,
 } from 'recharts'
@@ -40,6 +42,10 @@ export default function ZoneDetailPage() {
   const [sparkData, setSparkData] = useState<ZoneMetricSnapshot[]>([])
   const [targetAccounts, setTargetAccounts] = useState<(ZoneTargetAccount & { accounts: any })[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
+
+  const [placementsByAccount, setPlacementsByAccount] = useState<Record<string, { product_name: string; status: string }[]>>({})
+  const [lastVisitByAccount, setLastVisitByAccount] = useState<Record<string, { visited_at: string; status: string }>>({})
+  const [ordersByAccount, setOrdersByAccount] = useState<Record<string, { status: string; total_amount: number | null }[]>>({})
 
   const [loading, setLoading] = useState(true)
   const [computing, setComputing] = useState(false)
@@ -81,6 +87,41 @@ export default function ZoneDetailPage() {
         projected_monthly_cases: z.projected_monthly_cases ?? '',
         notes: z.notes ?? '',
       })
+
+      // Enrich target accounts with client-specific placements, visits, orders
+      const clientSlug = z.markets?.client_slug
+      const targetIds = targets.map(t => t.account_id).filter(Boolean)
+      if (clientSlug && targetIds.length > 0) {
+        const sb = getSupabase()
+        const [plRes, vRes, orRes] = await Promise.all([
+          sb.from('placements').select('account_id, product_name, status')
+            .eq('client_slug', clientSlug).in('account_id', targetIds).is('lost_at', null),
+          sb.from('visits').select('account_id, visited_at, status')
+            .eq('client_slug', clientSlug).in('account_id', targetIds)
+            .order('visited_at', { ascending: false }),
+          sb.from('purchase_orders').select('account_id, status, total_amount')
+            .eq('client_slug', clientSlug).in('account_id', targetIds)
+            .in('status', ['sent', 'fulfilled', 'draft'])
+            .order('created_at', { ascending: false }),
+        ])
+        const pByAcct: Record<string, { product_name: string; status: string }[]> = {}
+        for (const p of plRes.data ?? []) {
+          if (!pByAcct[p.account_id]) pByAcct[p.account_id] = []
+          pByAcct[p.account_id].push(p)
+        }
+        const vByAcct: Record<string, { visited_at: string; status: string }> = {}
+        for (const v of vRes.data ?? []) {
+          if (!vByAcct[v.account_id]) vByAcct[v.account_id] = v
+        }
+        const oByAcct: Record<string, { status: string; total_amount: number | null }[]> = {}
+        for (const o of orRes.data ?? []) {
+          if (!oByAcct[o.account_id]) oByAcct[o.account_id] = []
+          oByAcct[o.account_id].push(o)
+        }
+        setPlacementsByAccount(pByAcct)
+        setLastVisitByAccount(vByAcct)
+        setOrdersByAccount(oByAcct)
+      }
     } catch (e) { console.error('zone.detail', e) }
     finally { setLoading(false) }
   }, [id, router])
@@ -409,30 +450,70 @@ export default function ZoneDetailPage() {
                     ? Math.floor((Date.now() - new Date(acct.last_visited).getTime()) / 86400000)
                     : null
                   const statusKey = daysSince === null ? 'untouched' : daysSince <= 90 ? 'active' : daysSince <= 180 ? 'lapsed' : 'dormant'
+                  const placements = placementsByAccount[acct.id] ?? []
+                  const lastVisit = lastVisitByAccount[acct.id]
+                  const orders = ordersByAccount[acct.id] ?? []
+                  const lastVisitDays = lastVisit
+                    ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
+                    : null
                   return (
-                    <div key={ta.id} style={{
-                      padding: '10px 12px', borderRadius: '8px',
-                      backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`,
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                    }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                          <Link href={`/accounts/${acct.id}`} style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, textDecoration: 'none' }}>
-                            {acct.name}
-                          </Link>
-                          <AccountStatusBadge status={statusKey} />
+                    <div key={ta.id} style={{ position: 'relative' }}>
+                      <Link href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                        <div style={{
+                          padding: '11px 12px', borderRadius: '8px',
+                          backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`,
+                          cursor: 'pointer', transition: 'border-color 150ms',
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = clientColor + '60')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}
+                        >
+                          {/* Name + status + chevron */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
+                            <AccountStatusBadge status={statusKey} />
+                            <ChevronRight size={12} color={t.text.muted} style={{ flexShrink: 0 }} />
+                          </div>
+
+                          {/* Placements row */}
+                          {placements.length > 0 ? (
+                            <div style={{ fontSize: '11px', color: t.status.success, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: '700' }}>{placements.length}</span>
+                              <span>placement{placements.length !== 1 ? 's' : ''}</span>
+                              <span style={{ color: t.text.muted }}>·</span>
+                              <span style={{ color: t.text.muted }}>{placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '3px' }}>No placements for this client</div>
+                          )}
+
+                          {/* Orders row */}
+                          {orders.length > 0 && (
+                            <div style={{ fontSize: '11px', color: t.gold, marginBottom: '3px' }}>
+                              {orders.length} order{orders.length !== 1 ? 's' : ''}
+                              <span style={{ color: t.text.muted }}> · {orders[0].status}</span>
+                            </div>
+                          )}
+
+                          {/* Visit row */}
+                          <div style={{ fontSize: '10px', color: t.text.muted }}>
+                            {lastVisit
+                              ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
+                              : 'No visits for this client yet'
+                            }
+                          </div>
                         </div>
-                        <div style={{ fontSize: '10px', color: t.text.muted }}>
-                          {daysSince !== null ? (daysSince === 0 ? 'Visited today' : `${daysSince}d since visit`) : 'Never visited'}
-                          {acct.address && ` · ${acct.address.split(',')[0]}`}
-                        </div>
-                      </div>
-                      <button onClick={() => setRemoveAccountId(acct.id)} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: t.text.muted, padding: '2px', display: 'flex', alignItems: 'center', flexShrink: 0,
-                        opacity: 0.5,
-                      }}>
-                        <X size={13} />
+                      </Link>
+                      <button
+                        onClick={e => { e.preventDefault(); setRemoveAccountId(acct.id) }}
+                        style={{
+                          position: 'absolute', top: '8px', right: '30px',
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: t.text.muted, padding: '2px', display: 'flex', alignItems: 'center',
+                          opacity: 0.4,
+                        }}
+                        title="Remove from target set"
+                      >
+                        <X size={11} />
                       </button>
                     </div>
                   )
