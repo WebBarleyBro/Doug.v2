@@ -313,25 +313,15 @@ function GrowthDashboardContent() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-              {filteredEntries.map(({ market, zones: mZones }) => {
-                const chips: { name: string; color: string }[] = (() => {
-                  const slugs = [...new Set(mZones.map(z => z.client_slug).filter(Boolean))] as string[]
-                  return slugs.map(s => {
-                    const c = clients.find(cl => cl.slug === s)
-                    return c ? { name: c.name, color: c.color || t.gold } : null
-                  }).filter(Boolean) as { name: string; color: string }[]
-                })()
-                return (
-                  <TerritoryCard
-                    key={market.id}
-                    market={market}
-                    zones={mZones}
-                    snapshots={snapshots}
-                    clientColor={t.gold}
-                    clientChips={chips.length > 0 ? chips : undefined}
-                  />
-                )
-              })}
+              {filteredEntries.map(({ market, zones: mZones }) => (
+                <TerritoryCard
+                  key={market.id}
+                  market={market}
+                  zones={mZones}
+                  snapshots={snapshots}
+                  clientColor={t.gold}
+                />
+              ))}
             </div>
           )}
 
