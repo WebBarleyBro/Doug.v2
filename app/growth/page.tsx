@@ -10,12 +10,11 @@ import LayoutShell from '../layout-shell'
 import { t } from '../lib/theme'
 import { getClients } from '../lib/data'
 import { getAllZones, getLatestSnapshotsByZone } from '../lib/concentric/data'
-import { PostureBadge, HealthRing, healthColor, healthBg, channelLabel } from './_components'
+import { HealthRing, healthColor, healthBg, channelLabel } from './_components'
 import type { Zone, Market, ZoneMetricSnapshot } from '../lib/concentric/types'
 import type { Client } from '../lib/types'
 
 type ZoneWithMarket = Zone & { markets: Market }
-const POSTURE_ORDER: Zone['posture'][] = ['active', 'maintaining', 'monitoring', 'opportunistic']
 
 function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetricSnapshot | null }) {
   const [hovered, setHovered] = useState(false)
@@ -45,7 +44,6 @@ function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetr
               <span style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>
                 {zone.name}
               </span>
-              <PostureBadge posture={zone.posture} size="xs" />
             </div>
             <div style={{ fontSize: '10px', color: t.text.muted }}>
               {zone.markets?.name} · Ph.{zone.phase} · {channelLabel(zone.channel)}
@@ -144,16 +142,11 @@ function GrowthDashboardContent() {
   function zonesForClient(slug: string) {
     return zones
       .filter(z => z.markets?.client_slug === slug)
-      .sort((a, b) => {
-        const pi = POSTURE_ORDER.indexOf(a.posture) - POSTURE_ORDER.indexOf(b.posture)
-        if (pi !== 0) return pi
-        return (snapshots[b.id]?.health_score ?? -1) - (snapshots[a.id]?.health_score ?? -1)
-      })
+      .sort((a, b) => (snapshots[b.id]?.health_score ?? -1) - (snapshots[a.id]?.health_score ?? -1))
   }
 
   const allScores = zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
   const avgHealth = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : null
-  const activeCount = zones.filter(z => z.posture === 'active' || z.posture === 'maintaining').length
   const totalAccounts = Object.values(snapshots).reduce((s, sn) => s + (sn.target_set_size ?? 0), 0)
   const totalActive = Object.values(snapshots).reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
 
@@ -168,15 +161,10 @@ function GrowthDashboardContent() {
   const attentionItems = zones.flatMap(z => {
     const snap = snapshots[z.id]
     const hs = snap?.health_score ?? null
-    // Skip zones with no snapshot data — they're too new to judge
-    if (!snap) return []
+    // Only flag zones that have actual data — skip brand-new zones
+    if (!snap || (snap.target_set_size ?? 0) === 0) return []
     const issues: string[] = []
-    if ((z.posture === 'active' || z.posture === 'maintaining') && hs !== null && hs < 50) {
-      issues.push(`Health ${Math.round(hs)}`)
-    }
-    if (z.posture === 'active' && (snap.target_set_size ?? 0) === 0) {
-      issues.push('No target accounts')
-    }
+    if (hs !== null && hs < 50) issues.push(`Health ${Math.round(hs)}`)
     if (issues.length === 0) return []
     return [{ id: z.id, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: issues.join(' · ') }]
   })
@@ -238,7 +226,7 @@ function GrowthDashboardContent() {
           {/* Stats */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flex: 1 }}>
             {[
-              { label: 'Active', val: activeCount },
+              { label: 'Focus Areas', val: zones.length },
               { label: 'Accounts', val: totalAccounts },
               { label: 'Active Accts', val: totalActive },
             ].map(s => (

@@ -7,7 +7,7 @@ import LayoutShell from '../../layout-shell'
 import { t, card } from '../../lib/theme'
 import { getClients } from '../../lib/data'
 import { getMarkets, getAllZones, getLatestSnapshotsByZone } from '../../lib/concentric/data'
-import { PostureBadge, healthColor, channelLabel } from '../_components'
+import { healthColor, channelLabel } from '../_components'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../lib/concentric/types'
 import type { Client } from '../../lib/types'
 

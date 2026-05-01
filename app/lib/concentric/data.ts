@@ -127,8 +127,8 @@ export async function createZone(payload: {
   market_id: string
   name: string
   channel: string
-  phase: number
-  posture: string
+  phase?: number
+  posture?: string
   velocity_target: number
   reach_threshold?: number | null
   retention_threshold?: number | null
@@ -136,7 +136,7 @@ export async function createZone(payload: {
   notes?: string
 }): Promise<Zone> {
   const sb = getSupabase()
-  const { data, error } = await sb.from('zones').insert(payload).select().single()
+  const { data, error } = await sb.from('zones').insert({ phase: 1, posture: 'active', ...payload }).select().single()
   if (error) throw error
   invalidatePrefix('zones:')
   return data as Zone

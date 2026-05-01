@@ -14,7 +14,7 @@ import {
   getLatestSnapshot, getZoneSnapshots,
 } from '../../../lib/concentric/data'
 import {
-  PostureBadge, HealthRing, TrendBadge, MetricTile, Sparkline,
+  HealthRing, TrendBadge, MetricTile, Sparkline,
   channelLabel, healthColor, healthBg, AccountStatusBadge,
 } from '../../_components'
 import { ChevronRight } from 'lucide-react'
@@ -24,12 +24,6 @@ import {
 import type { Zone, Market, ZoneMetricSnapshot, ZoneTargetAccount, ZonePosture } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
 
-const POSTURE_OPTIONS: { value: ZonePosture; label: string; desc: string }[] = [
-  { value: 'active',        label: 'Active',        desc: 'Proactively working new accounts and education' },
-  { value: 'maintaining',   label: 'Maintaining',   desc: 'Defending position with steady effort' },
-  { value: 'monitoring',    label: 'Monitoring',    desc: 'Reactive only' },
-  { value: 'opportunistic', label: 'Opportunistic', desc: 'No plan yet, will respond to inbound' },
-]
 
 export default function ZoneDetailPage() {
   const { id } = useParams() as { id: string }
@@ -52,7 +46,7 @@ export default function ZoneDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({
-    name: '', posture: 'active' as ZonePosture, phase: 1, channel: 'on_premise',
+    name: '', channel: 'on_premise',
     velocity_target: 1,
     reach_threshold: '' as string | number,
     retention_threshold: '' as string | number,
@@ -80,7 +74,7 @@ export default function ZoneDetailPage() {
       setAllAccounts(accounts)
       setClient(clients.find(c => c.slug === z.markets?.client_slug) ?? null)
       setEditForm({
-        name: z.name, posture: z.posture, phase: z.phase, channel: z.channel,
+        name: z.name, channel: z.channel,
         velocity_target: z.velocity_target,
         reach_threshold: z.reach_threshold ?? '',
         retention_threshold: z.retention_threshold ?? '',
@@ -145,8 +139,7 @@ export default function ZoneDetailPage() {
     setSaving(true)
     try {
       await updateZone(id, {
-        name: editForm.name.trim(), posture: editForm.posture,
-        phase: editForm.phase, channel: editForm.channel as any,
+        name: editForm.name.trim(), channel: editForm.channel as any,
         velocity_target: Number(editForm.velocity_target),
         reach_threshold: editForm.reach_threshold !== '' ? Number(editForm.reach_threshold) : null,
         retention_threshold: editForm.retention_threshold !== '' ? Number(editForm.retention_threshold) : null,
@@ -268,9 +261,8 @@ export default function ZoneDetailPage() {
               <TrendBadge delta={trend30d} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <PostureBadge posture={zone.posture} size="sm" />
               <span style={{ fontSize: '12px', color: t.text.muted }}>
-                {market.name} · Phase {zone.phase} · {channelLabel(zone.channel)}
+                {market.name} · {channelLabel(zone.channel)}
               </span>
             </div>
           </div>
@@ -571,31 +563,12 @@ export default function ZoneDetailPage() {
                   <input type="text" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Phase</label>
-                  <input type="number" min="1" value={editForm.phase} onChange={e => setEditForm(f => ({ ...f, phase: Number(e.target.value) }))} style={inputStyle} />
-                </div>
-                <div>
                   <label style={labelStyle}>Channel</label>
                   <select value={editForm.channel} onChange={e => setEditForm(f => ({ ...f, channel: e.target.value }))} style={selectStyle}>
                     <option value="on_premise">On-Premise</option>
                     <option value="off_premise">Off-Premise</option>
                     <option value="both">Both</option>
                   </select>
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Posture</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {POSTURE_OPTIONS.map(o => (
-                    <button key={o.value} type="button" onClick={() => setEditForm(f => ({ ...f, posture: o.value }))} style={{
-                      padding: '9px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer', textAlign: 'left',
-                      border: `1px solid ${editForm.posture === o.value ? t.gold : t.border.default}`,
-                      backgroundColor: editForm.posture === o.value ? t.goldDim : 'transparent',
-                      color: editForm.posture === o.value ? t.gold : t.text.secondary,
-                    }}>
-                      <strong>{o.label}</strong><span style={{ color: t.text.muted, marginLeft: '6px', fontWeight: '400' }}>— {o.desc}</span>
-                    </button>
-                  ))}
                 </div>
               </div>
               <div>

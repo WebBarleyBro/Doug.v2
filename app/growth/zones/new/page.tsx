@@ -14,12 +14,6 @@ const CHANNEL_OPTIONS = [
   { value: 'off_premise', label: 'Off-Premise' },
   { value: 'both', label: 'Both' },
 ]
-const POSTURE_OPTIONS = [
-  { value: 'opportunistic', label: 'Opportunistic — no plan yet, will respond to inbound' },
-  { value: 'active', label: 'Active — proactively working new accounts and education' },
-  { value: 'maintaining', label: 'Maintaining — defending position with steady effort' },
-  { value: 'monitoring', label: 'Monitoring — reactive only' },
-]
 
 function channelDefaultName(channel: string) {
   if (channel === 'on_premise') return 'On-Premise'
@@ -46,7 +40,6 @@ function NewZoneContent() {
     name: channelDefaultName('on_premise'),
     channel: 'on_premise',
     phase: 1,
-    posture: 'opportunistic',
     velocity_target: '',
     reach_threshold: '',
     retention_threshold: '',
@@ -110,8 +103,6 @@ function NewZoneContent() {
         market_id: form.market_id,
         name: form.name.trim(),
         channel: form.channel,
-        phase: form.phase,
-        posture: form.posture,
         velocity_target: Number(form.velocity_target),
         reach_threshold: form.reach_threshold !== '' ? Number(form.reach_threshold) : null,
         retention_threshold: form.retention_threshold !== '' ? Number(form.retention_threshold) : null,
@@ -205,28 +196,6 @@ function NewZoneContent() {
                   {o.label}
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Posture — compact inline buttons */}
-          <div>
-            <label style={labelStyle}>Posture</label>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {POSTURE_OPTIONS.map(o => (
-                <button key={o.value} type="button" onClick={() => setForm(f => ({ ...f, posture: o.value }))}
-                  style={{
-                    padding: '7px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
-                    border: `1px solid ${form.posture === o.value ? t.gold : t.border.default}`,
-                    backgroundColor: form.posture === o.value ? t.goldDim : 'transparent',
-                    color: form.posture === o.value ? t.gold : t.text.secondary,
-                    fontWeight: form.posture === o.value ? '600' : '400',
-                  }}>
-                  {o.label.split(' ')[0]}
-                </button>
-              ))}
-            </div>
-            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '5px' }}>
-              {POSTURE_OPTIONS.find(o => o.value === form.posture)?.label.split(' — ')[1]}
             </div>
           </div>
 
