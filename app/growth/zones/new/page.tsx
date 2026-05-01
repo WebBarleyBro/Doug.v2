@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import LayoutShell from '../../../layout-shell'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
 import { getMarkets, createZone } from '../../../lib/concentric/data'
@@ -18,18 +19,26 @@ const POSTURE_OPTIONS = [
   { value: 'monitoring', label: 'Monitoring — reactive only' },
 ]
 
+function channelDefaultName(channel: string) {
+  if (channel === 'on_premise') return 'On-Premise'
+  if (channel === 'off_premise') return 'Off-Premise'
+  return 'On & Off-Premise'
+}
+
 function NewZoneContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const defaultMarket = searchParams.get('market') ?? ''
+  const defaultClient = searchParams.get('client') ?? ''
 
   const [markets, setMarkets] = useState<Market[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [nameAutoFilled, setNameAutoFilled] = useState(true)
 
   const [form, setForm] = useState({
     market_id: defaultMarket,
-    name: '',
+    name: channelDefaultName('on_premise'),
     channel: 'on_premise',
     phase: 1,
     posture: 'opportunistic',
@@ -40,15 +49,43 @@ function NewZoneContent() {
     notes: '',
   })
 
-  useEffect(() => { getMarkets().then(setMarkets).catch(() => {}) }, [])
+  useEffect(() => {
+    getMarkets().then(all => {
+      setMarkets(all)
+      // Auto-select market if only one exists for the pre-filtered client
+      if (!defaultMarket && defaultClient) {
+        const clientMarkets = all.filter(m => m.client_slug === defaultClient)
+        if (clientMarkets.length === 1) {
+          setForm(f => ({ ...f, market_id: clientMarkets[0].id }))
+        }
+      }
+    }).catch(() => {})
+  }, [defaultMarket, defaultClient])
+
+  const visibleMarkets = defaultClient
+    ? markets.filter(m => m.client_slug === defaultClient)
+    : markets
 
   const selectedMarket = markets.find(m => m.id === form.market_id)
+
+  function handleChannelChange(channel: string) {
+    setForm(f => ({
+      ...f,
+      channel,
+      name: nameAutoFilled ? channelDefaultName(channel) : f.name,
+    }))
+  }
+
+  function handleNameChange(val: string) {
+    setNameAutoFilled(val === channelDefaultName(form.channel) || val === '')
+    setForm(f => ({ ...f, name: val }))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.market_id) { setError('Select a market.'); return }
-    if (!form.name.trim()) { setError('Zone name is required.'); return }
+    if (!form.market_id) { setError('Select a territory.'); return }
+    if (!form.name.trim()) { setError('Name is required.'); return }
     if (!form.velocity_target || Number(form.velocity_target) <= 0) {
       setError('Velocity Target is required and must be greater than 0.'); return
     }
@@ -69,7 +106,7 @@ function NewZoneContent() {
       })
       router.push(`/growth/zones/${zone.id}`)
     } catch (err: any) {
-      setError(err.message || 'Failed to create zone.')
+      setError(err.message || 'Failed to create focus area.')
     } finally {
       setSaving(false)
     }
@@ -86,41 +123,33 @@ function NewZoneContent() {
           ‹ Back
         </button>
 
-        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>New Zone</h1>
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>New Focus Area</h1>
         <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '28px' }}>
-          After creating the zone, you'll populate the Target Set.
+          A focus area tracks performance in a specific channel within a territory.
+          After creating it, you'll build out the target account set.
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
           <div>
-            <label style={labelStyle}>Market *</label>
+            <label style={labelStyle}>Territory *</label>
             <select value={form.market_id} onChange={e => setForm(f => ({ ...f, market_id: e.target.value }))} style={selectStyle} required>
-              <option value="">Select market…</option>
-              {markets.map(m => <option key={m.id} value={m.id}>{m.name} ({m.client_slug})</option>)}
+              <option value="">Select territory…</option>
+              {visibleMarkets.map(m => <option key={m.id} value={m.id}>{m.name} ({m.client_slug})</option>)}
             </select>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div>
-              <label style={labelStyle}>Zone Name *</label>
-              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. On-Premise" style={inputStyle} required />
-            </div>
-            <div>
-              <label style={labelStyle}>Phase *</label>
-              <input type="number" min="1" value={form.phase}
-                onChange={e => setForm(f => ({ ...f, phase: Number(e.target.value) }))}
-                style={inputStyle} />
-              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Phase 1 = beachhead</div>
-            </div>
+            {visibleMarkets.length === 0 && markets.length > 0 && (
+              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>
+                No territories for this client yet.{' '}
+                <Link href="/growth/markets/new" style={{ color: t.gold }}>Create one first →</Link>
+              </div>
+            )}
           </div>
 
           <div>
             <label style={labelStyle}>Channel *</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {CHANNEL_OPTIONS.map(o => (
-                <button key={o.value} type="button" onClick={() => setForm(f => ({ ...f, channel: o.value }))}
+                <button key={o.value} type="button" onClick={() => handleChannelChange(o.value)}
                   style={{
                     flex: 1, padding: '9px 12px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
                     border: `1px solid ${form.channel === o.value ? t.gold : t.border.default}`,
@@ -131,6 +160,24 @@ function NewZoneContent() {
                   {o.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div>
+              <label style={labelStyle}>
+                Name
+                <span style={{ color: t.text.muted, fontWeight: '400', marginLeft: '4px' }}>— auto-filled from channel</span>
+              </label>
+              <input type="text" value={form.name} onChange={e => handleNameChange(e.target.value)}
+                placeholder="e.g. On-Premise" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Phase</label>
+              <input type="number" min="1" value={form.phase}
+                onChange={e => setForm(f => ({ ...f, phase: Number(e.target.value) }))}
+                style={inputStyle} />
+              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Phase 1 = beachhead</div>
             </div>
           </div>
 
@@ -213,7 +260,7 @@ function NewZoneContent() {
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => router.back()} style={btnSecondary}>Cancel</button>
             <button type="submit" disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Creating…' : 'Create Zone'}
+              {saving ? 'Creating…' : 'Create Focus Area'}
             </button>
           </div>
         </form>
