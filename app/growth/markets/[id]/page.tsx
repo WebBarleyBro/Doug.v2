@@ -298,59 +298,66 @@ export default function MarketDetailPage() {
             </div>
           )}
 
-          {/* Focus Areas */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Focus Areas</h2>
-            <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, textDecoration: 'none' }}>
-              <Plus size={13} /> New Focus Area
-            </Link>
-          </div>
-
-          {(market.zones || []).length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
-              <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
-                A focus area tracks on-premise or off-premise performance within this territory.
+          {/* Focus Areas — hidden while editing */}
+          {!editing && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Focus Areas</h2>
+                <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, textDecoration: 'none' }}>
+                  <Plus size={13} /> New Focus Area
+                </Link>
               </div>
-              <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
-                <Plus size={14} /> Create First Focus Area
-              </Link>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-              {(market.zones || []).map(z => {
-                const snap = snapshots[z.id]
-                const hs = snap?.health_score ?? null
-                return (
-                  <div key={z.id} style={{ ...card, padding: '16px 18px', position: 'relative', borderTop: `2px solid ${healthColor(hs)}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                      <div>
-                        <Link href={`/growth/zones/${z.id}`} style={{ textDecoration: 'none' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>{z.name}</div>
-                        </Link>
-                        <span style={{ fontSize: '10px', color: t.text.muted }}>{channelLabel(z.channel)}</span>
-                      </div>
-                      {hs !== null && (
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(hs), lineHeight: 1 }}>{Math.round(hs)}</div>
-                          <div style={{ fontSize: '9px', color: t.text.muted }}>HEALTH</div>
-                        </div>
-                      )}
-                    </div>
-                    {snap && (
-                      <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: t.text.muted }}>
-                        <span>Reach <strong style={{ color: t.text.secondary }}>{Math.round(snap.reach_pct ?? 0)}%</strong></span>
-                        <span>Targets <strong style={{ color: t.text.secondary }}>{snap.target_set_size ?? 0}</strong></span>
-                        <span>Active <strong style={{ color: t.text.secondary }}>{snap.active_accounts ?? 0}</strong></span>
-                      </div>
-                    )}
-                    <button onClick={() => setDeleteZoneId(z.id)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px', opacity: 0.4 }}>
-                      <Trash2 size={12} />
-                    </button>
+
+              {(market.zones || []).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '60px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
+                  <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
+                    A focus area tracks on-premise or off-premise performance within this territory.
                   </div>
-                )
-              })}
-            </div>
+                  <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
+                    <Plus size={14} /> Create First Focus Area
+                  </Link>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                  {(market.zones || []).map(z => {
+                    const snap = snapshots[z.id]
+                    const hs = snap?.health_score ?? null
+                    return (
+                      <div key={z.id} style={{ position: 'relative' }}>
+                        <Link href={`/growth/zones/${z.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                          <div style={{ ...card, padding: '16px 18px', borderTop: `2px solid ${healthColor(hs)}`, paddingRight: '34px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                              <div>
+                                <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>{z.name}</div>
+                                <span style={{ fontSize: '10px', color: t.text.muted }}>{channelLabel(z.channel)}</span>
+                              </div>
+                              {hs !== null && (
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(hs), lineHeight: 1 }}>{Math.round(hs)}</div>
+                                  <div style={{ fontSize: '9px', color: t.text.muted }}>HEALTH</div>
+                                </div>
+                              )}
+                            </div>
+                            {snap && (
+                              <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: t.text.muted }}>
+                                <span>Reach <strong style={{ color: t.text.secondary }}>{Math.round(snap.reach_pct ?? 0)}%</strong></span>
+                                <span>Vel <strong style={{ color: t.text.secondary }}>{(snap.velocity_index ?? 0).toFixed(2)}x</strong></span>
+                                <span>Ret <strong style={{ color: t.text.secondary }}>{Math.round(snap.retention_pct ?? 0)}%</strong></span>
+                                <span>Active <strong style={{ color: t.text.secondary }}>{snap.active_accounts ?? 0}</strong></span>
+                              </div>
+                            )}
+                          </div>
+                        </Link>
+                        <button onClick={() => setDeleteZoneId(z.id)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px', opacity: 0.4, zIndex: 1 }}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
