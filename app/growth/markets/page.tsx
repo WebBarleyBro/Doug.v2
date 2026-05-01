@@ -78,9 +78,9 @@ function MarketsContent() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none', fontSize: '13px' }}>← Growth</Link>
             </div>
-            <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginTop: '6px' }}>Markets</h1>
+            <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginTop: '6px' }}>Territories</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
-              Geographic territories that contain zones · {filtered.length} market{filtered.length !== 1 ? 's' : ''}
+              Geographic areas that contain focus areas · {filtered.length} territor{filtered.length !== 1 ? 'ies' : 'y'}
             </p>
           </div>
           <Link href="/growth/markets/new" style={{
@@ -88,7 +88,7 @@ function MarketsContent() {
             padding: '9px 16px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
             backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
           }}>
-            <Plus size={14} /> New Market
+            <Plus size={14} /> New Territory
           </Link>
         </div>
 

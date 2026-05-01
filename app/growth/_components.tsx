@@ -207,6 +207,50 @@ export function HealthScoreDisplay({
   )
 }
 
+// ─── Health Ring (SVG circular progress gauge) ───────────────────────────────
+
+export function HealthRing({
+  score,
+  size = 64,
+  strokeWidth = 6,
+  showLabel = true,
+}: {
+  score: number | null
+  size?: number
+  strokeWidth?: number
+  showLabel?: boolean
+}) {
+  const r = (size - strokeWidth) / 2
+  const circ = 2 * Math.PI * r
+  const pct = score !== null ? Math.min(score, 100) / 100 : 0
+  const dash = pct * circ
+  const color = healthColor(score)
+
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ position: 'absolute', inset: 0 }}>
+        <circle cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke={color} strokeWidth={strokeWidth}
+          strokeDasharray={`${dash} ${circ - dash}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: size * 0.29, fontWeight: '900', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {score !== null ? Math.round(score) : '—'}
+        </span>
+        {showLabel && score !== null && (
+          <span style={{ fontSize: size * 0.12, color, opacity: 0.6, fontWeight: '700', letterSpacing: '0.05em', marginTop: '1px' }}>
+            HEALTH
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Channel label ────────────────────────────────────────────────────────────
 
 export function channelLabel(channel: string): string {

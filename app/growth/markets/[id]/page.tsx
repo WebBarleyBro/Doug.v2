@@ -2,16 +2,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, Plus, Star, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Star, Pencil, Trash2, X } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
-import { t, card, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary, btnDanger } from '../../../lib/theme'
+import { t, card, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
 import { getClients } from '../../../lib/data'
-import {
-  getMarket, updateMarket, deleteMarket, getZones, deleteZone,
-  getLatestSnapshotsByZone,
-} from '../../../lib/concentric/data'
-import { PostureBadge, HealthScoreDisplay, channelLabel, healthColor, Sparkline } from '../../_components'
+import { getMarket, updateMarket, deleteMarket, getZones, deleteZone, getLatestSnapshotsByZone } from '../../../lib/concentric/data'
+import { PostureBadge, healthColor, channelLabel } from '../../_components'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Client } from '../../../lib/types'
 
@@ -25,31 +22,19 @@ function TagInput({ label, values, onChange }: { label: string; values: string[]
   return (
     <div>
       <label style={labelStyle}>{label}</label>
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center',
-        padding: '6px 8px', borderRadius: '7px', border: `1px solid ${t.border.default}`,
-        backgroundColor: t.bg.input, minHeight: '38px',
-      }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center', padding: '6px 8px', borderRadius: '7px', border: `1px solid ${t.border.default}`, backgroundColor: t.bg.input, minHeight: '38px' }}>
         {values.map(v => (
-          <span key={v} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '3px',
-            padding: '2px 7px', borderRadius: '4px', fontSize: '11px',
-            backgroundColor: t.goldDim, color: t.gold, border: `1px solid ${t.goldBorder}`,
-          }}>
+          <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '4px', fontSize: '11px', backgroundColor: t.goldDim, color: t.gold, border: `1px solid ${t.goldBorder}` }}>
             {v}
-            <button type="button" onClick={() => onChange(values.filter(x => x !== v))}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: t.gold, display: 'flex', alignItems: 'center' }}>
+            <button type="button" onClick={() => onChange(values.filter(x => x !== v))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: t.gold, display: 'flex', alignItems: 'center' }}>
               <X size={10} />
             </button>
           </span>
         ))}
-        <input type="text" value={draft}
-          onChange={e => setDraft(e.target.value)}
+        <input type="text" value={draft} onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add() } }}
-          onBlur={add}
-          placeholder={values.length === 0 ? 'Add…' : '+'}
-          style={{ flex: 1, minWidth: '60px', background: 'none', border: 'none', outline: 'none', fontSize: '12px', color: t.text.primary }}
-        />
+          onBlur={add} placeholder={values.length === 0 ? 'Add…' : '+'}
+          style={{ flex: 1, minWidth: '60px', background: 'none', border: 'none', outline: 'none', fontSize: '12px', color: t.text.primary }} />
       </div>
     </div>
   )
@@ -102,7 +87,7 @@ export default function MarketDetailPage() {
     setSaving(true)
     try {
       await updateMarket(id, editForm)
-      toast('Market updated')
+      toast('Territory updated')
       setEditing(false)
       load()
     } catch (err: any) { toast(err.message || 'Failed to save', 'error') }
@@ -112,7 +97,7 @@ export default function MarketDetailPage() {
   async function handleDeleteMarket() {
     try {
       await deleteMarket(id)
-      toast('Market deleted')
+      toast('Territory deleted')
       router.push('/growth/markets')
     } catch (err: any) { toast(err.message || 'Failed to delete', 'error') }
   }
@@ -120,9 +105,9 @@ export default function MarketDetailPage() {
   async function handleDeleteZone(zoneId: string) {
     try {
       await deleteZone(zoneId)
-      toast('Zone deleted')
+      toast('Focus area deleted')
       load()
-    } catch (err: any) { toast(err.message || 'Failed to delete zone', 'error') }
+    } catch (err: any) { toast(err.message || 'Failed to delete', 'error') }
     finally { setDeleteZoneId(null) }
   }
 
@@ -130,222 +115,176 @@ export default function MarketDetailPage() {
   if (!market) return null
 
   const client = clients.find(c => c.slug === market.client_slug)
-
-  // Group zones by phase
+  const clientColor = client?.color || t.gold
   const phases = [...new Set((market.zones || []).map(z => z.phase))].sort((a, b) => a - b)
-  const geoSummary = [
-    ...(market.cities?.slice(0, 3) ?? []),
-    ...(market.states ?? []),
-  ].filter(Boolean).join(', ')
+  const geoSummary = [...(market.cities?.slice(0, 3) ?? []), ...(market.states ?? [])].filter(Boolean).join(', ')
 
   return (
     <LayoutShell>
-      <div style={{ padding: '28px 40px', maxWidth: '960px', margin: '0 auto' }}>
+      <div style={{ padding: '0' }}>
 
-        {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '20px', fontSize: '13px', color: t.text.muted }}>
-          <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
-          <span>›</span>
-          <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Markets</Link>
-          <span>›</span>
-          <span style={{ color: t.text.primary }}>{market.name}</span>
+        {/* Client banner */}
+        <div style={{ padding: '12px 40px', borderBottom: `1px solid ${t.border.subtle}`, backgroundColor: clientColor + '0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: t.text.muted }}>
+            <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
+            <span>›</span>
+            <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
+            <span>›</span>
+            <span style={{ color: t.text.secondary }}>{market.name}</span>
+          </div>
+          {client && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: clientColor }} />
+              <span style={{ fontSize: '12px', fontWeight: '700', color: clientColor }}>{client.name}</span>
+            </div>
+          )}
         </div>
 
-        {/* Header */}
-        {!editing ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                {market.priority && <Star size={16} color={t.gold} fill={t.gold} />}
-                <h1 style={{ fontSize: '24px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em' }}>{market.name}</h1>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{
-                  fontSize: '11px', fontWeight: '600', padding: '3px 8px', borderRadius: '5px',
-                  backgroundColor: (client?.color || t.gold) + '20', color: client?.color || t.gold,
-                }}>
-                  {client?.name || market.client_slug}
-                </span>
-                {geoSummary && <span style={{ fontSize: '12px', color: t.text.muted }}>{geoSummary}</span>}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setEditing(true)} style={{
-                display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px',
-                border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.secondary,
-                fontSize: '12px', cursor: 'pointer',
-              }}>
-                <Pencil size={12} /> Edit
-              </button>
-              <button onClick={() => setDeleteMarketModal(true)} style={{
-                display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px',
-                border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
-                fontSize: '12px', cursor: 'pointer',
-              }}>
-                <Trash2 size={12} /> Delete
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Edit form */
-          <div style={{ ...card, padding: '20px 24px', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '18px' }}>Edit Market</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
-                <div>
-                  <label style={labelStyle}>Name</label>
-                  <input type="text" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
-                  <button type="button" onClick={() => setEditForm(f => ({ ...f, priority: !f.priority }))} style={{
-                    width: 18, height: 18, borderRadius: '3px', cursor: 'pointer',
-                    border: `2px solid ${editForm.priority ? t.gold : t.border.default}`,
-                    backgroundColor: editForm.priority ? t.gold : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {editForm.priority && <span style={{ color: '#0f0e0c', fontSize: '11px', fontWeight: '800' }}>✓</span>}
-                  </button>
-                  <span style={{ fontSize: '12px', color: t.text.secondary, cursor: 'pointer' }} onClick={() => setEditForm(f => ({ ...f, priority: !f.priority }))}>Priority ★</span>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <TagInput label="Cities" values={editForm.cities} onChange={v => setEditForm(f => ({ ...f, cities: v }))} />
-                <TagInput label="Counties" values={editForm.counties} onChange={v => setEditForm(f => ({ ...f, counties: v }))} />
-                <TagInput label="States" values={editForm.states} onChange={v => setEditForm(f => ({ ...f, states: v }))} />
-                <TagInput label="Zip Codes" values={editForm.zip_codes} onChange={v => setEditForm(f => ({ ...f, zip_codes: v }))} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={labelStyle}>Default Reach Target (%)</label>
-                  <input type="number" min="0" max="100" value={editForm.default_reach_threshold}
-                    onChange={e => setEditForm(f => ({ ...f, default_reach_threshold: Number(e.target.value) }))} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Default Retention Target (%)</label>
-                  <input type="number" min="0" max="100" value={editForm.default_retention_threshold}
-                    onChange={e => setEditForm(f => ({ ...f, default_retention_threshold: Number(e.target.value) }))} style={inputStyle} />
-                </div>
-              </div>
+        <div style={{ padding: '24px 40px' }}>
+          {/* Header */}
+          {!editing ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
-                <label style={labelStyle}>Notes</label>
-                <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                  rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  {market.priority && <Star size={16} color={t.gold} fill={t.gold} />}
+                  <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', margin: 0 }}>{market.name}</h1>
+                </div>
+                {geoSummary && <div style={{ fontSize: '12px', color: t.text.muted }}>{geoSummary}</div>}
+                {market.notes && (
+                  <div style={{ marginTop: '10px', fontSize: '13px', color: t.text.secondary, padding: '10px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}`, maxWidth: '600px' }}>
+                    {market.notes}
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
-                <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-                  {saving ? 'Saving…' : 'Save Changes'}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.secondary, fontSize: '12px', cursor: 'pointer' }}>
+                  <Pencil size={12} /> Edit
+                </button>
+                <button onClick={() => setDeleteMarketModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '12px', cursor: 'pointer' }}>
+                  <Trash2 size={12} /> Delete
                 </button>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Notes */}
-        {!editing && market.notes && (
-          <div style={{ marginBottom: '24px', padding: '12px 16px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}`, fontSize: '13px', color: t.text.secondary }}>
-            {market.notes}
-          </div>
-        )}
-
-        {/* Zones by phase */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary }}>Zones</h2>
-          <Link href={`/growth/zones/new?market=${id}`} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px',
-            borderRadius: '7px', fontSize: '12px', fontWeight: '600',
-            backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, textDecoration: 'none',
-          }}>
-            <Plus size={13} /> New Zone
-          </Link>
-        </div>
-
-        {(market.zones || []).length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.secondary, marginBottom: '8px' }}>
-              No zones yet in this Market
-            </div>
-            <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
-              Phase 1 is your beachhead — start there.
-            </div>
-            <Link href={`/growth/zones/new?market=${id}`} style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
-              borderRadius: '8px', fontWeight: '600', fontSize: '13px',
-              backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
-            }}>
-              <Plus size={14} /> Create Phase 1 Zone
-            </Link>
-          </div>
-        ) : (
-          phases.map(phase => {
-            const phaseZones = (market.zones || []).filter(z => z.phase === phase)
-            return (
-              <div key={phase} style={{ marginBottom: '24px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>
-                  Phase {phase}
+          ) : (
+            <div style={{ ...card, padding: '20px 24px', marginBottom: '24px', maxWidth: '700px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '18px' }}>Edit Territory</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
+                  <div>
+                    <label style={labelStyle}>Name</label>
+                    <input type="text" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
+                    <button type="button" onClick={() => setEditForm(f => ({ ...f, priority: !f.priority }))} style={{ width: 18, height: 18, borderRadius: '3px', cursor: 'pointer', border: `2px solid ${editForm.priority ? t.gold : t.border.default}`, backgroundColor: editForm.priority ? t.gold : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {editForm.priority && <span style={{ color: '#0f0e0c', fontSize: '11px', fontWeight: '800' }}>✓</span>}
+                    </button>
+                    <span style={{ fontSize: '12px', color: t.text.secondary, cursor: 'pointer' }} onClick={() => setEditForm(f => ({ ...f, priority: !f.priority }))}>Priority ★</span>
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                  {phaseZones.map(z => {
-                    const snap = snapshots[z.id]
-                    const hs = snap?.health_score ?? null
-                    return (
-                      <div key={z.id} style={{ ...card, padding: '16px 18px', position: 'relative' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                          <div>
-                            <Link href={`/growth/zones/${z.id}`} style={{ textDecoration: 'none' }}>
-                              <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, marginBottom: '5px' }}>{z.name}</div>
-                            </Link>
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                              <PostureBadge posture={z.posture} size="xs" />
-                              <span style={{ fontSize: '10px', color: t.text.muted }}>{channelLabel(z.channel)}</span>
-                            </div>
-                          </div>
-                          {hs !== null && (
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: '20px', fontWeight: '800', color: healthColor(hs) }}>{Math.round(hs)}</div>
-                              <div style={{ fontSize: '9px', color: t.text.muted }}>HEALTH</div>
-                            </div>
-                          )}
-                        </div>
-                        {snap && (
-                          <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: t.text.muted }}>
-                            <span>Reach <strong style={{ color: t.text.secondary }}>{Math.round(snap.reach_pct ?? 0)}%</strong></span>
-                            <span>Target Set <strong style={{ color: t.text.secondary }}>{snap.target_set_size ?? 0}</strong></span>
-                          </div>
-                        )}
-                        <button onClick={() => setDeleteZoneId(z.id)} style={{
-                          position: 'absolute', top: '10px', right: '10px',
-                          background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px',
-                          opacity: 0.5,
-                        }}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    )
-                  })}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <TagInput label="Cities" values={editForm.cities} onChange={v => setEditForm(f => ({ ...f, cities: v }))} />
+                  <TagInput label="Counties" values={editForm.counties} onChange={v => setEditForm(f => ({ ...f, counties: v }))} />
+                  <TagInput label="States" values={editForm.states} onChange={v => setEditForm(f => ({ ...f, states: v }))} />
+                  <TagInput label="Zip Codes" values={editForm.zip_codes} onChange={v => setEditForm(f => ({ ...f, zip_codes: v }))} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={labelStyle}>Default Reach Target (%)</label>
+                    <input type="number" min="0" max="100" value={editForm.default_reach_threshold} onChange={e => setEditForm(f => ({ ...f, default_reach_threshold: Number(e.target.value) }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Default Retention Target (%)</label>
+                    <input type="number" min="0" max="100" value={editForm.default_retention_threshold} onChange={e => setEditForm(f => ({ ...f, default_retention_threshold: Number(e.target.value) }))} style={inputStyle} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Notes</label>
+                  <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
+                  <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>{saving ? 'Saving…' : 'Save Changes'}</button>
                 </div>
               </div>
-            )
-          })
-        )}
+            </div>
+          )}
+
+          {/* Focus Areas */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Focus Areas</h2>
+            <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, textDecoration: 'none' }}>
+              <Plus size={13} /> New Focus Area
+            </Link>
+          </div>
+
+          {(market.zones || []).length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '12px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
+              <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
+                Phase 1 is your beachhead — start there. A focus area tracks on-premise or off-premise performance within this territory.
+              </div>
+              <Link href={`/growth/zones/new?market=${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
+                <Plus size={14} /> Create First Focus Area
+              </Link>
+            </div>
+          ) : (
+            phases.map(phase => {
+              const phaseZones = (market.zones || []).filter(z => z.phase === phase)
+              return (
+                <div key={phase} style={{ marginBottom: '28px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                    Phase {phase}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                    {phaseZones.map(z => {
+                      const snap = snapshots[z.id]
+                      const hs = snap?.health_score ?? null
+                      return (
+                        <div key={z.id} style={{ ...card, padding: '16px 18px', position: 'relative', borderTop: `2px solid ${healthColor(hs)}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                            <div>
+                              <Link href={`/growth/zones/${z.id}`} style={{ textDecoration: 'none' }}>
+                                <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, marginBottom: '5px' }}>{z.name}</div>
+                              </Link>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <PostureBadge posture={z.posture} size="xs" />
+                                <span style={{ fontSize: '10px', color: t.text.muted }}>{channelLabel(z.channel)}</span>
+                              </div>
+                            </div>
+                            {hs !== null && (
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(hs), lineHeight: 1 }}>{Math.round(hs)}</div>
+                                <div style={{ fontSize: '9px', color: t.text.muted }}>HEALTH</div>
+                              </div>
+                            )}
+                          </div>
+                          {snap && (
+                            <div style={{ display: 'flex', gap: '14px', fontSize: '11px', color: t.text.muted }}>
+                              <span>Reach <strong style={{ color: t.text.secondary }}>{Math.round(snap.reach_pct ?? 0)}%</strong></span>
+                              <span>Targets <strong style={{ color: t.text.secondary }}>{snap.target_set_size ?? 0}</strong></span>
+                              <span>Active <strong style={{ color: t.text.secondary }}>{snap.active_accounts ?? 0}</strong></span>
+                            </div>
+                          )}
+                          <button onClick={() => setDeleteZoneId(z.id)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px', opacity: 0.4 }}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
       </div>
 
-      <ConfirmModal
-        isOpen={deleteMarketModal}
-        title="Delete Market"
-        message={`Delete "${market.name}" and all its zones? This cannot be undone.`}
-        confirmLabel="Delete Market"
-        onConfirm={handleDeleteMarket}
-        onClose={() => setDeleteMarketModal(false)}
-      />
-      <ConfirmModal
-        isOpen={!!deleteZoneId}
-        title="Delete Zone"
-        message="Delete this zone and its Target Set? This cannot be undone."
-        confirmLabel="Delete Zone"
-        onConfirm={() => deleteZoneId && handleDeleteZone(deleteZoneId)}
-        onClose={() => setDeleteZoneId(null)}
-      />
+      <ConfirmModal isOpen={deleteMarketModal} title="Delete Territory"
+        message={`Delete "${market.name}" and all its focus areas? This cannot be undone.`}
+        confirmLabel="Delete Territory" onConfirm={handleDeleteMarket} onClose={() => setDeleteMarketModal(false)} />
+      <ConfirmModal isOpen={!!deleteZoneId} title="Delete Focus Area"
+        message="Delete this focus area and its target set? This cannot be undone."
+        confirmLabel="Delete" onConfirm={() => deleteZoneId && handleDeleteZone(deleteZoneId)} onClose={() => setDeleteZoneId(null)} />
     </LayoutShell>
   )
 }

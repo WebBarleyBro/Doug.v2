@@ -101,7 +101,7 @@ export default function NewMarketPage() {
       })
       router.push(`/growth/markets/${market.id}`)
     } catch (err: any) {
-      setError(err.message || 'Failed to create market.')
+      setError(err.message || 'Failed to create territory.')
     } finally {
       setSaving(false)
     }
@@ -118,13 +118,13 @@ export default function NewMarketPage() {
           <ChevronLeft size={15} /> Back
         </button>
 
-        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '24px' }}>New Market</h1>
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '24px' }}>New Territory</h1>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>Market Name *</label>
+              <label style={labelStyle}>Territory Name *</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. Northern Colorado" style={inputStyle} required />
             </div>
@@ -169,7 +169,7 @@ export default function NewMarketPage() {
           {/* Default thresholds */}
           <div style={{ padding: '16px', borderRadius: '10px', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}` }}>
             <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>
-              Default Thresholds (zones inherit these unless overridden)
+              Default Thresholds (focus areas inherit these unless overridden)
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
@@ -203,7 +203,7 @@ export default function NewMarketPage() {
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
             <button type="button" onClick={() => router.back()} style={btnSecondary}>Cancel</button>
             <button type="submit" disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Creating…' : 'Create Market'}
+              {saving ? 'Creating…' : 'Create Territory'}
             </button>
           </div>
         </form>
