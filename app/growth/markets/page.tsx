@@ -75,8 +75,13 @@ function MarketsContent() {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <div>
-            <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em' }}>Markets</h1>
-            <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{filtered.length} market{filtered.length !== 1 ? 's' : ''}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none', fontSize: '13px' }}>← Growth</Link>
+            </div>
+            <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginTop: '6px' }}>Markets</h1>
+            <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
+              Geographic territories that contain zones · {filtered.length} market{filtered.length !== 1 ? 's' : ''}
+            </p>
           </div>
           <Link href="/growth/markets/new" style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
