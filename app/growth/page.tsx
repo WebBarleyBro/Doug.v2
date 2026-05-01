@@ -168,14 +168,17 @@ function GrowthDashboardContent() {
   const attentionItems = zones.flatMap(z => {
     const snap = snapshots[z.id]
     const hs = snap?.health_score ?? null
-    const items: { id: string; title: string; sub: string; href: string }[] = []
+    // Skip zones with no snapshot data — they're too new to judge
+    if (!snap) return []
+    const issues: string[] = []
     if ((z.posture === 'active' || z.posture === 'maintaining') && hs !== null && hs < 50) {
-      items.push({ id: `low:${z.id}`, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)} · ${z.posture}` })
+      issues.push(`Health ${Math.round(hs)}`)
     }
-    if (z.posture === 'active' && (snap?.target_set_size ?? 0) === 0) {
-      items.push({ id: `empty:${z.id}`, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: 'Active with no target accounts' })
+    if (z.posture === 'active' && (snap.target_set_size ?? 0) === 0) {
+      issues.push('No target accounts')
     }
-    return items
+    if (issues.length === 0) return []
+    return [{ id: z.id, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: issues.join(' · ') }]
   })
 
   if (loading) return (

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import LayoutShell from '../../../layout-shell'
@@ -39,6 +39,7 @@ function NewZoneContent() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [nameAutoFilled, setNameAutoFilled] = useState(true)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const [form, setForm] = useState({
     market_id: defaultMarket,
@@ -188,6 +189,7 @@ function NewZoneContent() {
             )}
           </div>
 
+          {/* Channel */}
           <div>
             <label style={labelStyle}>Channel *</label>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -206,56 +208,69 @@ function NewZoneContent() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div>
-              <label style={labelStyle}>
-                Name
-                <span style={{ color: t.text.muted, fontWeight: '400', marginLeft: '4px' }}>— auto-filled from channel</span>
-              </label>
-              <input type="text" value={form.name} onChange={e => handleNameChange(e.target.value)}
-                placeholder="e.g. On-Premise" style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Phase</label>
-              <input type="number" min="1" value={form.phase}
-                onChange={e => setForm(f => ({ ...f, phase: Number(e.target.value) }))}
-                style={inputStyle} />
-              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Phase 1 = beachhead</div>
-            </div>
-          </div>
-
+          {/* Posture — compact inline buttons */}
           <div>
             <label style={labelStyle}>Posture</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {POSTURE_OPTIONS.map(o => (
                 <button key={o.value} type="button" onClick={() => setForm(f => ({ ...f, posture: o.value }))}
                   style={{
-                    padding: '9px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer', textAlign: 'left',
+                    padding: '7px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
                     border: `1px solid ${form.posture === o.value ? t.gold : t.border.default}`,
                     backgroundColor: form.posture === o.value ? t.goldDim : 'transparent',
                     color: form.posture === o.value ? t.gold : t.text.secondary,
+                    fontWeight: form.posture === o.value ? '600' : '400',
                   }}>
-                  {o.label}
+                  {o.label.split(' ')[0]}
                 </button>
               ))}
             </div>
+            <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '5px' }}>
+              {POSTURE_OPTIONS.find(o => o.value === form.posture)?.label.split(' — ')[1]}
+            </div>
           </div>
 
-          {/* Velocity Target — required */}
-          <div style={{ padding: '16px', borderRadius: '10px', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}` }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '12px' }}>
-              Performance Targets
+          {/* Velocity target — required */}
+          <div>
+            <label style={labelStyle}>Velocity Target (cases/acct/month) *</label>
+            <input type="number" min="0.1" step="0.1" value={form.velocity_target}
+              onChange={e => setForm(f => ({ ...f, velocity_target: e.target.value }))}
+              placeholder="e.g. 3.5" style={inputStyle} />
+            <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>
+              Use top-quartile performance from your existing accounts as a benchmark.
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>Velocity Target (cases/active account/month) *</label>
-                <input type="number" min="0.1" step="0.1" value={form.velocity_target}
-                  onChange={e => setForm(f => ({ ...f, velocity_target: e.target.value }))}
-                  placeholder="e.g. 3.5" style={inputStyle} />
-                <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>
-                  Set from top-quartile of current account performance — see methodology guide.
+          </div>
+
+          {/* Advanced toggle */}
+          <button type="button" onClick={() => setShowAdvanced(v => !v)} style={{
+            display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none',
+            cursor: 'pointer', color: t.text.muted, fontSize: '12px', padding: 0, alignSelf: 'flex-start',
+          }}>
+            <span style={{ fontSize: '10px' }}>{showAdvanced ? '▼' : '▶'}</span>
+            {showAdvanced ? 'Hide' : 'Show'} advanced options
+            <span style={{ fontSize: '11px', color: t.border.hover }}>— name, phase, thresholds, notes</span>
+          </button>
+
+          {showAdvanced && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div>
+                  <label style={labelStyle}>
+                    Name
+                    <span style={{ color: t.text.muted, fontWeight: '400', marginLeft: '4px' }}>— auto-filled</span>
+                  </label>
+                  <input type="text" value={form.name} onChange={e => handleNameChange(e.target.value)}
+                    placeholder="e.g. On-Premise" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Phase</label>
+                  <input type="number" min="1" value={form.phase}
+                    onChange={e => setForm(f => ({ ...f, phase: Number(e.target.value) }))}
+                    style={inputStyle} />
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Phase 1 = beachhead</div>
                 </div>
               </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={labelStyle}>
@@ -278,21 +293,22 @@ function NewZoneContent() {
                     style={inputStyle} />
                 </div>
               </div>
+
               <div>
                 <label style={labelStyle}>Projected Monthly Cases (optional)</label>
                 <input type="number" min="0" value={form.projected_monthly_cases}
                   onChange={e => setForm(f => ({ ...f, projected_monthly_cases: e.target.value }))}
                   placeholder="Used for Supply Headroom calculation" style={inputStyle} />
               </div>
-            </div>
-          </div>
 
-          <div>
-            <label style={labelStyle}>Notes (optional)</label>
-            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '72px' }}
-              placeholder="Strategy, context, anything useful…" />
-          </div>
+              <div>
+                <label style={labelStyle}>Notes (optional)</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '72px' }}
+                  placeholder="Strategy, context, anything useful…" />
+              </div>
+            </>
+          )}
 
           {error && (
             <div style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '13px' }}>

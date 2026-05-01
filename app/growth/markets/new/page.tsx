@@ -63,6 +63,7 @@ export default function NewMarketPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -178,46 +179,58 @@ export default function NewMarketPage() {
             </div>
           </div>
 
-          {/* Geography */}
-          <div style={{ padding: '16px', borderRadius: '10px', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}` }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>
-              Geographic Definition
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <TagInput label="Cities" values={form.cities} onChange={v => setForm(f => ({ ...f, cities: v }))} />
-              <TagInput label="Counties" values={form.counties} onChange={v => setForm(f => ({ ...f, counties: v }))} />
-              <TagInput label="States" values={form.states} onChange={v => setForm(f => ({ ...f, states: v }))} />
-              <TagInput label="Zip Codes" values={form.zip_codes} onChange={v => setForm(f => ({ ...f, zip_codes: v }))} />
-            </div>
-          </div>
+          {/* Advanced toggle */}
+          <button type="button" onClick={() => setShowAdvanced(v => !v)} style={{
+            display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none',
+            cursor: 'pointer', color: t.text.muted, fontSize: '12px', padding: 0, alignSelf: 'flex-start',
+          }}>
+            <span style={{ fontSize: '10px' }}>{showAdvanced ? '▼' : '▶'}</span>
+            {showAdvanced ? 'Hide' : 'Show'} advanced options
+            <span style={{ fontSize: '11px', color: t.border.hover }}>— geo, thresholds, notes</span>
+          </button>
 
-          {/* Default thresholds */}
-          <div style={{ padding: '16px', borderRadius: '10px', backgroundColor: t.bg.input, border: `1px solid ${t.border.default}` }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '14px' }}>
-              Default Thresholds (focus areas inherit these unless overridden)
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          {showAdvanced && (
+            <>
               <div>
-                <label style={labelStyle}>Reach Target (%)</label>
-                <input type="number" min="0" max="100" value={form.default_reach_threshold}
-                  onChange={e => setForm(f => ({ ...f, default_reach_threshold: Number(e.target.value) }))}
-                  style={inputStyle} />
+                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
+                  Geographic Definition
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <TagInput label="Cities" values={form.cities} onChange={v => setForm(f => ({ ...f, cities: v }))} />
+                  <TagInput label="Counties" values={form.counties} onChange={v => setForm(f => ({ ...f, counties: v }))} />
+                  <TagInput label="States" values={form.states} onChange={v => setForm(f => ({ ...f, states: v }))} />
+                  <TagInput label="Zip Codes" values={form.zip_codes} onChange={v => setForm(f => ({ ...f, zip_codes: v }))} />
+                </div>
               </div>
-              <div>
-                <label style={labelStyle}>Retention Target (%)</label>
-                <input type="number" min="0" max="100" value={form.default_retention_threshold}
-                  onChange={e => setForm(f => ({ ...f, default_retention_threshold: Number(e.target.value) }))}
-                  style={inputStyle} />
-              </div>
-            </div>
-          </div>
 
-          <div>
-            <label style={labelStyle}>Notes (optional)</label>
-            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '72px' }}
-              placeholder="Context, strategy, anything useful…" />
-          </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px' }}>
+                  Default Thresholds <span style={{ fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>— focus areas inherit these unless overridden</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Reach Target (%)</label>
+                    <input type="number" min="0" max="100" value={form.default_reach_threshold}
+                      onChange={e => setForm(f => ({ ...f, default_reach_threshold: Number(e.target.value) }))}
+                      style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Retention Target (%)</label>
+                    <input type="number" min="0" max="100" value={form.default_retention_threshold}
+                      onChange={e => setForm(f => ({ ...f, default_retention_threshold: Number(e.target.value) }))}
+                      style={inputStyle} />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Notes (optional)</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '72px' }}
+                  placeholder="Context, strategy, anything useful…" />
+              </div>
+            </>
+          )}
 
           {error && (
             <div style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '13px' }}>
