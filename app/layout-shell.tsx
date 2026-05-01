@@ -106,6 +106,7 @@ const ownerNavGroups: NavGroup[] = [
     { href: '/placements', label: 'Placements',  icon: Package },
     { href: '/orders',     label: 'Orders',      icon: ShoppingCart },
     { href: '/finance',    label: 'Finance',     icon: DollarSign },
+    { href: '/growth',     label: 'Growth',      icon: TrendingUp },
   ]},
   { label: 'INTEL', items: [
     { href: '/analytics',  label: 'Analytics',   icon: BarChart3 },
@@ -129,6 +130,7 @@ const repNavGroups: NavGroup[] = [
   { label: 'SALES', items: [
     { href: '/placements', label: 'Placements',  icon: Package },
     { href: '/orders',     label: 'Orders',      icon: ShoppingCart },
+    { href: '/growth',     label: 'Growth',      icon: TrendingUp },
   ]},
   { label: 'INTEL', items: [
     { href: '/calendar',   label: 'Calendar',    icon: Calendar },
@@ -299,6 +301,9 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
     '/orders': 'Orders',
     '/finance': 'Finance',
     '/analytics': 'Analytics',
+    '/growth/markets': 'Territories',
+    '/growth/zones': 'Focus Areas',
+    '/growth': 'Growth',
     '/calendar': 'Calendar',
     '/contacts': 'Contacts',
     '/marketing': 'Marketing',
@@ -306,7 +311,12 @@ function MobileHeader({ profile, onMenuOpen }: { profile: UserProfile; onMenuOpe
     '/intern-hub': 'Intern Hub',
     '/intern': 'My Work',
   }
-  const title = titleMap[pathname] || 'Doug'
+  // Exact match first, then longest-prefix match for dynamic routes
+  const title = titleMap[pathname] ?? (
+    Object.entries(titleMap)
+      .filter(([path]) => path !== '/' && pathname.startsWith(path))
+      .sort((a, b) => b[0].length - a[0].length)[0]?.[1]
+  ) ?? 'Doug'
 
   return (
     <header style={{

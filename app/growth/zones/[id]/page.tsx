@@ -208,6 +208,12 @@ export default function ZoneDetailPage() {
     return allAccounts.filter(a => !targetAccountIds.has(a.id) && (a.name.toLowerCase().includes(q) || (a.address ?? '').toLowerCase().includes(q))).slice(0, 20)
   }, [allAccounts, targetAccountIds, accountSearch])
 
+  const hasGeoTags = useMemo(() => {
+    if (!zone?.markets) return false
+    const m = zone.markets
+    return (m.cities?.length ?? 0) + (m.counties?.length ?? 0) + (m.states?.length ?? 0) + (m.zip_codes?.length ?? 0) > 0
+  }, [zone])
+
   const trend30d = useMemo(() => {
     if (sparkData.length < 2) return null
     const oldest = sparkData[0].health_score
@@ -312,8 +318,10 @@ export default function ZoneDetailPage() {
                 {sparkData.length >= 2 && <div style={{ padding: '6px 16px 0' }}><Sparkline data={sparkData.map(s => s.reach_pct)} width={160} height={24} /></div>}
               </div>
               <div>
-                <MetricTile label="Velocity Index" value={snapshot?.velocity_index ?? null} target={100} unit=""
-                  note={`${snapshot?.velocity != null ? snapshot.velocity.toFixed(2) : '—'} cases/acct/mo (target ${zone.velocity_target})`} />
+                <MetricTile label="Velocity" value={snapshot?.velocity_index ?? null} target={100} unit=""
+                  note={snapshot?.velocity != null
+                    ? `${snapshot.velocity.toFixed(1)} cs/acct/mo · target ${zone.velocity_target}`
+                    : `Target: ${zone.velocity_target} cs/acct/mo`} />
                 {sparkData.length >= 2 && <div style={{ padding: '6px 16px 0' }}><Sparkline data={sparkData.map(s => s.velocity_index)} width={160} height={24} /></div>}
               </div>
               <div>
@@ -348,7 +356,7 @@ export default function ZoneDetailPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart data={[
                       { metric: 'Reach', value: Math.round(snapshot.reach_pct ?? 0), target: effectiveReach },
-                      { metric: 'Velocity', value: Math.round(snapshot.velocity_index ?? 0), target: 100 },
+                      { metric: 'Vel. Index', value: Math.round(snapshot.velocity_index ?? 0), target: 100 },
                       { metric: 'Retention', value: Math.round(snapshot.retention_pct ?? 0), target: effectiveRetention },
                     ]}>
                       <PolarGrid stroke={t.border.subtle} />
@@ -521,6 +529,19 @@ export default function ZoneDetailPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* No geo tags — explain how to get suggestions */}
+            {suggested.length === 0 && !hasGeoTags && (
+              <div style={{ marginTop: '16px', padding: '12px 14px', borderRadius: '8px', border: `1px dashed ${t.border.default}`, backgroundColor: t.bg.input }}>
+                <div style={{ fontSize: '11px', fontWeight: '600', color: t.text.muted, marginBottom: '4px' }}>No account suggestions</div>
+                <div style={{ fontSize: '11px', color: t.text.muted, lineHeight: 1.5 }}>
+                  <Link href={`/growth/markets/${market.id}`} style={{ color: t.gold, textDecoration: 'none', fontWeight: '600' }}>
+                    Add a location to {market.name}
+                  </Link>{' '}
+                  (cities, counties, or zip codes) and matching accounts from your database will appear here automatically.
+                </div>
               </div>
             )}
 

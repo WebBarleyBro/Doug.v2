@@ -289,17 +289,15 @@ function GrowthDashboardContent() {
           {zones.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '80px 24px', border: `2px dashed ${t.border.default}`, borderRadius: '14px' }}>
               <div style={{ fontSize: '16px', fontWeight: '800', color: t.text.secondary, marginBottom: '8px' }}>No focus areas yet</div>
-              <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '400px', margin: '0 auto 24px' }}>
-                Start by creating a territory (geographic area), then add on-premise and off-premise focus areas within it.
+              <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '440px', margin: '0 auto 8px' }}>
+                Growth tracks sales performance by geography and channel. Start by creating a territory, then define on-premise and off-premise focus areas within it.
               </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                <Link href="/growth/markets/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', border: `1px solid ${t.border.default}`, backgroundColor: t.bg.elevated, color: t.text.secondary, textDecoration: 'none' }}>
-                  <Plus size={13} /> New Territory
-                </Link>
-                <Link href="/growth/zones/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
-                  <Plus size={13} /> New Focus Area
-                </Link>
+              <div style={{ fontSize: '12px', color: t.border.hover, maxWidth: '440px', margin: '0 auto 24px' }}>
+                Territory → Focus Area → Target Accounts → Metrics
               </div>
+              <Link href="/growth/markets/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 22px', borderRadius: '8px', fontWeight: '700', fontSize: '13px', backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none' }}>
+                <Plus size={13} /> Create First Territory
+              </Link>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>

@@ -26,7 +26,7 @@ import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../li
 import type { UserProfile, Client, VisitStatus } from '../../lib/types'
 import { useIsMobile } from '../../lib/use-is-mobile'
 import { getAccountZones } from '../../lib/concentric/data'
-import { PostureBadge, channelLabel, healthColor } from '../../growth/_components'
+import { channelLabel, healthColor } from '../../growth/_components'
 import type { ZoneTargetAccount, Zone, Market } from '../../lib/concentric/types'
 
 declare global { interface Window { google: any } }
