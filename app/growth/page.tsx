@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Settings, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Plus, Settings, AlertTriangle, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import LayoutShell from '../layout-shell'
-import { t, card } from '../lib/theme'
+import { t } from '../lib/theme'
 import { getClients } from '../lib/data'
 import { getAllZones, getLatestSnapshotsByZone } from '../lib/concentric/data'
 import { PostureBadge, healthColor, healthBg, channelLabel } from './_components'
@@ -15,127 +15,168 @@ type ZoneWithMarket = Zone & { markets: Market }
 
 const POSTURE_ORDER: Zone['posture'][] = ['active', 'maintaining', 'monitoring', 'opportunistic']
 
-function MarketCard({ zone, snapshot, client }: {
-  zone: ZoneWithMarket
-  snapshot: ZoneMetricSnapshot | null
-  client: Client | undefined
-}) {
+function StatTile({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <div style={{
+      flex: 1, padding: '20px 24px',
+      borderRight: `1px solid ${t.border.subtle}`,
+    }}>
+      <div style={{ fontSize: '32px', fontWeight: '900', color: color || t.text.primary, letterSpacing: '-0.03em', lineHeight: 1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, marginTop: '5px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      {sub && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function MetricBar({ label, value, threshold }: { label: string; value: number | null | undefined; threshold?: number }) {
+  const v = value ?? null
+  const pct = v !== null ? Math.min(Math.round(v), 100) : null
+  const color = v !== null ? healthColor(v) : t.border.subtle
+  const isAbove = threshold != null && v !== null && v >= threshold
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, letterSpacing: '0.1em' }}>{label}</span>
+        <span style={{ fontSize: '12px', fontWeight: '800', color: pct !== null ? color : t.text.muted }}>
+          {pct !== null ? `${pct}%` : '—'}
+        </span>
+      </div>
+      <div style={{ height: '3px', borderRadius: '2px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
+        {pct !== null && (
+          <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: '2px', transition: 'width 400ms ease' }} />
+        )}
+      </div>
+      {threshold != null && pct !== null && (
+        <div style={{ fontSize: '9px', color: isAbove ? healthColor(80) : t.status.warning, marginTop: '2px' }}>
+          {isAbove ? `↑ ${Math.round(v! - threshold)}% above target` : `↓ ${Math.round(threshold - v!)}% below target`}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetricSnapshot | null }) {
+  const [hovered, setHovered] = useState(false)
   const hs = snapshot?.health_score ?? null
   const color = healthColor(hs)
   const bg = healthBg(hs)
+  const trend = snapshot ? null : null // trend_30d not in snapshot type here
 
   return (
-    <Link href={`/growth/zones/${zone.id}`} style={{ textDecoration: 'none', display: 'block', width: '280px', flexShrink: 0 }}>
-      <div style={{
-        borderRadius: '14px', overflow: 'hidden',
-        border: `1px solid ${t.border.default}`,
-        backgroundColor: t.bg.elevated,
-        transition: 'border-color 150ms, transform 150ms',
-        cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column',
-      }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLElement).style.borderColor = color
-          ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'
+    <Link href={`/growth/zones/${zone.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div
+        style={{
+          borderRadius: '14px', overflow: 'hidden',
+          border: `1px solid ${hovered ? color + '60' : t.border.default}`,
+          backgroundColor: t.bg.elevated,
+          transition: 'border-color 150ms, transform 150ms, box-shadow 150ms',
+          cursor: 'pointer', display: 'flex', flexDirection: 'column',
+          transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+          boxShadow: hovered ? `0 8px 24px rgba(0,0,0,0.3)` : 'none',
         }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLElement).style.borderColor = t.border.default
-          ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
-        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {/* Color bar */}
-        <div style={{ height: '3px', backgroundColor: color, opacity: hs === null ? 0.15 : 0.8 }} />
+        {/* Top accent bar */}
+        <div style={{ height: '3px', backgroundColor: color, opacity: hs === null ? 0.15 : 1 }} />
 
         {/* Header */}
-        <div style={{ padding: '16px 18px 12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            {/* Territory + channel */}
-            <div>
-              <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '5px', fontWeight: '500' }}>
-                {zone.markets?.name} · Ph.{zone.phase}
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em', lineHeight: 1.15 }}>
-                {zone.name}
-              </div>
+        <div style={{ padding: '18px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>{zone.markets?.name}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>Phase {zone.phase}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>{channelLabel(zone.channel)}</span>
             </div>
-            <PostureBadge posture={zone.posture} size="xs" />
+            <div style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              {zone.name}
+            </div>
           </div>
+          <PostureBadge posture={zone.posture} size="xs" />
         </div>
 
         {/* Health score */}
         <div style={{
-          margin: '0 14px', borderRadius: '10px', padding: '18px 12px',
-          backgroundColor: bg, border: `1px solid ${color}20`,
-          textAlign: 'center', flexShrink: 0,
+          margin: '0 16px', borderRadius: '10px', padding: '16px 20px',
+          backgroundColor: bg, border: `1px solid ${color}25`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <div style={{ fontSize: '48px', fontWeight: '900', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {hs !== null ? Math.round(hs) : '—'}
+          <div>
+            <div style={{ fontSize: '52px', fontWeight: '900', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              {hs !== null ? Math.round(hs) : '—'}
+            </div>
+            <div style={{ fontSize: '9px', fontWeight: '700', color, marginTop: '3px', letterSpacing: '0.12em', opacity: 0.7 }}>
+              HEALTH SCORE
+            </div>
           </div>
-          <div style={{ fontSize: '9px', fontWeight: '700', color, marginTop: '3px', letterSpacing: '0.12em', opacity: 0.7 }}>
-            HEALTH
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: t.text.secondary }}>
+              {snapshot?.active_accounts ?? 0}
+              <span style={{ fontSize: '12px', color: t.text.muted, fontWeight: '500' }}> active</span>
+            </div>
+            <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>
+              of {snapshot?.target_set_size ?? 0} targets
+            </div>
           </div>
         </div>
 
-        {/* Metrics */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '12px 18px 8px' }}>
-          {[
-            { label: 'REACH', v: snapshot?.reach_pct },
-            { label: 'VEL IDX', v: snapshot?.velocity_index },
-            { label: 'RETENTION', v: snapshot?.retention_pct },
-          ].map((m, i) => (
-            <div key={m.label} style={{
-              textAlign: 'center',
-              borderLeft: i > 0 ? `1px solid ${t.border.subtle}` : 'none',
-            }}>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>
-                {m.v != null ? `${Math.round(m.v)}${m.label !== 'VEL IDX' ? '%' : ''}` : '—'}
-              </div>
-              <div style={{ fontSize: '8px', fontWeight: '600', color: t.text.muted, marginTop: '2px', letterSpacing: '0.07em' }}>
-                {m.label}
-              </div>
-            </div>
-          ))}
+        {/* Metric bars */}
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <MetricBar label="REACH" value={snapshot?.reach_pct} />
+          <MetricBar label="VELOCITY INDEX" value={snapshot?.velocity_index} />
+          <MetricBar label="RETENTION" value={snapshot?.retention_pct} />
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: 'auto', padding: '8px 18px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', color: t.text.muted }}>
-            {snapshot?.target_set_size ?? 0} accounts · {snapshot?.active_accounts ?? 0} active
+        <div style={{
+          padding: '10px 20px 16px',
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+          marginTop: 'auto',
+        }}>
+          <span style={{ fontSize: '11px', color: color, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', opacity: hovered ? 1 : 0.6, transition: 'opacity 150ms' }}>
+            Open focus area <ChevronRight size={12} />
           </span>
-          <ChevronRight size={13} color={t.text.muted} />
         </div>
       </div>
     </Link>
   )
 }
 
-function AddMarketCard({ clientSlug }: { clientSlug: string }) {
+function AddZoneCard({ clientSlug }: { clientSlug: string }) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <Link href={`/growth/zones/new?client=${clientSlug}`} style={{ textDecoration: 'none', display: 'block', width: '200px', flexShrink: 0 }}>
-      <div style={{
-        borderRadius: '14px', height: '100%', minHeight: '200px',
-        border: `2px dashed ${t.border.default}`,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: '8px', cursor: 'pointer', transition: 'border-color 150ms, background 150ms',
-        backgroundColor: 'transparent',
-      }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLElement).style.borderColor = t.gold
-          ;(e.currentTarget as HTMLElement).style.backgroundColor = t.goldDim
+    <Link href={`/growth/zones/new?client=${clientSlug}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div
+        style={{
+          borderRadius: '14px', minHeight: '260px',
+          border: `2px dashed ${hovered ? t.gold : t.border.default}`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: '10px', cursor: 'pointer',
+          transition: 'border-color 150ms, background 150ms',
+          backgroundColor: hovered ? t.goldDim : 'transparent',
         }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLElement).style.borderColor = t.border.default
-          ;(e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'
-        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
         <div style={{
-          width: '36px', height: '36px', borderRadius: '50%',
-          backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`,
+          width: '44px', height: '44px', borderRadius: '50%',
+          backgroundColor: hovered ? t.gold + '30' : t.border.subtle,
+          border: `1px solid ${hovered ? t.gold + '60' : t.border.default}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 150ms',
         }}>
-          <Plus size={16} color={t.gold} />
+          <Plus size={18} color={hovered ? t.gold : t.text.muted} />
         </div>
-        <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.muted, textAlign: 'center' }}>
-          Add focus area
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: hovered ? t.gold : t.text.muted }}>Add focus area</div>
+          <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>on-premise, off-premise, or both</div>
         </div>
       </div>
     </Link>
@@ -150,16 +191,8 @@ function GrowthDashboardContent() {
   const [snapshots, setSnapshots] = useState<Record<string, ZoneMetricSnapshot>>({})
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
-  const [dismissed, setDismissed] = useState<Record<string, number>>({})
 
   const filterClient = searchParams.get('client') ?? ''
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('growth_dismissed')
-      if (raw) setDismissed(JSON.parse(raw))
-    } catch {}
-  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -174,20 +207,13 @@ function GrowthDashboardContent() {
 
   useEffect(() => { load() }, [load])
 
-  function dismiss(id: string) {
-    const exp = Date.now() + 7 * 24 * 60 * 60 * 1000
-    const next = { ...dismissed, [id]: exp }
-    setDismissed(next)
-    try { localStorage.setItem('growth_dismissed', JSON.stringify(next)) } catch {}
+  function setFilter(slug: string) {
+    if (slug) router.push(`/growth?client=${slug}`)
+    else router.push('/growth')
   }
 
-  // Group zones by client slug, sorted by posture then health
   const clientsWithZones = clients.filter(c => zones.some(z => z.markets?.client_slug === c.slug))
-  const visibleClients = filterClient
-    ? clientsWithZones.filter(c => c.slug === filterClient)
-    : clientsWithZones
-  // Also include any client slugs not in clients list
-  const allClientSlugs = [...new Set(zones.map(z => z.markets?.client_slug).filter(Boolean))]
+  const visibleClients = filterClient ? clients.filter(c => c.slug === filterClient) : clients
 
   function zonesForClient(slug: string) {
     return zones
@@ -199,212 +225,225 @@ function GrowthDashboardContent() {
       })
   }
 
+  // Global stats
+  const allHealthScores = zones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
+  const avgHealth = allHealthScores.length > 0
+    ? Math.round(allHealthScores.reduce((a, b) => a + b, 0) / allHealthScores.length)
+    : null
+  const activeCount = zones.filter(z => z.posture === 'active' || z.posture === 'maintaining').length
+  const totalAccounts = Object.values(snapshots).reduce((s, sn) => s + (sn.target_set_size ?? 0), 0)
+  const totalActive = Object.values(snapshots).reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
+
   // Needs attention
-  const now = Date.now()
   const attentionItems = zones.flatMap(z => {
     const snap = snapshots[z.id]
     const items: { id: string; title: string; sub: string; href: string }[] = []
     const hs = snap?.health_score ?? null
     if ((z.posture === 'active' || z.posture === 'maintaining') && hs !== null && hs < 50) {
-      const key = `low:${z.id}`
-      if (!dismissed[key] || dismissed[key] < now) {
-        items.push({ id: key, href: `/growth/zones/${z.id}`,
-          title: `${z.name} (${z.markets?.name}) — Health Score ${Math.round(hs)}`,
-          sub: z.posture,
-        })
-      }
+      items.push({
+        id: `low:${z.id}`, href: `/growth/zones/${z.id}`,
+        title: `${z.name} — ${z.markets?.name}`,
+        sub: `Health ${Math.round(hs)} · ${z.posture}`,
+      })
     }
     if (z.posture === 'active' && (snap?.target_set_size ?? 0) === 0) {
-      const key = `empty:${z.id}`
-      if (!dismissed[key] || dismissed[key] < now) {
-        items.push({ id: key, href: `/growth/zones/${z.id}`,
-          title: `${z.name} (${z.markets?.name}) — No accounts in focus set`,
-          sub: 'Active with no target accounts',
-        })
-      }
+      items.push({
+        id: `empty:${z.id}`, href: `/growth/zones/${z.id}`,
+        title: `${z.name} — ${z.markets?.name}`,
+        sub: 'Active with no target accounts',
+      })
     }
     return items
   })
 
   if (loading) return (
     <LayoutShell>
-      <div style={{ padding: '80px', textAlign: 'center', color: t.text.muted }}>Loading…</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+        <div style={{ color: t.text.muted, fontSize: '13px' }}>Loading growth data…</div>
+      </div>
     </LayoutShell>
   )
 
-  const hasAnyZones = zones.length > 0
-
   return (
     <LayoutShell>
-      <div style={{ padding: '32px 40px', maxWidth: '1300px', margin: '0 auto' }}>
+      <div style={{ padding: '0', minHeight: '100vh' }}>
 
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: '900', color: t.text.primary, letterSpacing: '-0.03em', marginBottom: '4px' }}>
-              Growth
-            </h1>
-            <p style={{ fontSize: '13px', color: t.text.muted }}>
-              Track where each client is winning and where they need work
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <Link href="/growth/markets" style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '7px 12px', borderRadius: '8px', fontSize: '12px',
-              border: `1px solid ${t.border.default}`, backgroundColor: 'transparent',
-              color: t.text.muted, textDecoration: 'none',
-            }}>
-              <Settings size={12} /> Territories
-            </Link>
-            <Link href="/growth/zones/new" style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '9px 18px', borderRadius: '9px', fontSize: '13px', fontWeight: '700',
-              backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
-            }}>
-              <Plus size={14} /> Add Focus Area
-            </Link>
-          </div>
-        </div>
-
-        {/* Client filter */}
-        {clientsWithZones.length > 1 && (
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '28px' }}>
-            <button onClick={() => router.push('/growth')} style={{
-              padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
-              border: `1px solid ${!filterClient ? t.gold : t.border.default}`,
-              backgroundColor: !filterClient ? t.goldDim : 'transparent',
-              color: !filterClient ? t.gold : t.text.muted,
-            }}>All clients</button>
-            {clientsWithZones.map(c => (
-              <button key={c.slug} onClick={() => router.push(`/growth?client=${c.slug}`)} style={{
-                padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                border: `1px solid ${filterClient === c.slug ? (c.color || t.gold) : t.border.default}`,
-                backgroundColor: filterClient === c.slug ? (c.color || t.gold) + '18' : 'transparent',
-                color: filterClient === c.slug ? (c.color || t.gold) : t.text.muted,
-              }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: c.color || t.gold, display: 'inline-block' }} />
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!hasAnyZones && (
-          <div style={{
-            textAlign: 'center', padding: '100px 24px',
-            border: `2px dashed ${t.border.default}`, borderRadius: '16px',
-          }}>
-            <div style={{ fontSize: '18px', fontWeight: '700', color: t.text.secondary, marginBottom: '10px' }}>
-              No focus areas yet
+        {/* Command bar */}
+        <div style={{
+          padding: '28px 40px 0',
+          borderBottom: `1px solid ${t.border.subtle}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div>
+              <h1 style={{ fontSize: '26px', fontWeight: '900', color: t.text.primary, letterSpacing: '-0.03em', marginBottom: '4px' }}>
+                Growth
+              </h1>
+              <p style={{ fontSize: '12px', color: t.text.muted }}>
+                {zones.length} focus area{zones.length !== 1 ? 's' : ''} across {clientsWithZones.length} client{clientsWithZones.length !== 1 ? 's' : ''}
+              </p>
             </div>
-            <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '8px', maxWidth: '420px', margin: '0 auto 24px' }}>
-              A focus area is where you're actively working a brand — like "NoCo On-Premise in Northern Colorado."
-              Start by setting up a territory, then add your on-premise and off-premise focus areas.
-            </div>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <Link href="/growth/markets/new" style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
-                border: `1px solid ${t.border.default}`, backgroundColor: t.bg.elevated,
-                color: t.text.secondary, textDecoration: 'none',
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <Link href="/growth/markets" style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '500',
+                border: `1px solid ${t.border.default}`, backgroundColor: 'transparent',
+                color: t.text.muted, textDecoration: 'none',
               }}>
-                <Plus size={13} /> New Territory
+                <Settings size={12} /> Territories
               </Link>
               <Link href="/growth/zones/new" style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
+                padding: '8px 18px', borderRadius: '9px', fontSize: '13px', fontWeight: '700',
                 backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
               }}>
-                <Plus size={13} /> Add Focus Area
+                <Plus size={14} /> New Focus Area
               </Link>
             </div>
           </div>
-        )}
 
-        {/* Client sections */}
-        {visibleClients.map((client, ci) => {
-          const clientZones = zonesForClient(client.slug)
-          const clientColor = client.color || t.gold
-          const healthScores = clientZones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
-          const avgHealth = healthScores.length > 0 ? Math.round(healthScores.reduce((a, b) => a + b, 0) / healthScores.length) : null
-
-          return (
-            <div key={client.slug} style={{ marginBottom: ci < visibleClients.length - 1 ? '44px' : '0' }}>
-              {/* Client header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
-                  <span style={{ fontSize: '16px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>
-                    {client.name}
-                  </span>
-                  <div style={{ height: '1px', flex: 1, backgroundColor: t.border.subtle }} />
-                  {avgHealth !== null && (
-                    <span style={{ fontSize: '12px', color: healthColor(avgHealth), fontWeight: '700' }}>
-                      avg {avgHealth}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Horizontal scrollable zone row */}
-              <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '6px' }}>
-                {clientZones.map(z => (
-                  <MarketCard
-                    key={z.id}
-                    zone={z}
-                    snapshot={snapshots[z.id] ?? null}
-                    client={client}
-                  />
-                ))}
-                <AddMarketCard clientSlug={client.slug} />
-              </div>
-            </div>
-          )
-        })}
-
-        {/* Show clients that have no zones (so reps know to add) */}
-        {!filterClient && clients.filter(c => !clientsWithZones.find(cz => cz.slug === c.slug)).map(c => (
-          <div key={c.slug} style={{ marginBottom: '32px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: c.color || t.gold }} />
-              <span style={{ fontSize: '16px', fontWeight: '800', color: t.text.secondary }}>{c.name}</span>
-              <div style={{ height: '1px', flex: 1, backgroundColor: t.border.subtle }} />
-              <span style={{ fontSize: '11px', color: t.text.muted }}>no focus areas yet</span>
-            </div>
-            <AddMarketCard clientSlug={c.slug} />
+          {/* Stats row */}
+          <div style={{ display: 'flex', marginBottom: '0' }}>
+            <StatTile label="Focus Areas" value={zones.length} />
+            <StatTile label="Active / Maintaining" value={activeCount} />
+            <StatTile
+              label="Avg Health Score"
+              value={avgHealth !== null ? avgHealth : '—'}
+              color={avgHealth !== null ? healthColor(avgHealth) : t.text.muted}
+            />
+            <StatTile label="Total Accounts" value={totalAccounts} sub={`${totalActive} active`} />
+            <div style={{ flex: 1, padding: '20px 24px' }} />
           </div>
-        ))}
 
-        {/* Needs Attention */}
-        {attentionItems.length > 0 && (
-          <div style={{ marginTop: '44px', padding: '20px 24px', borderRadius: '12px', backgroundColor: t.status.warningBg, border: `1px solid rgba(233,153,40,0.2)` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <AlertTriangle size={14} color={t.status.warning} />
-              <span style={{ fontSize: '12px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Needs Attention
-              </span>
+          {/* Client filter tabs */}
+          {clientsWithZones.length > 1 && (
+            <div style={{ display: 'flex', gap: '0', marginTop: '16px' }}>
+              {[{ slug: '', name: 'All' }, ...clientsWithZones].map(c => {
+                const active = c.slug === '' ? !filterClient : filterClient === c.slug
+                const color = 'color' in c && c.color ? c.color : t.gold
+                return (
+                  <button key={c.slug} onClick={() => setFilter(c.slug)} style={{
+                    padding: '8px 20px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                    border: 'none', borderBottom: `2px solid ${active ? (c.slug ? color : t.gold) : 'transparent'}`,
+                    backgroundColor: 'transparent',
+                    color: active ? (c.slug ? color : t.text.primary) : t.text.muted,
+                    transition: 'color 150ms, border-color 150ms',
+                  }}>
+                    {'color' in c && c.color && c.slug && (
+                      <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', backgroundColor: color, marginRight: '6px' }} />
+                    )}
+                    {c.name}
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {attentionItems.map(item => (
-                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <Link href={item.href} style={{ textDecoration: 'none' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{item.title}</span>
-                      <span style={{ fontSize: '11px', color: t.text.muted, marginLeft: '8px' }}>{item.sub}</span>
-                    </Link>
+          )}
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '32px 40px' }}>
+
+          {zones.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '80px 24px',
+              border: `2px dashed ${t.border.default}`, borderRadius: '16px',
+            }}>
+              <div style={{ fontSize: '17px', fontWeight: '800', color: t.text.secondary, marginBottom: '10px' }}>
+                No focus areas yet
+              </div>
+              <div style={{ fontSize: '13px', color: t.text.muted, maxWidth: '400px', margin: '0 auto 24px' }}>
+                A focus area is where you're actively working a brand — like "NoCo On-Premise."
+                Start by creating a territory, then add on-premise and off-premise focus areas.
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <Link href="/growth/markets/new" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
+                  border: `1px solid ${t.border.default}`, backgroundColor: t.bg.elevated,
+                  color: t.text.secondary, textDecoration: 'none',
+                }}>
+                  <Plus size={13} /> New Territory
+                </Link>
+                <Link href="/growth/zones/new" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
+                  backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
+                }}>
+                  <Plus size={13} /> New Focus Area
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '44px' }}>
+              {visibleClients.map(client => {
+                const clientZones = zonesForClient(client.slug)
+                const clientColor = client.color || t.gold
+                const scores = clientZones.map(z => snapshots[z.id]?.health_score).filter((h): h is number => h != null)
+                const clientAvg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+
+                return (
+                  <div key={client.slug}>
+                    {/* Client header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: '15px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>
+                        {client.name}
+                      </span>
+                      {clientAvg !== null && (
+                        <span style={{
+                          padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
+                          backgroundColor: healthBg(clientAvg), color: healthColor(clientAvg),
+                          border: `1px solid ${healthColor(clientAvg)}30`,
+                        }}>
+                          avg {clientAvg}
+                        </span>
+                      )}
+                      <div style={{ flex: 1, height: '1px', backgroundColor: t.border.subtle }} />
+                      {clientZones.length === 0 && (
+                        <span style={{ fontSize: '11px', color: t.text.muted }}>no focus areas yet</span>
+                      )}
+                    </div>
+
+                    {/* Zone grid */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                      gap: '16px',
+                    }}>
+                      {clientZones.map(z => (
+                        <ZoneCard key={z.id} zone={z} snapshot={snapshots[z.id] ?? null} />
+                      ))}
+                      <AddZoneCard clientSlug={client.slug} />
+                    </div>
                   </div>
-                  <button onClick={() => dismiss(item.id)} style={{
-                    flexShrink: 0, padding: '3px 10px', fontSize: '11px', borderRadius: '6px', cursor: 'pointer',
-                    border: `1px solid rgba(233,153,40,0.3)`, backgroundColor: 'transparent', color: t.status.warning,
-                  }}>Snooze</button>
-                </div>
-              ))}
+                )
+              })}
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Needs Attention */}
+          {attentionItems.length > 0 && (
+            <div style={{
+              marginTop: '44px', padding: '20px 24px', borderRadius: '12px',
+              backgroundColor: t.status.warningBg, border: `1px solid rgba(233,153,40,0.2)`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <AlertTriangle size={14} color={t.status.warning} />
+                <span style={{ fontSize: '11px', fontWeight: '800', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Needs Attention
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {attentionItems.map(item => (
+                  <Link key={item.id} href={item.href} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{item.title}</span>
+                    <span style={{ fontSize: '11px', color: t.text.muted }}>{item.sub}</span>
+                    <ChevronRight size={12} color={t.text.muted} style={{ marginLeft: 'auto' }} />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </LayoutShell>
   )
