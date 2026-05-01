@@ -95,7 +95,7 @@ function MarketsContent() {
         {/* Filters */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
-            type="text" placeholder="Search markets…"
+            type="text" placeholder="Search territories…"
             value={filterSearch}
             onChange={e => setFilter('q', e.target.value)}
             style={{
@@ -124,10 +124,10 @@ function MarketsContent() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 24px' }}>
             <MapPin size={36} color={t.border.hover} style={{ margin: '0 auto 16px' }} />
-            <div style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '8px' }}>No markets found</div>
+            <div style={{ fontSize: '16px', fontWeight: '700', color: t.text.primary, marginBottom: '8px' }}>No territories found</div>
             <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '20px' }}>
               {markets.length === 0
-                ? 'Create your first market to define a geographic territory.'
+                ? 'Create your first territory to define a geographic area.'
                 : 'Try adjusting your filters.'}
             </div>
             {markets.length === 0 && (
@@ -136,7 +136,7 @@ function MarketsContent() {
                 padding: '9px 18px', borderRadius: '8px', fontWeight: '600', fontSize: '13px',
                 backgroundColor: t.gold, color: '#0f0e0c', textDecoration: 'none',
               }}>
-                <Plus size={14} /> Create First Market
+                <Plus size={14} /> Create First Territory
               </Link>
             )}
           </div>
@@ -201,7 +201,7 @@ function MarketsContent() {
                               backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
                             }}>
                               <span style={{ color: t.text.muted }}>P{z.phase}</span>
-                              <span style={{ color: t.text.secondary }}>{channelLabel(z.channel).split('-')[0]}</span>
+                              <span style={{ color: t.text.secondary }}>{channelLabel(z.channel)}</span>
                               {hs !== null && (
                                 <span style={{ color: healthColor(hs), fontWeight: '700' }}>{Math.round(hs)}</span>
                               )}
@@ -210,7 +210,7 @@ function MarketsContent() {
                         })}
                       </div>
                     ) : (
-                      <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic' }}>No zones yet</div>
+                      <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic' }}>No focus areas yet</div>
                     )}
                   </div>
                 </Link>

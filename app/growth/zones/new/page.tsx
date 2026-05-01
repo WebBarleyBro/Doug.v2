@@ -5,7 +5,9 @@ import Link from 'next/link'
 import LayoutShell from '../../../layout-shell'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
 import { getMarkets, createZone } from '../../../lib/concentric/data'
+import { getClients } from '../../../lib/data'
 import type { Market } from '../../../lib/concentric/types'
+import type { Client } from '../../../lib/types'
 
 const CHANNEL_OPTIONS = [
   { value: 'on_premise', label: 'On-Premise' },
@@ -32,6 +34,7 @@ function NewZoneContent() {
   const defaultClient = searchParams.get('client') ?? ''
 
   const [markets, setMarkets] = useState<Market[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [nameAutoFilled, setNameAutoFilled] = useState(true)
@@ -50,11 +53,11 @@ function NewZoneContent() {
   })
 
   useEffect(() => {
-    getMarkets().then(all => {
-      setMarkets(all)
-      // Auto-select market if only one exists for the pre-filtered client
+    Promise.all([getMarkets(), getClients()]).then(([allMarkets, allClients]) => {
+      setMarkets(allMarkets)
+      setClients(allClients)
       if (!defaultMarket && defaultClient) {
-        const clientMarkets = all.filter(m => m.client_slug === defaultClient)
+        const clientMarkets = allMarkets.filter(m => m.client_slug === defaultClient)
         if (clientMarkets.length === 1) {
           setForm(f => ({ ...f, market_id: clientMarkets[0].id }))
         }
@@ -135,7 +138,10 @@ function NewZoneContent() {
             <label style={labelStyle}>Territory *</label>
             <select value={form.market_id} onChange={e => setForm(f => ({ ...f, market_id: e.target.value }))} style={selectStyle} required>
               <option value="">Select territory…</option>
-              {visibleMarkets.map(m => <option key={m.id} value={m.id}>{m.name} ({m.client_slug})</option>)}
+              {visibleMarkets.map(m => {
+                const clientName = clients.find(c => c.slug === m.client_slug)?.name || m.client_slug
+                return <option key={m.id} value={m.id}>{m.name} — {clientName}</option>
+              })}
             </select>
             {visibleMarkets.length === 0 && markets.length > 0 && (
               <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>
