@@ -57,6 +57,7 @@ export default function ZoneDetailPage() {
   const [addAccountModal, setAddAccountModal] = useState(false)
   const [accountSearch, setAccountSearch] = useState('')
   const [addingAccountId, setAddingAccountId] = useState<string | null>(null)
+  const [addingAll, setAddingAll] = useState(false)
   const [deleteZoneModal, setDeleteZoneModal] = useState(false)
   const [removeAccountId, setRemoveAccountId] = useState<string | null>(null)
 
@@ -171,6 +172,16 @@ export default function ZoneDetailPage() {
     finally { setAddingAccountId(null) }
   }
 
+  async function handleAddAll(accounts: Account[]) {
+    setAddingAll(true)
+    try {
+      await Promise.all(accounts.map(a => addAccountToZone(id, a.id)))
+      setTargetAccounts(await getZoneTargetAccounts(id))
+      toast(`Added ${accounts.length} account${accounts.length !== 1 ? 's' : ''} to target set`)
+    } catch (err: any) { toast(err.message || 'Failed to add accounts', 'error') }
+    finally { setAddingAll(false) }
+  }
+
   async function handleRemoveAccount() {
     if (!removeAccountId) return
     try {
@@ -188,7 +199,7 @@ export default function ZoneDetailPage() {
     const m = zone.markets
     const geoTerms = [...(m.cities ?? []), ...(m.counties ?? []), ...(m.states ?? []), ...(m.zip_codes ?? [])].map(g => g.toLowerCase())
     if (geoTerms.length === 0) return []
-    return allAccounts.filter(a => !targetAccountIds.has(a.id) && geoTerms.some(g => (a.address ?? '').toLowerCase().includes(g))).slice(0, 8)
+    return allAccounts.filter(a => !targetAccountIds.has(a.id) && geoTerms.some(g => (a.address ?? '').toLowerCase().includes(g)))
   }, [allAccounts, targetAccountIds, zone])
 
   const searchedAccounts = useMemo(() => {
@@ -516,8 +527,21 @@ export default function ZoneDetailPage() {
             {/* Suggested Additions */}
             {suggested.length > 0 && (
               <div style={{ marginTop: '20px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
-                  Suggested — {market.name}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    In {market.name} · {suggested.length} match{suggested.length !== 1 ? 'es' : ''}
+                  </div>
+                  {suggested.length > 1 && (
+                    <button onClick={() => handleAddAll(suggested)} disabled={addingAll} style={{
+                      display: 'flex', alignItems: 'center', gap: '3px',
+                      padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                      cursor: addingAll ? 'default' : 'pointer',
+                      backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`,
+                      color: t.gold, opacity: addingAll ? 0.6 : 1,
+                    }}>
+                      <Plus size={10} /> {addingAll ? 'Adding…' : 'Add All'}
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   {suggested.map(a => (

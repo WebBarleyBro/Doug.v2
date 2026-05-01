@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Star, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Star, Pencil, Trash2, X, Search } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, card, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -54,6 +54,9 @@ export default function MarketDetailPage() {
   const [deleteMarketModal, setDeleteMarketModal] = useState(false)
   const [deleteZoneId, setDeleteZoneId] = useState<string | null>(null)
 
+  const editGeoInputRef = useRef<HTMLInputElement>(null)
+  const editAcRef = useRef<any>(null)
+
   const [editForm, setEditForm] = useState({
     name: '', priority: false, cities: [] as string[], counties: [] as string[],
     states: [] as string[], zip_codes: [] as string[],
@@ -81,6 +84,60 @@ export default function MarketDetailPage() {
   }, [id, router])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!editing || typeof window === 'undefined') return
+
+    function initAc() {
+      if (!editGeoInputRef.current || editAcRef.current) return
+      editAcRef.current = new (window as any).google.maps.places.Autocomplete(editGeoInputRef.current, {
+        types: ['(regions)'],
+        componentRestrictions: { country: 'us' },
+        fields: ['address_components', 'name'],
+      })
+      editAcRef.current.addListener('place_changed', () => {
+        const place = editAcRef.current.getPlace()
+        const components: any[] = place.address_components ?? []
+        const get = (type: string) => components.find((c: any) => c.types.includes(type))
+
+        const city = get('locality')?.long_name ?? get('sublocality_level_1')?.long_name ?? ''
+        const countyRaw = get('administrative_area_level_2')?.long_name ?? ''
+        const county = countyRaw.replace(/ County$/, '').replace(/ Parish$/, '')
+        const state = get('administrative_area_level_1')?.short_name ?? ''
+        const zip = get('postal_code')?.long_name ?? ''
+
+        setEditForm(f => ({
+          ...f,
+          cities: city && !f.cities.includes(city) ? [...f.cities, city] : f.cities,
+          counties: county && !f.counties.includes(county) ? [...f.counties, county] : f.counties,
+          states: state && !f.states.includes(state) ? [...f.states, state] : f.states,
+          zip_codes: zip && !f.zip_codes.includes(zip) ? [...f.zip_codes, zip] : f.zip_codes,
+        }))
+      })
+    }
+
+    if ((window as any).google?.maps?.places) {
+      initAc()
+      return
+    }
+
+    if (!document.getElementById('google-maps-script')) {
+      const script = document.createElement('script')
+      script.id = 'google-maps-script'
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`
+      script.async = true
+      document.head.appendChild(script)
+    }
+
+    const poll = setInterval(() => {
+      if ((window as any).google?.maps?.places) {
+        clearInterval(poll)
+        initAc()
+      }
+    }, 150)
+
+    return () => { clearInterval(poll); editAcRef.current = null }
+  }, [editing])
 
   async function handleSave() {
     if (!editForm.name.trim()) return
@@ -186,6 +243,16 @@ export default function MarketDetailPage() {
                     </button>
                     <span style={{ fontSize: '12px', color: t.text.secondary, cursor: 'pointer' }} onClick={() => setEditForm(f => ({ ...f, priority: !f.priority }))}>Priority ★</span>
                   </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Add Location</label>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: t.text.muted, pointerEvents: 'none' }} />
+                    <input ref={editGeoInputRef} type="text"
+                      placeholder="Search city, county, or region to add…"
+                      style={{ ...inputStyle, paddingLeft: '30px', fontSize: '12px' }} />
+                  </div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Selecting a location appends to the geo tags below</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <TagInput label="Cities" values={editForm.cities} onChange={v => setEditForm(f => ({ ...f, cities: v }))} />
