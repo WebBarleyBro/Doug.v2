@@ -216,7 +216,12 @@ function GrowthDashboardContent() {
     if (!snap || (snap.target_set_size ?? 0) === 0) return []
     const hs = snap.health_score ?? null
     if (hs === null || hs >= 50) return []
-    return [{ id: z.id, href: `/growth/zones/${z.id}`, title: `${z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)}` }]
+    const c = clients.find(cl => cl.slug === z.client_slug)
+    const marketId = z.markets?.id
+    const href = marketId
+      ? `/growth/markets/${marketId}?client=${z.client_slug ?? ''}`
+      : `/growth/zones/${z.id}`
+    return [{ id: z.id, href, title: `${c?.name ?? z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)}` }]
   })
 
   if (loading) return (

@@ -118,10 +118,9 @@ function NewZoneContent() {
           ‹ Back
         </button>
 
-        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>New Focus Area</h1>
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>Track Brand in Territory</h1>
         <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '28px' }}>
-          A focus area tracks performance in a specific channel within a territory.
-          After creating it, you'll build out the target account set.
+          Set up performance tracking for a brand within a territory. You'll set targets and build out the accounts you're actively working.
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -269,7 +268,7 @@ function NewZoneContent() {
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => router.back()} style={btnSecondary}>Cancel</button>
             <button type="submit" disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Creating…' : 'Create Focus Area'}
+              {saving ? 'Creating…' : 'Start Tracking'}
             </button>
           </div>
         </form>
