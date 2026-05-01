@@ -173,7 +173,13 @@ export default function MarketDetailPage() {
 
   const client = clients.find(c => c.slug === market.client_slug)
   const clientColor = client?.color || t.gold
-  const geoSummary = [...(market.cities?.slice(0, 3) ?? []), ...(market.states ?? [])].filter(Boolean).join(', ')
+  const geoParts = [
+    ...(market.cities ?? []),
+    ...(market.counties?.map(c => `${c} County`) ?? []),
+    ...(market.states ?? []),
+    ...(market.zip_codes ?? []),
+  ].filter(Boolean)
+  const geoSummary = geoParts.slice(0, 4).join(', ') + (geoParts.length > 4 ? ` +${geoParts.length - 4} more` : '')
 
   return (
     <LayoutShell>
@@ -202,17 +208,27 @@ export default function MarketDetailPage() {
               paddingLeft: '16px', backgroundColor: clientColor + '06', borderRadius: '0 8px 8px 0', padding: '16px 16px 16px 16px',
             }}>
               <div>
-                {client && (
-                  <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: clientColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{client.name}</span>
-                  </Link>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  {client && (
+                    <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: clientColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{client.name}</span>
+                    </Link>
+                  )}
+                  <span style={{ fontSize: '11px', color: t.border.hover }}>›</span>
+                  <span style={{ fontSize: '11px', fontWeight: '600', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Territory</span>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   {market.priority && <Star size={16} color={t.gold} fill={t.gold} />}
                   <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', margin: 0 }}>{market.name}</h1>
                 </div>
-                {geoSummary && <div style={{ fontSize: '12px', color: t.text.muted }}>{geoSummary}</div>}
+                {geoSummary ? (
+                  <div style={{ fontSize: '12px', color: t.text.muted }}>{geoSummary}</div>
+                ) : (
+                  <button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '12px', color: t.border.hover, fontStyle: 'italic', textAlign: 'left' }}>
+                    No location defined — click Edit to add
+                  </button>
+                )}
                 {market.notes && (
                   <div style={{ marginTop: '10px', fontSize: '13px', color: t.text.secondary, padding: '10px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}`, maxWidth: '600px' }}>
                     {market.notes}

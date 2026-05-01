@@ -24,7 +24,6 @@ function MarketsContent() {
   const filterClient = searchParams.get('client') ?? ''
   const filterSearch = searchParams.get('q') ?? ''
   const filterPriority = searchParams.get('priority') === 'true'
-  const filterPhase = searchParams.get('phase') ?? ''
 
   const load = useCallback(async () => {
     try {
@@ -56,9 +55,7 @@ function MarketsContent() {
   })
 
   function marketZones(marketId: string) {
-    const mz = zones.filter(z => z.market_id === marketId)
-    if (filterPhase) return mz.filter(z => String(z.phase) === filterPhase)
-    return mz
+    return zones.filter(z => z.market_id === marketId)
   }
 
   function avgHealth(marketId: string): number | null {
@@ -67,6 +64,13 @@ function MarketsContent() {
     if (scores.length === 0) return null
     return scores.reduce((a, b) => a + b, 0) / scores.length
   }
+
+  // Group filtered markets by client, preserving client order
+  const clientGroups = clients
+    .map(c => ({ client: c, markets: filtered.filter(m => m.client_slug === c.slug) }))
+    .filter(g => g.markets.length > 0)
+
+  const showClientHeaders = !filterClient && clientGroups.length > 1
 
   return (
     <LayoutShell>
@@ -80,7 +84,7 @@ function MarketsContent() {
             </div>
             <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginTop: '6px' }}>Territories</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>
-              Geographic areas that contain focus areas · {filtered.length} territor{filtered.length !== 1 ? 'ies' : 'y'}
+              Geographic areas that group focus areas · {filtered.length} territor{filtered.length !== 1 ? 'ies' : 'y'}
             </p>
           </div>
           <Link href="/growth/markets/new" style={{
@@ -93,7 +97,7 @@ function MarketsContent() {
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="text" placeholder="Search territories…"
             value={filterSearch}
@@ -141,79 +145,100 @@ function MarketsContent() {
             )}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '14px' }}>
-            {filtered.map(m => {
-              const client = clients.find(c => c.slug === m.client_slug)
-              const mzones = marketZones(m.id)
-              const health = avgHealth(m.id)
-              const geo = [
-                ...(m.cities?.slice(0, 2) ?? []),
-                m.counties?.length ? `${m.counties.length} county${m.counties.length !== 1 ? 'ies' : ''}` : '',
-                ...(m.states ?? []),
-              ].filter(Boolean).join(', ')
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+            {clientGroups.map(({ client, markets: clientMarkets }) => {
+              const clientColor = client.color || t.gold
               return (
-                <Link key={m.id} href={`/growth/markets/${m.id}`} style={{ textDecoration: 'none' }}>
-                  <div style={{
-                    ...card, padding: '18px 20px', cursor: 'pointer',
-                    borderLeft: `3px solid ${client?.color || t.gold}`,
-                    transition: 'border-color 150ms ease',
-                  }}>
-                    {/* Header row */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                          {m.priority && <Star size={12} color={t.gold} fill={t.gold} />}
-                          <span style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>{m.name}</span>
-                        </div>
-                        <span style={{
-                          fontSize: '10px', fontWeight: '600', padding: '2px 7px', borderRadius: '4px',
-                          backgroundColor: (client?.color || t.gold) + '20', color: client?.color || t.gold,
-                        }}>
-                          {client?.name || m.client_slug}
-                        </span>
-                      </div>
-                      {health !== null && (
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(health), lineHeight: 1 }}>
-                            {Math.round(health)}
-                          </div>
-                          <div style={{ fontSize: '9px', color: t.text.muted, fontWeight: '600' }}>AVG HEALTH</div>
-                        </div>
-                      )}
+                <div key={client.slug}>
+                  {/* Client section header */}
+                  {showClientHeaders && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
+                      <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em' }}>{client.name}</span>
+                      </Link>
+                      <span style={{ fontSize: '12px', color: t.text.muted }}>{clientMarkets.length} territor{clientMarkets.length !== 1 ? 'ies' : 'y'}</span>
+                      <div style={{ flex: 1, height: '1px', backgroundColor: t.border.subtle }} />
+                      <Link href={`/growth/markets/new?client=${client.slug}`} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        fontSize: '11px', fontWeight: '600', color: t.text.muted,
+                        textDecoration: 'none', padding: '3px 8px', borderRadius: '5px',
+                        border: `1px solid ${t.border.subtle}`,
+                      }}>
+                        <Plus size={10} /> New Territory
+                      </Link>
                     </div>
+                  )}
 
-                    {/* Geo summary */}
-                    {geo && (
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '10px' }}>{geo}</div>
-                    )}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
+                    {clientMarkets.map(m => {
+                      const mzones = marketZones(m.id)
+                      const health = avgHealth(m.id)
+                      const geo = [
+                        ...(m.cities?.slice(0, 2) ?? []),
+                        m.counties?.length ? `${m.counties.length} count${m.counties.length !== 1 ? 'ies' : 'y'}` : '',
+                        ...(m.states ?? []),
+                      ].filter(Boolean).join(', ')
 
-                    {/* Zone chips by phase */}
-                    {mzones.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        {mzones.map(z => {
-                          const zSnap = snapshots[z.id]
-                          const hs = zSnap?.health_score ?? null
-                          return (
-                            <div key={z.id} style={{
-                              display: 'flex', alignItems: 'center', gap: '5px',
-                              padding: '3px 8px', borderRadius: '6px', fontSize: '11px',
-                              backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
-                            }}>
-                              <span style={{ color: t.text.muted }}>P{z.phase}</span>
-                              <span style={{ color: t.text.secondary }}>{channelLabel(z.channel)}</span>
-                              {hs !== null && (
-                                <span style={{ color: healthColor(hs), fontWeight: '700' }}>{Math.round(hs)}</span>
+                      return (
+                        <Link key={m.id} href={`/growth/markets/${m.id}`} style={{ textDecoration: 'none' }}>
+                          <div style={{
+                            ...card, padding: '16px 18px', cursor: 'pointer',
+                            borderLeft: `3px solid ${clientColor}`,
+                            transition: 'border-color 150ms ease',
+                          }}>
+                            {/* Header row */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                  {m.priority && <Star size={12} color={t.gold} fill={t.gold} />}
+                                  <span style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>{m.name}</span>
+                                </div>
+                                {geo ? (
+                                  <span style={{ fontSize: '11px', color: t.text.muted }}>{geo}</span>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: t.border.hover, fontStyle: 'italic' }}>No location set</span>
+                                )}
+                              </div>
+                              {health !== null && (
+                                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
+                                  <div style={{ fontSize: '22px', fontWeight: '800', color: healthColor(health), lineHeight: 1 }}>
+                                    {Math.round(health)}
+                                  </div>
+                                  <div style={{ fontSize: '9px', color: t.text.muted, fontWeight: '600' }}>AVG HEALTH</div>
+                                </div>
                               )}
                             </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic' }}>No focus areas yet</div>
-                    )}
+
+                            {/* Focus area chips */}
+                            {mzones.length > 0 ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
+                                {mzones.map(z => {
+                                  const zSnap = snapshots[z.id]
+                                  const hs = zSnap?.health_score ?? null
+                                  return (
+                                    <div key={z.id} style={{
+                                      display: 'flex', alignItems: 'center', gap: '5px',
+                                      padding: '3px 8px', borderRadius: '6px', fontSize: '11px',
+                                      backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`,
+                                    }}>
+                                      <span style={{ color: t.text.secondary }}>{channelLabel(z.channel)}</span>
+                                      {hs !== null && (
+                                        <span style={{ color: healthColor(hs), fontWeight: '700' }}>{Math.round(hs)}</span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginTop: '8px' }}>No focus areas yet</div>
+                            )}
+                          </div>
+                        </Link>
+                      )
+                    })}
                   </div>
-                </Link>
+                </div>
               )
             })}
           </div>

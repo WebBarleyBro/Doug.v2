@@ -39,7 +39,6 @@ function NewZoneContent() {
     market_id: defaultMarket,
     name: channelDefaultName('on_premise'),
     channel: 'on_premise',
-    phase: 1,
     velocity_target: '',
     reach_threshold: '',
     retention_threshold: '',
@@ -217,27 +216,18 @@ function NewZoneContent() {
           }}>
             <span style={{ fontSize: '10px' }}>{showAdvanced ? '▼' : '▶'}</span>
             {showAdvanced ? 'Hide' : 'Show'} advanced options
-            <span style={{ fontSize: '11px', color: t.border.hover }}>— name, phase, thresholds, notes</span>
+            <span style={{ fontSize: '11px', color: t.border.hover }}>— name, thresholds, notes</span>
           </button>
 
           {showAdvanced && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                <div>
-                  <label style={labelStyle}>
-                    Name
-                    <span style={{ color: t.text.muted, fontWeight: '400', marginLeft: '4px' }}>— auto-filled</span>
-                  </label>
-                  <input type="text" value={form.name} onChange={e => handleNameChange(e.target.value)}
-                    placeholder="e.g. On-Premise" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Phase</label>
-                  <input type="number" min="1" value={form.phase}
-                    onChange={e => setForm(f => ({ ...f, phase: Number(e.target.value) }))}
-                    style={inputStyle} />
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>Phase 1 = beachhead</div>
-                </div>
+              <div>
+                <label style={labelStyle}>
+                  Name
+                  <span style={{ color: t.text.muted, fontWeight: '400', marginLeft: '4px' }}>— auto-filled from channel</span>
+                </label>
+                <input type="text" value={form.name} onChange={e => handleNameChange(e.target.value)}
+                  placeholder="e.g. On-Premise" style={inputStyle} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

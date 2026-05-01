@@ -46,7 +46,7 @@ function ZoneCard({ zone, snapshot }: { zone: ZoneWithMarket; snapshot: ZoneMetr
               </span>
             </div>
             <div style={{ fontSize: '10px', color: t.text.muted }}>
-              {zone.markets?.name} · Ph.{zone.phase} · {channelLabel(zone.channel)}
+              {zone.markets?.name} · {channelLabel(zone.channel)}
             </div>
           </div>
           <HealthRing score={hs} size={58} strokeWidth={5} showLabel={false} />
