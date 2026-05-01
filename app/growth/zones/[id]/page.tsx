@@ -187,37 +187,39 @@ export default function ZoneDetailPage() {
     <LayoutShell>
       <div style={{ padding: '0', minHeight: '100vh' }}>
 
-        {/* Client + breadcrumb banner */}
+        {/* Breadcrumb */}
         <div style={{
-          padding: '12px 40px', borderBottom: `1px solid ${t.border.subtle}`,
-          backgroundColor: clientColor + '0a',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 40px', borderBottom: `1px solid ${t.border.subtle}`,
+          display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: t.text.muted,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: t.text.muted }}>
-            <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
+          <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
+          {client && <>
             <span>›</span>
-            <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
-            <span>›</span>
-            <Link href={`/growth/markets/${market.id}`} style={{ color: t.text.muted, textDecoration: 'none' }}>{market.name}</Link>
-            <span>›</span>
-            <span style={{ color: t.text.secondary }}>{zone.name}</span>
-          </div>
-          {client && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: clientColor }} />
-              <span style={{ fontSize: '12px', fontWeight: '700', color: clientColor }}>{client.name}</span>
-            </div>
-          )}
+            <Link href={`/growth?client=${client.slug}`} style={{ color: clientColor, textDecoration: 'none', fontWeight: '600' }}>{client.name}</Link>
+          </>}
+          <span>›</span>
+          <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
+          <span>›</span>
+          <Link href={`/growth/markets/${market.id}`} style={{ color: t.text.muted, textDecoration: 'none' }}>{market.name}</Link>
+          <span>›</span>
+          <span style={{ color: t.text.secondary }}>{zone.name}</span>
         </div>
 
         {/* Header */}
         <div style={{
-          padding: '20px 40px 16px',
+          padding: '20px 40px 18px',
           borderBottom: `1px solid ${t.border.subtle}`,
           borderLeft: `4px solid ${clientColor}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          backgroundColor: clientColor + '06',
         }}>
           <div>
+            {client && (
+              <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
+                <span style={{ fontSize: '11px', fontWeight: '700', color: clientColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{client.name}</span>
+              </Link>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
               <h1 style={{ fontSize: '22px', fontWeight: '900', color: t.text.primary, letterSpacing: '-0.02em', margin: 0 }}>
                 {zone.name}

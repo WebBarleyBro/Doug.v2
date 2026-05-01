@@ -123,28 +123,35 @@ export default function MarketDetailPage() {
     <LayoutShell>
       <div style={{ padding: '0' }}>
 
-        {/* Client banner */}
-        <div style={{ padding: '12px 40px', borderBottom: `1px solid ${t.border.subtle}`, backgroundColor: clientColor + '0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: t.text.muted }}>
-            <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
+        {/* Breadcrumb */}
+        <div style={{ padding: '10px 40px', borderBottom: `1px solid ${t.border.subtle}`, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: t.text.muted }}>
+          <Link href="/growth" style={{ color: t.text.muted, textDecoration: 'none' }}>Growth</Link>
+          {client && <>
             <span>›</span>
-            <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
-            <span>›</span>
-            <span style={{ color: t.text.secondary }}>{market.name}</span>
-          </div>
-          {client && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: clientColor }} />
-              <span style={{ fontSize: '12px', fontWeight: '700', color: clientColor }}>{client.name}</span>
-            </div>
-          )}
+            <Link href={`/growth?client=${client.slug}`} style={{ color: clientColor, textDecoration: 'none', fontWeight: '600' }}>{client.name}</Link>
+          </>}
+          <span>›</span>
+          <Link href="/growth/markets" style={{ color: t.text.muted, textDecoration: 'none' }}>Territories</Link>
+          <span>›</span>
+          <span style={{ color: t.text.secondary }}>{market.name}</span>
         </div>
 
         <div style={{ padding: '24px 40px' }}>
           {/* Header */}
           {!editing ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+              marginBottom: '24px', paddingBottom: '20px',
+              borderBottom: `1px solid ${t.border.subtle}`, borderLeft: `4px solid ${clientColor}`,
+              paddingLeft: '16px', backgroundColor: clientColor + '06', borderRadius: '0 8px 8px 0', padding: '16px 16px 16px 16px',
+            }}>
               <div>
+                {client && (
+                  <Link href={`/growth?client=${client.slug}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: clientColor, flexShrink: 0 }} />
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: clientColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{client.name}</span>
+                  </Link>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   {market.priority && <Star size={16} color={t.gold} fill={t.gold} />}
                   <h1 style={{ fontSize: '22px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', margin: 0 }}>{market.name}</h1>

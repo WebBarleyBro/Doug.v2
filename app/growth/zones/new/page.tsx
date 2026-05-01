@@ -35,6 +35,7 @@ function NewZoneContent() {
 
   const [markets, setMarkets] = useState<Market[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [selectedClient, setSelectedClient] = useState(defaultClient)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [nameAutoFilled, setNameAutoFilled] = useState(true)
@@ -65,8 +66,17 @@ function NewZoneContent() {
     }).catch(() => {})
   }, [defaultMarket, defaultClient])
 
-  const visibleMarkets = defaultClient
-    ? markets.filter(m => m.client_slug === defaultClient)
+  function handleClientSelect(slug: string) {
+    setSelectedClient(slug)
+    // Clear territory selection if it doesn't belong to the new client
+    const currentMarket = markets.find(m => m.id === form.market_id)
+    if (currentMarket && currentMarket.client_slug !== slug) {
+      setForm(f => ({ ...f, market_id: '' }))
+    }
+  }
+
+  const visibleMarkets = selectedClient
+    ? markets.filter(m => m.client_slug === selectedClient)
     : markets
 
   const selectedMarket = markets.find(m => m.id === form.market_id)
@@ -134,19 +144,46 @@ function NewZoneContent() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
+          {/* Step 1: Client */}
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              Client Brand *
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px', marginTop: '6px' }}>
+              {clients.map(c => {
+                const selected = selectedClient === c.slug
+                const color = (c as any).color || t.gold
+                return (
+                  <button key={c.slug} type="button" onClick={() => handleClientSelect(c.slug)}
+                    style={{
+                      padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                      border: `2px solid ${selected ? color : t.border.default}`,
+                      backgroundColor: selected ? color + '15' : t.bg.input,
+                      transition: 'all 120ms ease',
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <div style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', fontWeight: selected ? '700' : '500', color: selected ? color : t.text.primary }}>
+                        {c.name}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Step 2: Territory */}
           <div>
             <label style={labelStyle}>Territory *</label>
             <select value={form.market_id} onChange={e => setForm(f => ({ ...f, market_id: e.target.value }))} style={selectStyle} required>
-              <option value="">Select territory…</option>
-              {visibleMarkets.map(m => {
-                const clientName = clients.find(c => c.slug === m.client_slug)?.name || m.client_slug
-                return <option key={m.id} value={m.id}>{m.name} — {clientName}</option>
-              })}
+              <option value="">{selectedClient ? 'Select territory…' : 'Select a client first…'}</option>
+              {visibleMarkets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            {visibleMarkets.length === 0 && markets.length > 0 && (
+            {visibleMarkets.length === 0 && selectedClient && markets.length > 0 && (
               <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '4px' }}>
                 No territories for this client yet.{' '}
-                <Link href="/growth/markets/new" style={{ color: t.gold }}>Create one first →</Link>
+                <Link href={`/growth/markets/new`} style={{ color: t.gold }}>Create one first →</Link>
               </div>
             )}
           </div>

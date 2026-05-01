@@ -118,26 +118,53 @@ export default function NewMarketPage() {
           <ChevronLeft size={15} /> Back
         </button>
 
-        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '24px' }}>New Territory</h1>
+        <h1 style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, marginBottom: '4px' }}>New Territory</h1>
+        <p style={{ fontSize: '13px', color: t.text.muted, marginBottom: '24px' }}>
+          A territory is a geographic area owned by one client. Focus areas live inside it.
+        </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div style={{ gridColumn: '1 / -1' }}>
+          {/* Step 1: Pick a client */}
+          <div>
+            <label style={{ ...labelStyle, fontSize: '11px', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              Client Brand *
+            </label>
+            <p style={{ fontSize: '11px', color: t.text.muted, marginBottom: '10px', marginTop: '2px' }}>
+              This territory will belong to this client permanently.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' }}>
+              {clients.map(c => {
+                const selected = form.client_slug === c.slug
+                const color = (c as any).color || t.gold
+                return (
+                  <button key={c.slug} type="button" onClick={() => setForm(f => ({ ...f, client_slug: c.slug }))}
+                    style={{
+                      padding: '12px 14px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                      border: `2px solid ${selected ? color : t.border.default}`,
+                      backgroundColor: selected ? color + '15' : t.bg.input,
+                      transition: 'all 120ms ease',
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '13px', fontWeight: selected ? '700' : '500', color: selected ? color : t.text.primary }}>
+                        {c.name}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Step 2: Name + priority */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
+            <div>
               <label style={labelStyle}>Territory Name *</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="e.g. Northern Colorado" style={inputStyle} required />
             </div>
-
-            <div>
-              <label style={labelStyle}>Client *</label>
-              <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle} required>
-                <option value="">Select client…</option>
-                {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '22px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '2px' }}>
               <button type="button" onClick={() => setForm(f => ({ ...f, priority: !f.priority }))} style={{
                 width: 20, height: 20, borderRadius: '4px', cursor: 'pointer',
                 border: `2px solid ${form.priority ? t.gold : t.border.default}`,
@@ -146,10 +173,8 @@ export default function NewMarketPage() {
               }}>
                 {form.priority && <span style={{ color: '#0f0e0c', fontSize: '12px', fontWeight: '800' }}>✓</span>}
               </button>
-              <label style={{ fontSize: '13px', color: t.text.secondary, cursor: 'pointer' }}
-                onClick={() => setForm(f => ({ ...f, priority: !f.priority }))}>
-                Priority market ★
-              </label>
+              <span style={{ fontSize: '12px', color: t.text.secondary, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                onClick={() => setForm(f => ({ ...f, priority: !f.priority }))}>Priority ★</span>
             </div>
           </div>
 
