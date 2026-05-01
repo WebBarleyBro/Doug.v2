@@ -19,10 +19,10 @@ export async function GET(req: Request) {
 
   const sb = getSupabaseAdmin()
 
-  // Fetch all zone IDs — every zone gets a snapshot regardless of posture
+  // Fetch all zones — every zone gets a snapshot
   const { data: zones, error: zonesErr } = await sb
     .from('zones')
-    .select('id, name, markets(name, client_slug)')
+    .select('id, name, client_slug, markets(name)')
     .order('created_at')
 
   if (zonesErr) {
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   // Process zones sequentially to keep DB load steady
   for (const zone of zones || []) {
     const market = (zone as any).markets
-    const label = `${market?.client_slug ?? '?'} / ${market?.name ?? '?'} / ${zone.name}`
+    const label = `${zone.client_slug ?? '?'} / ${market?.name ?? '?'} / ${zone.name}`
     try {
       const metrics = await computeZoneMetrics(zone.id)
       await upsertZoneSnapshot(zone.id, metrics)

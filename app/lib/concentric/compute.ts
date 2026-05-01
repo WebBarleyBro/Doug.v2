@@ -86,15 +86,19 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
 
   const allOrders = allOrdersRaw || []
 
-  // 4. 90-day orders WITH line items (for case counts)
+  // 4. 90-day orders WITH line items (for case counts).
+  // Use sent_at as the primary date (when the order was actually placed) and
+  // fall back to created_at. Pre-filter with the earlier of the two to avoid
+  // missing orders where sent_at > created_at by a significant margin.
   const cutoff90 = daysAgo(90)
+  const cutoff90Str = cutoff90.toISOString()
   const { data: orders90Raw } = await sb
     .from('purchase_orders')
     .select('id, account_id, sent_at, created_at, po_line_items(cases,bottles,quantity)')
     .eq('client_slug', clientSlug)
     .in('account_id', accountIds)
     .in('status', ['sent', 'fulfilled'])
-    .gte('created_at', cutoff90.toISOString())  // broad filter; refined in JS below
+    .or(`sent_at.gte.${cutoff90Str},and(sent_at.is.null,created_at.gte.${cutoff90Str})`)
 
   const orders90 = orders90Raw || []
 
