@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Trash2, X, RefreshCw, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
+import { Pencil, Trash2, X, RefreshCw, AlertTriangle, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -218,7 +218,6 @@ function MarketDetailContent() {
   const [loading, setLoading] = useState(true)
 
   const [activeClientTab, setActiveClientTab] = useState<string>(searchParams.get('client') ?? '')
-  const didAutoSelect = useRef(false)
   const autoRecomputedSlugs = useRef<Set<string>>(new Set())
 
   const [editing, setEditing] = useState(false)
@@ -275,15 +274,6 @@ function MarketDetailContent() {
   }, [id, router])
 
   useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (!market || didAutoSelect.current || activeClientTab !== '') return
-    const slugs = new Set<string>()
-    for (const z of market.zones ?? []) if (z.client_slug) slugs.add(z.client_slug)
-    for (const sl of Object.values(brandActivity)) for (const s of sl) slugs.add(s)
-    const first = [...slugs][0]
-    if (first && clients.some(c => c.slug === first)) { setActiveClientTab(first); didAutoSelect.current = true }
-  }, [market, brandActivity, clients, activeClientTab])
 
   const loadBrandData = useCallback(async (slug: string) => {
     setLoadingBrandSlugs(prev => new Set([...prev, slug]))
@@ -560,13 +550,166 @@ function MarketDetailContent() {
         </div>
 
         {!activeClientTab && (
-          <div style={{ padding: '60px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '14px', color: t.text.muted }}>Select a brand above to view performance data</div>
+          <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '28px 24px 60px' }}>
+
+            {/* ── Territory stats strip ──────────────────────────────────── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0',
+              marginBottom: '28px', borderRadius: '14px', overflow: 'hidden',
+              border: `1px solid ${t.border.default}`,
+              background: t.bg.elevated,
+            }}>
+              {[
+                { value: territoryAccounts.length, label: 'Accounts in Territory' },
+                { value: territoryClients.length, label: 'Brands Active' },
+                { value: Object.keys(brandActivity).length, label: 'Accounts w/ CRM Activity' },
+              ].map((s, i) => (
+                <div key={i} style={{
+                  flex: 1, padding: '20px 24px', textAlign: 'center',
+                  borderRight: i < 2 ? `1px solid ${t.border.subtle}` : 'none',
+                }}>
+                  <div style={{ fontSize: '36px', fontWeight: '900', color: s.value > 0 ? t.text.primary : '#2a2a2a', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}>
+                    {s.value}
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '6px', opacity: 0.55 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Brand cards ────────────────────────────────────────────── */}
+            {territoryClients.length > 0 ? (
+              <>
+                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: '12px', opacity: 0.45 }}>
+                  Brands · Click to Drill In
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px', marginBottom: '36px' }}>
+                  {territoryClients.map(client => {
+                    const zone = (market.zones ?? []).find(z => z.client_slug === client.slug)
+                    const snap = zone ? snapshots[zone.id] ?? null : null
+                    const acctCount = Object.entries(brandActivity).filter(([, slugs]) => slugs.includes(client.slug)).length
+                    const color = client.color || t.gold
+                    const logo = clientLogoUrl(client)
+                    const cases = snap?.total_cases_90d ?? null
+                    const trend = snap?.volume_trend_pct ?? null
+                    const tColor = trend !== null && trend > 5 ? t.status.success : trend !== null && trend < -5 ? t.status.danger : t.text.muted
+                    return (
+                      <button key={client.slug} onClick={() => setActiveClientTab(client.slug)}
+                        style={{ textAlign: 'left', cursor: 'pointer', background: 'none', border: 'none', padding: 0, borderRadius: '14px', display: 'block', width: '100%' }}>
+                        <div style={{
+                          padding: '20px', borderRadius: '14px',
+                          background: `radial-gradient(ellipse at top left, ${color}12 0%, transparent 60%), ${t.bg.elevated}`,
+                          border: `1px solid ${color}30`,
+                          borderTop: `3px solid ${color}`,
+                          boxShadow: `0 0 40px ${color}06`,
+                          display: 'flex', flexDirection: 'column', gap: '16px',
+                          transition: 'box-shadow 150ms',
+                        }}>
+                          {/* Brand identity */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {logo ? (
+                              <img src={logo} alt={client.name} style={{ width: 30, height: 30, objectFit: 'contain', borderRadius: '5px' }} />
+                            ) : (
+                              <div style={{ width: 30, height: 30, borderRadius: '7px', backgroundColor: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '900', color }}>{client.name[0]}</div>
+                            )}
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: t.text.primary }}>{client.name}</span>
+                          </div>
+
+                          {/* Health + volume */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <HealthRing score={snap?.health_score ?? null} size={68} strokeWidth={6} />
+                            <div>
+                              <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.6, marginBottom: '4px' }}>Cases 90d</div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                                <span style={{ fontSize: '26px', fontWeight: '900', color: cases !== null ? t.text.primary : '#2a2a2a', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                                  {cases ?? '—'}
+                                </span>
+                                {trend !== null && Math.abs(trend) >= 5 && (
+                                  <span style={{ fontSize: '12px', fontWeight: '700', color: tColor }}>
+                                    {trend > 0 ? '↑' : '↓'}{Math.abs(Math.round(trend))}%
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px', opacity: 0.5 }}>
+                                {acctCount} account{acctCount !== 1 ? 's' : ''}{!snap ? ' · tap Refresh after opening' : ''}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Footer CTA */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '700', color, opacity: 0.75 }}>View brand detail</span>
+                            <ChevronRight size={14} color={color} style={{ opacity: 0.55 }} />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: '40px', textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, marginBottom: '28px' }}>
+                <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No brand activity recorded in this territory yet.</div>
+                <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
+                  {hasGeoTags
+                    ? 'Log visits or orders at accounts in this area to start tracking.'
+                    : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to auto-populate accounts.</>
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* ── All territory accounts ─────────────────────────────────── */}
+            {territoryAccounts.length > 0 && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.45 }}>All Territory Accounts</span>
+                  <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.35 }}>{territoryAccounts.length} total</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {territoryAccounts.slice(0, 40).map(acct => {
+                    const activeBrands = brandActivity[acct.id] ?? []
+                    return (
+                      <Link key={acct.id} href={`/accounts/${acct.id}`} style={{ textDecoration: 'none' }}>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '9px 14px', borderRadius: '8px',
+                          border: `1px solid ${activeBrands.length > 0 ? t.border.subtle : 'rgba(255,255,255,0.03)'}`,
+                          backgroundColor: 'transparent',
+                          transition: 'background 100ms',
+                        }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: activeBrands.length > 0 ? t.status.success : '#2a2a2a', boxShadow: activeBrands.length > 0 ? `0 0 6px ${t.status.success}` : 'none', flexShrink: 0 }} />
+                          <span style={{ flex: 1, fontSize: '13px', fontWeight: activeBrands.length > 0 ? '700' : '500', color: activeBrands.length > 0 ? t.text.primary : t.text.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acct.name}</span>
+                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            {activeBrands.slice(0, 4).map(slug => {
+                              const cl = clients.find(c => c.slug === slug)
+                              const logo = cl ? clientLogoUrl(cl) : null
+                              const color = cl?.color || t.gold
+                              return logo ? (
+                                <img key={slug} src={logo} alt={slug} title={cl?.name} style={{ width: 18, height: 18, objectFit: 'contain', borderRadius: '3px', opacity: 0.75 }} />
+                              ) : (
+                                <span key={slug} title={cl?.name ?? slug} style={{ width: 18, height: 18, borderRadius: '4px', backgroundColor: color + '22', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '900', color }}>{(cl?.name ?? slug)[0].toUpperCase()}</span>
+                              )
+                            })}
+                            {activeBrands.length > 4 && <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5 }}>+{activeBrands.length - 4}</span>}
+                          </div>
+                          <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.4, flexShrink: 0, minWidth: '52px', textAlign: 'right' }}>{acct.account_type === 'on_premise' ? 'On-Prem' : acct.account_type === 'off_premise' ? 'Off-Prem' : ''}</span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                  {territoryAccounts.length > 40 && (
+                    <div style={{ padding: '10px', textAlign: 'center', fontSize: '11px', color: t.text.muted, opacity: 0.4 }}>
+                      +{territoryAccounts.length - 40} more accounts in territory
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
         {activeClientTab && (
-          <div style={{ maxWidth: '860px', margin: '0 auto', padding: '20px 24px 60px' }}>
+          <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px 24px 60px' }}>
 
             {/* ── Hero Panel: Health + Volume + Live Stats ──────────────────── */}
             <div style={{
