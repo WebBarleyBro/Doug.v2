@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Pencil, Trash2, X, RefreshCw, AlertTriangle, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
@@ -15,7 +15,7 @@ import {
   createZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
-import { HealthRing, ArcGauge, Sparkline, healthColor } from '../../_components'
+import { HealthRing, Sparkline, healthColor } from '../../_components'
 import { formatCurrency } from '../../../lib/formatters'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
@@ -86,6 +86,36 @@ function relativeDate(dateStr: string | null | undefined): string {
   if (d < 30) return `${d}d ago`
   if (d < 365) return `${Math.floor(d / 30)}mo ago`
   return `${Math.floor(d / 365)}yr ago`
+}
+
+// ─── Compact Gauge ────────────────────────────────────────────────────────────
+
+function CompactGauge({ label, value, target, unit = '%', note }: {
+  label: string; value: number | null; target: number; unit?: string; note?: string
+}) {
+  const pct = value !== null ? Math.min(100, Math.max(0, value)) : null
+  const targetPct = Math.min(100, Math.max(0, target))
+  const color = pct === null ? '#333'
+    : pct >= target ? t.status.success
+    : pct >= target * 0.7 ? t.status.warning
+    : t.status.danger
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+        <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.65 }}>{label}</span>
+        <span style={{ fontSize: '18px', fontWeight: '900', color: pct !== null ? color : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: pct !== null && pct >= target ? `0 0 14px ${color}50` : 'none' }}>
+          {pct !== null ? `${Math.round(pct)}${unit}` : '—'}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: '3px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.06)' }}>
+        {pct !== null && (
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, borderRadius: '2px', backgroundColor: color, boxShadow: `0 0 8px ${color}60` }} />
+        )}
+        <div style={{ position: 'absolute', left: `${targetPct}%`, top: '-3px', bottom: '-3px', width: '1px', backgroundColor: 'rgba(255,255,255,0.18)' }} />
+      </div>
+      {note && <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.45, marginTop: '4px' }}>{note}</div>}
+    </div>
+  )
 }
 
 // ─── Account Row ──────────────────────────────────────────────────────────────
@@ -202,7 +232,6 @@ function AccountRow({
 function MarketDetailContent() {
   const { id } = useParams() as { id: string }
   const router = useRouter()
-  const searchParams = useSearchParams()
   const toast = useToast()
 
   const [market, setMarket] = useState<(Market & { zones: Zone[] }) | null>(null)
@@ -219,7 +248,7 @@ function MarketDetailContent() {
   const [accountSort, setAccountSort] = useState<'order' | 'revenue' | 'name' | 'placements'>('order')
   const [accountFilter, setAccountFilter] = useState<'all' | 'ordered' | 'placed'>('all')
 
-  const [activeClientTab, setActiveClientTab] = useState<string>(searchParams.get('client') ?? '')
+  const [activeClientTab, setActiveClientTab] = useState<string>('')
   const autoRecomputedSlugs = useRef<Set<string>>(new Set())
 
   const [editing, setEditing] = useState(false)
@@ -549,6 +578,11 @@ function MarketDetailContent() {
         {/* ── Brand Tabs ──────────────────────────────────────────────────────── */}
         <div style={{ borderBottom: `1px solid ${t.border.subtle}`, overflowX: 'auto' }}>
           <div style={{ display: 'flex', padding: '0 24px', gap: '2px', minWidth: 'max-content' }}>
+            <button onClick={() => setActiveClientTab('')}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', borderBottom: activeClientTab === '' ? `2px solid ${t.gold}` : '2px solid transparent', opacity: activeClientTab === '' ? 1 : 0.45, transition: 'opacity 150ms', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '6px', backgroundColor: activeClientTab === '' ? t.goldDim : 'rgba(255,255,255,0.04)', border: `1px solid ${activeClientTab === '' ? t.goldBorder : 'rgba(255,255,255,0.06)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', color: activeClientTab === '' ? t.gold : t.text.muted }}>⊞</div>
+              <span style={{ fontSize: '10px', fontWeight: '700', color: activeClientTab === '' ? t.gold : t.text.muted, letterSpacing: '0.04em' }}>All</span>
+            </button>
             {territoryClients.length === 0 ? (
               <div style={{ padding: '12px 0', fontSize: '12px', color: t.text.muted }}>No brand activity in this territory yet.</div>
             ) : territoryClients.map(client => {
@@ -733,239 +767,207 @@ function MarketDetailContent() {
         )}
 
         {activeClientTab && (
-          <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '20px 24px 60px' }}>
+          <div style={{ display: 'flex', minHeight: 'calc(100vh - 116px)' }}>
 
-            {/* ── Hero Panel: Health + Volume + Live Stats ──────────────────── */}
+            {/* ── Left Sidebar ────────────────────────────────────────────────── */}
             <div style={{
-              display: 'flex', gap: '0', marginBottom: '12px',
-              borderRadius: '16px',
-              border: `1px solid ${clientColor}25`,
-              background: `radial-gradient(ellipse at top left, ${clientColor}10 0%, transparent 55%), ${t.bg.elevated}`,
-              boxShadow: `0 0 60px ${clientColor}06, inset 0 1px 0 ${clientColor}12`,
-              overflow: 'hidden', flexWrap: 'wrap',
+              width: '264px', flexShrink: 0,
+              borderRight: `1px solid ${t.border.subtle}`,
+              background: `radial-gradient(ellipse at top, ${clientColor}08 0%, transparent 55%), ${t.bg.elevated}`,
+              position: 'sticky', top: 0, alignSelf: 'flex-start',
+              maxHeight: 'calc(100vh - 116px)', overflowY: 'auto',
+              padding: '20px 18px',
+              display: 'flex', flexDirection: 'column', gap: '18px',
             }}>
-              {/* Health Ring */}
-              <div style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: '8px', padding: '24px 22px',
-                borderRight: `1px solid ${t.border.subtle}`, flexShrink: 0,
-                background: `radial-gradient(ellipse at center, ${clientColor}08 0%, transparent 70%)`,
-              }}>
-                <span style={{ fontSize: '9px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.7 }}>Health</span>
-                <HealthRing score={activeSnap?.health_score ?? null} size={88} strokeWidth={7} />
-                {activeSparklines.length > 1 && (
-                  <Sparkline data={activeSparklines.map(s => s.health_score)} width={80} height={22} color={healthColor(activeSnap?.health_score ?? null)} />
-                )}
+
+              {/* Brand identity */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '16px', borderBottom: `1px solid ${clientColor}20` }}>
+                {(() => {
+                  const logo = activeClient ? clientLogoUrl(activeClient) : null
+                  return logo
+                    ? <img src={logo} alt={activeClient?.name} style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: '6px', flexShrink: 0 }} />
+                    : <div style={{ width: 32, height: 32, borderRadius: '7px', backgroundColor: clientColor + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '900', color: clientColor, flexShrink: 0 }}>{activeClient?.name?.[0] ?? '?'}</div>
+                })()}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: clientColor, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeClient?.name}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{geoParts.length > 0 ? geoParts.join(' · ') : market.name}</div>
+                </div>
               </div>
 
-              {/* Volume + inline live stats */}
-              <div style={{ flex: 1, minWidth: '200px', padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '14px' }}>
-                {/* Cases 90d */}
-                <div>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '5px', opacity: 0.7 }}>Cases · 90 Days</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                    <span style={{ fontSize: '44px', fontWeight: '900', color: t.text.primary, lineHeight: 1, letterSpacing: '-0.04em', fontVariantNumeric: 'tabular-nums', textShadow: activeSnap?.total_cases_90d ? '0 0 40px rgba(255,255,255,0.08)' : 'none' }}>
+              {/* Health ring + cases */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: `1px solid ${clientColor}18` }}>
+                <div style={{ flexShrink: 0 }}>
+                  <HealthRing score={activeSnap?.health_score ?? null} size={64} strokeWidth={6} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.6, marginBottom: '3px' }}>Cases · 90d</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                    <span style={{ fontSize: '32px', fontWeight: '900', color: activeSnap?.total_cases_90d ? t.text.primary : '#2a2a2a', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}>
                       {activeSnap?.total_cases_90d ?? '—'}
                     </span>
                     {trendLabel && (
-                      <span style={{ fontSize: '16px', fontWeight: '800', color: trendColor, textShadow: `0 0 14px ${trendColor}50`, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        {trendPct && trendPct > 5 ? <TrendingUp size={14} /> : trendPct && trendPct < -5 ? <TrendingDown size={14} /> : null}
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: trendColor, textShadow: `0 0 10px ${trendColor}50` }}>
+                        {trendPct && trendPct > 5 ? <TrendingUp size={11} style={{ display: 'inline', marginRight: 1 }} /> : trendPct && trendPct < -5 ? <TrendingDown size={11} style={{ display: 'inline', marginRight: 1 }} /> : null}
                         {trendLabel}
                       </span>
                     )}
                   </div>
                   {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && (
-                    <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.55, marginTop: '3px' }}>vs {activeSnap.cases_prior_90d} cs prior 90 days</div>
+                    <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.4, marginTop: '2px' }}>vs {activeSnap.cases_prior_90d} cs prior 90d</div>
                   )}
-                </div>
-
-                {/* Accounts + placements counts */}
-                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                  <div>
-                    <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: summaryStats.tracked > 0 ? t.text.primary : '#2a2a2a' }}>
-                      {isLoadingBrandData ? '·' : summaryStats.tracked}
-                    </div>
-                    <div style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: t.text.muted, opacity: 0.6 }}>Accounts</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', textShadow: summaryStats.placements > 0 ? `0 0 18px ${clientColor}40` : 'none' }}>
-                      {isLoadingBrandData ? '·' : summaryStats.placements}
-                    </div>
-                    <div style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', opacity: summaryStats.placements > 0 ? 0.85 : 0.3 }}>Placements</div>
-                  </div>
-                  {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
-                    <div>
-                      <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: t.status.warning }}>
-                        {activeSnap.accounts_lost}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: t.status.warning, opacity: 0.85 }}>
-                        <AlertTriangle size={9} /> Went Quiet
-                      </div>
+                  {activeSparklines.length > 1 && (
+                    <div style={{ marginTop: '5px' }}>
+                      <Sparkline data={activeSparklines.map(s => s.health_score)} width={80} height={16} color={healthColor(activeSnap?.health_score ?? null)} />
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* Quick stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.22)', border: `1px solid ${t.border.subtle}` }}>
+                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.tracked > 0 ? t.text.primary : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                    {isLoadingBrandData ? '·' : summaryStats.tracked}
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: 0.55 }}>Accounts</div>
+                </div>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.placements > 0 ? `${clientColor}10` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.placements > 0 ? clientColor + '30' : t.border.subtle}` }}>
+                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: summaryStats.placements > 0 ? `0 0 16px ${clientColor}40` : 'none' }}>
+                    {isLoadingBrandData ? '·' : summaryStats.placements}
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.placements > 0 ? clientColor : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.placements > 0 ? 0.75 : 0.55 }}>Placements</div>
+                </div>
+                {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)', gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertTriangle size={11} color={t.status.danger} />
+                    <span style={{ fontSize: '18px', fontWeight: '900', color: t.status.warning, fontVariantNumeric: 'tabular-nums' }}>{activeSnap.accounts_lost}</span>
+                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8 }}>Went Quiet</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Performance gauges */}
+              {activeSnap ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingTop: '16px', borderTop: `1px solid ${t.border.subtle}` }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.4 }}>Performance</div>
+                  <CompactGauge
+                    label="Activity Rate"
+                    value={activeSnap.activity_rate_pct ?? null}
+                    target={market.default_reach_threshold}
+                    note={activeSnap.active_accounts != null && activeSnap.total_accounts != null
+                      ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
+                      : undefined}
+                  />
+                  <CompactGauge label="Reorder Rate" value={activeSnap.retention_pct ?? null} target={market.default_retention_threshold} />
+                  <CompactGauge
+                    label="Velocity Index"
+                    value={activeSnap.velocity_index ?? null}
+                    target={100}
+                    unit=""
+                    note={activeSnap.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
+                  />
+                </div>
+              ) : !isComputing && activeBrandData && activeBrandData.activityAccounts.length > 0 ? (
+                <div style={{ padding: '13px', borderRadius: '9px', border: `1px dashed ${clientColor}25`, background: `${clientColor}04` }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: t.text.secondary, marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={11} color={t.text.muted} style={{ opacity: 0.5 }} /> No analytics yet
+                  </div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.55 }}>Click Refresh to compute performance metrics.</div>
+                </div>
+              ) : null}
+
               {/* Refresh */}
-              <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', borderLeft: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
+              <div style={{ marginTop: 'auto', paddingTop: '14px', borderTop: `1px solid ${t.border.subtle}` }}>
                 <button onClick={handleRecompute} disabled={isComputing || isLoadingBrandData}
-                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', fontSize: '11px', cursor: isComputing ? 'default' : 'pointer', border: `1px solid ${t.goldBorder}`, backgroundColor: t.goldDim, color: t.gold, fontWeight: '600', opacity: isComputing ? 0.6 : 1 }}>
-                  <RefreshCw size={11} /> {isComputing ? 'Computing…' : 'Refresh'}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', fontSize: '11px', cursor: isComputing ? 'default' : 'pointer', border: `1px solid ${t.goldBorder}`, backgroundColor: t.goldDim, color: t.gold, fontWeight: '700', opacity: isComputing || isLoadingBrandData ? 0.6 : 1 }}>
+                  <RefreshCw size={11} /> {isComputing ? 'Computing…' : 'Refresh Analytics'}
                 </button>
-                <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5, textAlign: 'right', maxWidth: '110px' }}>
+                <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.35, textAlign: 'center', marginTop: '7px' }}>
                   {activeSnap?.computed_at
                     ? (() => { const d = daysSince(activeSnap.computed_at); return d === 0 ? 'Updated today' : d === 1 ? 'Updated yesterday' : `Updated ${d}d ago` })()
-                    : isComputing ? 'Computing…' : 'Not computed'}
-                </span>
+                    : isComputing ? 'Computing…' : 'Not yet computed'}
+                </div>
               </div>
             </div>
 
-            {/* ── Performance Gauges (only when snapshot exists) ─────────────── */}
-            {activeSnap ? (
-              <div style={{
-                display: 'flex', gap: '0', marginBottom: '20px',
-                padding: '20px 8px 8px', borderRadius: '14px',
-                background: `radial-gradient(ellipse at center top, ${clientColor}05 0%, transparent 60%), ${t.bg.elevated}`,
-                border: `1px solid ${t.border.default}`,
-                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
-              }}>
-                <ArcGauge
-                  label="Activity Rate"
-                  value={activeSnap.activity_rate_pct ?? null}
-                  target={market.default_reach_threshold}
-                  unit="%"
-                  note={activeSnap.active_accounts != null && activeSnap.total_accounts != null
-                    ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
-                    : undefined}
-                />
-                <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
-                <ArcGauge label="Reorder Rate" value={activeSnap.retention_pct ?? null} target={market.default_retention_threshold} unit="%" />
-                <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
-                <ArcGauge
-                  label="Velocity Index"
-                  value={activeSnap.velocity_index ?? null}
-                  target={100}
-                  unit=""
-                  note={activeSnap.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
-                />
-              </div>
-            ) : !isComputing && activeBrandData && activeBrandData.activityAccounts.length > 0 ? (
-              <div style={{
-                marginBottom: '20px', padding: '16px 20px',
-                borderRadius: '12px', border: `1px dashed ${clientColor}25`,
-                background: `radial-gradient(ellipse at left, ${clientColor}04 0%, transparent 70%)`,
-                display: 'flex', alignItems: 'center', gap: '14px',
-              }}>
-                <AlertTriangle size={15} color={t.text.muted} style={{ opacity: 0.4, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.secondary, marginBottom: '2px' }}>Performance analytics not yet computed</div>
-                  <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>Click Refresh to calculate activity rate, reorder rate, and velocity index for this territory.</div>
-                </div>
-              </div>
-            ) : null}
+            {/* ── Right Panel ─────────────────────────────────────────────────── */}
+            <div style={{ flex: 1, minWidth: 0, padding: '16px 20px 60px', overflowY: 'auto' }}>
 
-            {/* ── Account Monitor ────────────────────────────────────────────── */}
-            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && (
-              <div style={{ marginBottom: '24px' }}>
-                {/* Header + controls */}
-                <div style={{ marginBottom: '10px' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 14px', borderRadius: '8px 8px 0 0',
-                    background: `linear-gradient(90deg, ${clientColor}08 0%, transparent 80%)`,
-                    border: `1px solid ${clientColor}15`,
-                    borderBottom: 'none',
-                  }}>
-                    <span style={{ fontSize: '11px', fontWeight: '800', color: clientColor, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.9 }}>
-                      Account Monitor
-                    </span>
-                    <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5 }}>
-                      {sortedAccounts.length} of {activeBrandData?.activityAccounts.length ?? 0} accounts
-                    </span>
+              {isLoadingBrandData && (
+                <div style={{ padding: '60px 24px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '12px', color: t.text.muted }}>Loading account data…</span>
+                </div>
+              )}
+
+              {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) === 0 && (
+                <div style={{ padding: '48px 24px', textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, background: `radial-gradient(ellipse at center, ${clientColor}04 0%, transparent 70%)`, marginTop: '8px' }}>
+                  <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No activity for this brand in this territory yet.</div>
+                  <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
+                    {hasGeoTags
+                      ? 'Log visits or orders at accounts in this area to start monitoring.'
+                      : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to auto-populate accounts from your CRM.</>
+                    }
                   </div>
-                  {/* Sort + filter bar */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
-                    padding: '8px 14px',
-                    background: t.bg.elevated, border: `1px solid ${clientColor}15`,
-                    borderTop: `1px solid rgba(255,255,255,0.04)`, borderRadius: '0 0 8px 8px',
-                  }}>
-                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginRight: '2px' }}>Sort</span>
+                </div>
+              )}
+
+              {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && (
+                <>
+                  {/* Sort + Filter bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '8px 12px', background: t.bg.elevated, border: `1px solid ${clientColor}15`, borderRadius: '8px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Sort</span>
                     {([
                       { key: 'order', label: 'Latest Order' },
                       { key: 'revenue', label: '90d Revenue' },
                       { key: 'placements', label: 'Placements' },
                       { key: 'name', label: 'A–Z' },
                     ] as { key: typeof accountSort; label: string }[]).map(s => (
-                      <button key={s.key} onClick={() => setAccountSort(s.key)} style={{
-                        padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer',
-                        border: `1px solid ${accountSort === s.key ? clientColor + '60' : t.border.subtle}`,
-                        backgroundColor: accountSort === s.key ? clientColor + '18' : 'transparent',
-                        color: accountSort === s.key ? clientColor : t.text.muted,
-                      }}>{s.label}</button>
+                      <button key={s.key} onClick={() => setAccountSort(s.key)} style={{ padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', border: `1px solid ${accountSort === s.key ? clientColor + '60' : t.border.subtle}`, backgroundColor: accountSort === s.key ? clientColor + '18' : 'transparent', color: accountSort === s.key ? clientColor : t.text.muted }}>{s.label}</button>
                     ))}
-                    <div style={{ width: '1px', height: '16px', backgroundColor: t.border.subtle, margin: '0 4px' }} />
-                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginRight: '2px' }}>Filter</span>
+                    <div style={{ width: '1px', height: '14px', backgroundColor: t.border.subtle, margin: '0 2px' }} />
+                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Filter</span>
                     {([
                       { key: 'all', label: 'All' },
                       { key: 'ordered', label: 'Ordered 90d' },
                       { key: 'placed', label: 'Has Placement' },
                     ] as { key: typeof accountFilter; label: string }[]).map(f => (
-                      <button key={f.key} onClick={() => setAccountFilter(f.key)} style={{
-                        padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer',
-                        border: `1px solid ${accountFilter === f.key ? clientColor + '60' : t.border.subtle}`,
-                        backgroundColor: accountFilter === f.key ? clientColor + '18' : 'transparent',
-                        color: accountFilter === f.key ? clientColor : t.text.muted,
-                      }}>{f.label}</button>
+                      <button key={f.key} onClick={() => setAccountFilter(f.key)} style={{ padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', border: `1px solid ${accountFilter === f.key ? clientColor + '60' : t.border.subtle}`, backgroundColor: accountFilter === f.key ? clientColor + '18' : 'transparent', color: accountFilter === f.key ? clientColor : t.text.muted }}>{f.label}</button>
+                    ))}
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.text.muted, opacity: 0.4 }}>
+                      {sortedAccounts.length} of {activeBrandData?.activityAccounts.length ?? 0}
+                    </span>
+                  </div>
+
+                  {/* Column headers */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', gap: '16px', padding: '0 14px 5px 27px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>
+                    <span>Account</span>
+                    <span style={{ textAlign: 'right' }}>Placements</span>
+                    <span style={{ textAlign: 'right', minWidth: '72px' }}>90-Day Revenue</span>
+                    <span style={{ textAlign: 'right', minWidth: '72px' }}>Last Activity</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {sortedAccounts.map(acct => (
+                      <AccountRow
+                        key={acct.id}
+                        account={acct}
+                        orders={activeBrandData!.ordersByAccount[acct.id] ?? []}
+                        lastVisit={activeBrandData!.lastVisitByAccount[acct.id]}
+                        placements={activeBrandData!.placementsByAccount[acct.id]}
+                        clientColor={clientColor}
+                        maxAmount={maxAmount90d}
+                      />
                     ))}
                   </div>
-                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', gap: '16px', padding: '0 14px 5px 27px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>
-                  <span>Account</span>
-                  <span style={{ textAlign: 'right' }}>Placements</span>
-                  <span style={{ textAlign: 'right', minWidth: '72px' }}>90-Day Revenue</span>
-                  <span style={{ textAlign: 'right', minWidth: '72px' }}>Last Activity</span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  {sortedAccounts.map(acct => (
-                    <AccountRow
-                      key={acct.id}
-                      account={acct}
-                      orders={activeBrandData!.ordersByAccount[acct.id] ?? []}
-                      lastVisit={activeBrandData!.lastVisitByAccount[acct.id]}
-                      placements={activeBrandData!.placementsByAccount[acct.id]}
-                      clientColor={clientColor}
-                      maxAmount={maxAmount90d}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {isLoadingBrandData && (
-              <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-                <span style={{ fontSize: '12px', color: t.text.muted }}>Loading account data…</span>
-              </div>
-            )}
-
-            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) === 0 && (
-              <div style={{ padding: '32px 24px', textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, background: `radial-gradient(ellipse at center, ${clientColor}04 0%, transparent 70%)` }}>
-                <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No activity for this brand in this territory yet.</div>
-                <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
-                  {hasGeoTags
-                    ? 'Log visits or orders at accounts in this area to start monitoring.'
-                    : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to auto-populate accounts from your CRM.</>
-                  }
-                </div>
-              </div>
-            )}
-            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && sortedAccounts.length === 0 && (
-              <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: t.text.muted, opacity: 0.6 }}>
-                No accounts match this filter.
-              </div>
-            )}
+                  {sortedAccounts.length === 0 && (
+                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: t.text.muted, opacity: 0.6 }}>
+                      No accounts match this filter.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

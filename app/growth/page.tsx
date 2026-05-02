@@ -224,7 +224,7 @@ function GrowthDashboardContent() {
     const c = clients.find(cl => cl.slug === z.client_slug)
     const marketId = z.markets?.id
     if (!marketId) return []
-    const href = `/growth/markets/${marketId}?client=${z.client_slug ?? ''}`
+    const href = `/growth/markets/${marketId}`
     return [{ id: z.id, href, title: `${c?.name ?? z.name} — ${z.markets?.name}`, sub: `Health ${Math.round(hs)}` }]
   })
 
