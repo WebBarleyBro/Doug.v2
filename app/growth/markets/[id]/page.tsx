@@ -1178,7 +1178,7 @@ function MarketDetailContent() {
                   <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{allAccounts.find(a => a.id === addTargetSelectedId)?.name}</span>
                   <button onClick={() => setAddTargetSelectedId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted }}><X size={13} /></button>
                 </div>
-                <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Pursue for which brand(s)?
+                <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Pursue for which brand(s)?</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                   {clients.map(c => {
                     const checked = addTargetSlugs.includes(c.slug)
