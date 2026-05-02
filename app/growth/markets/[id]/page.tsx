@@ -16,7 +16,7 @@ import {
   getZoneTargetAccounts, addAccountToZone, removeAccountFromZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
-import { HealthRing, MetricTile, Sparkline, healthColor } from '../../_components'
+import { HealthRing, ArcGauge, MetricTile, Sparkline, healthColor } from '../../_components'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
 
@@ -848,82 +848,178 @@ function MarketDetailContent() {
           <div style={{ maxWidth: '860px', margin: '0 auto', padding: '20px 24px 60px' }}>
 
             {/* Status summary row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '14px' }}>
               {[
-                { label: 'Active', count: activeAccounts.length, color: t.status.success, bg: t.status.successBg, key: 'active' },
-                { label: 'Lapsed', count: lapsedAccounts.length, color: t.status.warning, bg: t.status.warningBg, key: 'lapsed', icon: lapsedAccounts.length > 0 },
-                { label: 'Pursuing', count: totalPursuing, color: t.gold, bg: t.goldDim, key: 'pursuing' },
-                { label: 'Dormant', count: dormantAccounts.length, color: t.text.muted, bg: t.bg.elevated, key: 'dormant' },
+                { label: 'Active', count: activeAccounts.length, color: t.status.success, key: 'active' },
+                { label: 'Lapsed', count: lapsedAccounts.length, color: t.status.warning, key: 'lapsed', warn: lapsedAccounts.length > 0 },
+                { label: 'Pursuing', count: totalPursuing, color: t.gold, key: 'pursuing' },
+                { label: 'Dormant', count: dormantAccounts.length, color: t.text.muted, key: 'dormant' },
               ].map(s => (
                 <button key={s.key} onClick={() => {
-                  toggleSection(s.key)
                   setExpandedSections(prev => ({ ...prev, [s.key]: true }))
                   document.getElementById(`section-${s.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }} style={{ padding: '12px', borderRadius: '10px', backgroundColor: s.bg, border: `1px solid ${s.color}30`, cursor: 'pointer', textAlign: 'center' }}>
-                  <div style={{ fontSize: '22px', fontWeight: '800', color: s.color, lineHeight: 1 }}>
+                }} style={{
+                  padding: '14px 12px 12px',
+                  borderRadius: '12px',
+                  backgroundColor: t.bg.elevated,
+                  border: `1px solid ${t.border.default}`,
+                  borderTop: `3px solid ${s.count > 0 ? s.color : t.border.default}`,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'border-color 150ms',
+                }}>
+                  <div style={{
+                    fontSize: '28px', fontWeight: '900', color: s.count > 0 ? s.color : t.text.muted,
+                    lineHeight: 1, letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums',
+                    textShadow: s.count > 0 ? `0 0 20px ${s.color}40` : 'none',
+                  }}>
                     {isLoadingBrandData ? '—' : s.count}
-                    {s.icon && s.count > 0 && <AlertTriangle size={13} color={s.color} style={{ marginLeft: '4px', verticalAlign: 'middle' }} />}
                   </div>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: s.color, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.07em', opacity: 0.8 }}>{s.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '5px' }}>
+                    {s.warn && s.count > 0 && <AlertTriangle size={10} color={s.color} />}
+                    <span style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
+                  </div>
                 </button>
               ))}
             </div>
 
-            {/* Volume + health row */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-              {/* Cases + trend */}
-              <div style={{ flex: 1, minWidth: '180px', padding: '14px 16px', borderRadius: '10px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}` }}>
-                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Cases This Quarter</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '26px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>
-                    {activeSnap?.total_cases_90d ?? '—'}
+            {/* ── Command panel ─────────────────────────────────────────────── */}
+            <div style={{
+              display: 'flex', gap: '10px', marginBottom: '14px',
+              padding: '20px', borderRadius: '14px',
+              backgroundColor: t.bg.elevated,
+              border: `1px solid ${clientColor}1a`,
+              boxShadow: `0 0 40px ${clientColor}08`,
+              flexWrap: 'wrap',
+            }}>
+              {/* Health ring + sparkline column */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: '10px', flexShrink: 0,
+              }}>
+                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                  Territory Health
+                </div>
+                <HealthRing score={activeSnap?.health_score ?? null} size={100} strokeWidth={8} />
+                {activeSparklines.length > 1 && (
+                  <Sparkline
+                    data={activeSparklines.map(s => s.health_score)}
+                    width={96} height={28}
+                    color={healthColor(activeSnap?.health_score ?? null)}
+                  />
+                )}
+                {/* Last updated / computing state */}
+                <button
+                  onClick={handleRecompute}
+                  disabled={isComputing || isLoadingBrandData}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    background: 'none', border: 'none', cursor: isComputing ? 'default' : 'pointer',
+                    color: t.text.muted, fontSize: '10px', padding: '2px 6px',
+                    borderRadius: '5px', opacity: isComputing ? 0.5 : 0.7,
+                  }}
+                  title="Refresh metrics"
+                >
+                  <RefreshCw size={10} style={{ opacity: 0.7 }} />
+                  {isComputing ? 'Computing…'
+                    : activeSnap?.computed_at
+                      ? (() => {
+                          const d = daysSince(activeSnap.computed_at)
+                          return d === 0 ? 'Updated today' : d === 1 ? 'Updated yesterday' : `Updated ${d}d ago`
+                        })()
+                      : 'No data yet — click to compute'}
+                </button>
+              </div>
+
+              {/* Vertical divider */}
+              <div style={{ width: '1px', backgroundColor: t.border.subtle, alignSelf: 'stretch', flexShrink: 0 }} />
+
+              {/* Cases + trend panel */}
+              <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '10px', padding: '0 4px' }}>
+                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em' }}>
+                  Cases · 90 Days
+                </div>
+
+                {/* Big cases number + trend */}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '48px', fontWeight: '900', color: t.text.primary,
+                    lineHeight: 1, letterSpacing: '-0.04em', fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    {isLoadingBrandData ? '—' : (activeSnap?.total_cases_90d ?? '—')}
                   </span>
-                  {trendLabel && (
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: trendColor }}>
+                  {trendLabel && !isLoadingBrandData && (
+                    <span style={{
+                      fontSize: '20px', fontWeight: '800', color: trendColor,
+                      textShadow: `0 0 16px ${trendColor}50`,
+                    }}>
                       {trendLabel}
                     </span>
                   )}
                 </div>
-                {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && (
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>vs {activeSnap.cases_prior_90d} last quarter</div>
-                )}
-                {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
-                  <div style={{ fontSize: '10px', color: t.status.warning, marginTop: '4px' }}>⚠ {activeSnap.accounts_lost} account{activeSnap.accounts_lost !== 1 ? 's' : ''} went quiet</div>
-                )}
-              </div>
 
-              {/* Health ring + sparkline */}
-              <div style={{ padding: '14px 16px', borderRadius: '10px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <HealthRing score={activeSnap?.health_score ?? null} size={60} strokeWidth={5} />
-                {activeSparklines.length > 1 && (
-                  <Sparkline
-                    data={activeSparklines.map(s => s.health_score)}
-                    width={80} height={36}
-                    color={healthColor(activeSnap?.health_score ?? null)}
-                  />
+                {/* Progress bar vs prior quarter */}
+                {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && activeSnap.total_cases_90d != null && (
+                  <div>
+                    <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '6px' }}>
+                      vs {activeSnap.cases_prior_90d} last quarter
+                    </div>
+                    <div style={{ position: 'relative', height: '3px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0, bottom: 0,
+                        width: `${Math.min(100, (activeSnap.total_cases_90d / Math.max(activeSnap.total_cases_90d, activeSnap.cases_prior_90d)) * 100)}%`,
+                        backgroundColor: trendColor,
+                        borderRadius: '2px',
+                        boxShadow: `0 0 8px ${trendColor}`,
+                      }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Attrition warning */}
+                {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: t.status.warning }}>
+                    <AlertTriangle size={12} />
+                    {activeSnap.accounts_lost} account{activeSnap.accounts_lost !== 1 ? 's' : ''} went quiet this quarter
+                  </div>
+                )}
+
+                {/* New territory state */}
+                {!isLoadingBrandData && (activeSnap?.total_cases_90d == null || activeSnap.total_cases_90d === 0) && totalPursuing > 0 && (
+                  <div style={{ fontSize: '11px', color: t.text.muted }}>
+                    {totalPursuing} account{totalPursuing !== 1 ? 's' : ''} in pursuit — no orders yet
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Metrics row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
-              <MetricTile
+            {/* ── Arc Gauge instruments ──────────────────────────────────────── */}
+            <div style={{
+              display: 'flex', gap: '0', marginBottom: '24px',
+              padding: '20px 8px 8px',
+              borderRadius: '14px',
+              backgroundColor: t.bg.elevated,
+              border: `1px solid ${t.border.default}`,
+            }}>
+              <ArcGauge
                 label="Activity Rate"
                 value={activeSnap?.activity_rate_pct ?? null}
                 target={market.default_reach_threshold}
                 unit="%"
                 note={activeSnap?.active_accounts != null && activeSnap?.total_accounts != null
-                  ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} customers ordered`
+                  ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
                   : undefined}
               />
-              <MetricTile
+              <div style={{ width: '1px', backgroundColor: t.border.subtle, alignSelf: 'stretch', margin: '0 4px' }} />
+              <ArcGauge
                 label="Reorder Rate"
                 value={activeSnap?.retention_pct ?? null}
                 target={market.default_retention_threshold}
                 unit="%"
               />
-              <MetricTile
-                label="Velocity"
+              <div style={{ width: '1px', backgroundColor: t.border.subtle, alignSelf: 'stretch', margin: '0 4px' }} />
+              <ArcGauge
+                label="Velocity Index"
                 value={activeSnap?.velocity_index ?? null}
                 target={100}
                 unit=""
