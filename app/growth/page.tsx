@@ -36,11 +36,15 @@ function TerritoryCard({
   const validSnaps = zones.map(z => snapshots[z.id]).filter(Boolean) as ZoneMetricSnapshot[]
   const scores = validSnaps.map(s => s.health_score).filter((h): h is number => h != null)
   const avgHealth = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
-  const totalAccounts = validSnaps.reduce((s, sn) => s + (sn.target_set_size ?? 0), 0)
+  const totalAccounts = validSnaps.reduce((s, sn) => s + (sn.total_accounts ?? sn.target_set_size ?? 0), 0)
   const activeAccounts = validSnaps.reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
-  const avgReach  = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.reach_pct ?? 0), 0) / validSnaps.length : null
-  const avgVelIdx = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.velocity_index ?? 0), 0) / validSnaps.length : null
-  const avgRet    = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.retention_pct ?? 0), 0) / validSnaps.length : null
+  const totalCases = validSnaps.reduce((s, sn) => s + (sn.total_cases_90d ?? 0), 0)
+  const avgActivity = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.activity_rate_pct ?? sn.reach_pct ?? 0), 0) / validSnaps.length : null
+  const avgVelIdx   = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.velocity_index ?? 0), 0) / validSnaps.length : null
+  const avgRet      = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.retention_pct ?? 0), 0) / validSnaps.length : null
+  // Volume trend: positive = at least one zone growing
+  const trendSnaps = validSnaps.filter(s => s.volume_trend_pct !== null)
+  const avgTrend = trendSnaps.length > 0 ? trendSnaps.reduce((s, sn) => s + (sn.volume_trend_pct ?? 0), 0) / trendSnaps.length : null
 
   const color = healthColor(avgHealth)
 
@@ -105,12 +109,12 @@ function TerritoryCard({
         {validSnaps.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '12px' }}>
             {[
-              { label: 'REACH', v: avgReach },
-              { label: 'VEL', v: avgVelIdx },
-              { label: 'RET', v: avgRet },
+              { label: 'ACTIV', v: avgActivity },
+              { label: 'VEL',   v: avgVelIdx },
+              { label: 'RET',   v: avgRet },
             ].map(m => (
               <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '8px', color: t.text.muted, fontWeight: '700', width: '22px', letterSpacing: '0.07em', flexShrink: 0 }}>{m.label}</span>
+                <span style={{ fontSize: '8px', color: t.text.muted, fontWeight: '700', width: '26px', letterSpacing: '0.07em', flexShrink: 0 }}>{m.label}</span>
                 <div style={{ flex: 1, height: '3px', borderRadius: '2px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
                   {m.v != null && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, backgroundColor: healthColor(m.v), borderRadius: '2px' }} />}
                 </div>
@@ -125,7 +129,10 @@ function TerritoryCard({
         {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${t.border.subtle}`, paddingTop: '9px' }}>
           <span style={{ fontSize: '10px', color: t.text.muted }}>
-            {totalAccounts > 0 ? `${totalAccounts} targets · ${activeAccounts} active` : zones.length === 0 ? 'No focus areas yet' : 'No target accounts yet'}
+            {totalCases > 0
+              ? <>{activeAccounts} active · <span style={{ color: avgTrend !== null ? (avgTrend > 5 ? t.status.success : avgTrend < -5 ? t.status.danger : t.text.muted) : t.text.muted, fontWeight: '700' }}>{totalCases} cs{avgTrend !== null ? ` ${avgTrend > 0 ? '↑' : '↓'}${Math.abs(Math.round(avgTrend))}%` : ''}</span></>
+              : totalAccounts > 0 ? `${activeAccounts} active of ${totalAccounts}`
+              : zones.length === 0 ? 'No brands yet' : 'No data yet'}
           </span>
           <ChevronRight size={11} color={t.text.muted} style={{ opacity: hovered ? 1 : 0.4, transition: 'opacity 150ms' }} />
         </div>
@@ -269,8 +276,8 @@ function GrowthDashboardContent() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flex: 1 }}>
             {[
               { label: 'Territories', val: marketEntries.length },
-              { label: 'Accounts',    val: totalAccounts },
-              { label: 'Active',      val: totalActive },
+              { label: 'Customers',   val: totalActive },
+              { label: 'Brands',      val: clientsWithZones.length },
             ].map(s => (
               <div key={s.label}>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>{s.val}</div>

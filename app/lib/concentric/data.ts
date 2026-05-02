@@ -270,9 +270,10 @@ export async function getLatestSnapshotsByZone(
   // Fetch recent snapshots for all zones and keep only the latest per zone
   const { data, error } = await sb
     .from('zone_metric_snapshots')
-    .select('zone_id, snapshot_date, health_score, reach_pct, velocity, velocity_index, retention_pct, active_accounts, target_set_size, total_cases_90d, computed_at')
+    .select('zone_id, snapshot_date, health_score, activity_rate_pct, reach_pct, velocity, velocity_index, retention_pct, active_accounts, target_set_size, total_accounts, total_cases_90d, cases_prior_90d, volume_trend_pct, accounts_lost, computed_at')
     .in('zone_id', zoneIds)
     .order('snapshot_date', { ascending: false })
+    .limit(zoneIds.length * 3)  // 3 rows per zone max; we only keep the latest
   if (error) throw error
 
   const map: Record<string, ZoneMetricSnapshot> = {}

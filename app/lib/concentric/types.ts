@@ -66,7 +66,15 @@ export interface ZoneMetricSnapshot {
   id: string
   zone_id: string
   snapshot_date: string
+  // v1 metrics (preserved for history)
   reach_pct: number | null
+  // v2 metrics
+  activity_rate_pct: number | null   // active_accounts / total_accounts
+  volume_trend_pct: number | null    // % change vs prior 90d; null = no prior data
+  cases_prior_90d: number | null
+  accounts_lost: number | null       // were active last period, now lapsed/dormant
+  total_accounts: number | null      // denominator for activity_rate
+  // shared metrics
   velocity: number | null
   velocity_index: number | null
   retention_pct: number | null
@@ -86,34 +94,42 @@ export interface AccountZoneMetric {
   address: string | null
   account_type: string
   status: AccountZoneStatus
-  last_order: string | null  // ISO timestamp of most recent sent/fulfilled order
-  total_orders: number       // all-time count of sent/fulfilled orders
+  last_order: string | null
+  total_orders: number
   orders_90d: number
   cases_90d: number
+  cases_prior_90d: number
   velocity_per_month: number
 }
 
 // Full result returned by computeZoneMetrics
 export interface ZoneMetrics {
-  // 0–100 scale metrics
-  reach_pct: number
-  velocity: number          // raw cases per active account per month
-  velocity_index: number    // velocity normalized 0–100 against velocity_target, capped at 100
+  // v2 health formula inputs (0–100 scale)
+  activity_rate_pct: number     // active_accounts / total_accounts
+  velocity: number              // raw cases per active account per month
+  velocity_index: number        // velocity normalized 0–100 against velocity_target
   retention_pct: number
-  retention_reorder_pct: number | null  // null = insufficient history (<60 days since first order)
-  retention_menu_pct: number | null     // null = not on_premise or no active accounts
+  retention_reorder_pct: number | null
+  retention_menu_pct: number | null
+  volume_trend_pct: number | null
   health_score: number
 
   // Counts
   target_set_size: number
   active_accounts: number
+  total_accounts: number
   cases_90d: number
+  cases_prior_90d: number
+  accounts_lost: number
 
-  // Trend — null if zone has fewer than 30 days of snapshot history
+  // v1 (kept for history, not used in health_score)
+  reach_pct: number
+
+  // Trend — null if fewer than 30 days of snapshot history
   health_trend_30d: number | null
 
   // Effective thresholds (after inheritance from Market)
-  effective_reach_threshold: number
+  effective_activity_threshold: number
   effective_retention_threshold: number
 
   // Per-account breakdown
@@ -124,7 +140,7 @@ export interface ZoneMetrics {
 export interface SupplyHeadroom {
   client_slug: string
   available_cases_90d: number | null
-  projected_demand_90d: number  // sum of projected_monthly_cases*3 across active/maintaining zones
-  headroom_pct: number | null   // null when available_cases_90d is null
-  warning: boolean              // true when headroom_pct < 120 OR available_cases_90d is null
+  projected_demand_90d: number
+  headroom_pct: number | null
+  warning: boolean
 }
