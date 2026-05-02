@@ -216,6 +216,8 @@ function MarketDetailContent() {
   const [loadingSparklineIds, setLoadingSparklineIds] = useState<Set<string>>(new Set())
   const [computingSlugs, setComputingSlugs] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [accountSort, setAccountSort] = useState<'order' | 'revenue' | 'name' | 'placements'>('order')
+  const [accountFilter, setAccountFilter] = useState<'all' | 'ordered' | 'placed'>('all')
 
   const [activeClientTab, setActiveClientTab] = useState<string>(searchParams.get('client') ?? '')
   const autoRecomputedSlugs = useRef<Set<string>>(new Set())
@@ -400,10 +402,32 @@ function MarketDetailContent() {
   const isComputing = computingSlugs.has(activeClientTab)
   const activeBrandData = activeClientTab ? brandDataBySlug[activeClientTab] ?? null : null
 
-  // Sorted: most recent order first, then by placement count
   const sortedAccounts = useMemo(() => {
     if (!activeBrandData) return []
-    return [...activeBrandData.activityAccounts].sort((a, b) => {
+    let list = [...activeBrandData.activityAccounts]
+
+    // Filter
+    if (accountFilter === 'ordered') {
+      list = list.filter(a => (activeBrandData.ordersByAccount[a.id] ?? []).some(o =>
+        new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS
+      ))
+    } else if (accountFilter === 'placed') {
+      list = list.filter(a => (activeBrandData.placementsByAccount[a.id] ?? []).length > 0)
+    }
+
+    // Sort
+    return list.sort((a, b) => {
+      if (accountSort === 'name') return a.name.localeCompare(b.name)
+      if (accountSort === 'placements') {
+        return (activeBrandData.placementsByAccount[b.id] ?? []).length - (activeBrandData.placementsByAccount[a.id] ?? []).length
+      }
+      if (accountSort === 'revenue') {
+        const rev = (acc: Account) => (activeBrandData.ordersByAccount[acc.id] ?? [])
+          .filter(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
+          .reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
+        return rev(b) - rev(a)
+      }
+      // Default: most recent order first
       const aLast = latestOrderDate(activeBrandData.ordersByAccount[a.id] ?? [])
       const bLast = latestOrderDate(activeBrandData.ordersByAccount[b.id] ?? [])
       if (aLast && bLast) return bLast > aLast ? 1 : -1
@@ -411,7 +435,7 @@ function MarketDetailContent() {
       if (bLast) return 1
       return (activeBrandData.placementsByAccount[b.id] ?? []).length - (activeBrandData.placementsByAccount[a.id] ?? []).length
     })
-  }, [activeBrandData])
+  }, [activeBrandData, accountSort, accountFilter])
 
   // Per-account 90d amounts for activity bar scaling
   const maxAmount90d = useMemo(() => {
@@ -562,7 +586,7 @@ function MarketDetailContent() {
               {[
                 { value: territoryAccounts.length, label: 'Accounts in Territory' },
                 { value: territoryClients.length, label: 'Brands Active' },
-                { value: Object.keys(brandActivity).length, label: 'Accounts w/ CRM Activity' },
+                { value: Object.keys(brandActivity).length, label: 'Accounts Touched (any brand, all time)' },
               ].map((s, i) => (
                 <div key={i} style={{
                   flex: 1, padding: '20px 24px', textAlign: 'center',
@@ -841,21 +865,60 @@ function MarketDetailContent() {
             ) : null}
 
             {/* ── Account Monitor ────────────────────────────────────────────── */}
-            {!isLoadingBrandData && sortedAccounts.length > 0 && (
+            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && (
               <div style={{ marginBottom: '24px' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  marginBottom: '10px', padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: `linear-gradient(90deg, ${clientColor}08 0%, transparent 80%)`,
-                  border: `1px solid ${clientColor}15`,
-                }}>
-                  <span style={{ fontSize: '11px', fontWeight: '800', color: clientColor, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.9 }}>
-                    Account Monitor
-                  </span>
-                  <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.6 }}>
-                    {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''} · by latest order
-                  </span>
+                {/* Header + controls */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 14px', borderRadius: '8px 8px 0 0',
+                    background: `linear-gradient(90deg, ${clientColor}08 0%, transparent 80%)`,
+                    border: `1px solid ${clientColor}15`,
+                    borderBottom: 'none',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: clientColor, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.9 }}>
+                      Account Monitor
+                    </span>
+                    <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5 }}>
+                      {sortedAccounts.length} of {activeBrandData?.activityAccounts.length ?? 0} accounts
+                    </span>
+                  </div>
+                  {/* Sort + filter bar */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
+                    padding: '8px 14px',
+                    background: t.bg.elevated, border: `1px solid ${clientColor}15`,
+                    borderTop: `1px solid rgba(255,255,255,0.04)`, borderRadius: '0 0 8px 8px',
+                  }}>
+                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginRight: '2px' }}>Sort</span>
+                    {([
+                      { key: 'order', label: 'Latest Order' },
+                      { key: 'revenue', label: '90d Revenue' },
+                      { key: 'placements', label: 'Placements' },
+                      { key: 'name', label: 'A–Z' },
+                    ] as { key: typeof accountSort; label: string }[]).map(s => (
+                      <button key={s.key} onClick={() => setAccountSort(s.key)} style={{
+                        padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer',
+                        border: `1px solid ${accountSort === s.key ? clientColor + '60' : t.border.subtle}`,
+                        backgroundColor: accountSort === s.key ? clientColor + '18' : 'transparent',
+                        color: accountSort === s.key ? clientColor : t.text.muted,
+                      }}>{s.label}</button>
+                    ))}
+                    <div style={{ width: '1px', height: '16px', backgroundColor: t.border.subtle, margin: '0 4px' }} />
+                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginRight: '2px' }}>Filter</span>
+                    {([
+                      { key: 'all', label: 'All' },
+                      { key: 'ordered', label: 'Ordered 90d' },
+                      { key: 'placed', label: 'Has Placement' },
+                    ] as { key: typeof accountFilter; label: string }[]).map(f => (
+                      <button key={f.key} onClick={() => setAccountFilter(f.key)} style={{
+                        padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer',
+                        border: `1px solid ${accountFilter === f.key ? clientColor + '60' : t.border.subtle}`,
+                        backgroundColor: accountFilter === f.key ? clientColor + '18' : 'transparent',
+                        color: accountFilter === f.key ? clientColor : t.text.muted,
+                      }}>{f.label}</button>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', gap: '16px', padding: '0 14px 5px 27px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>
@@ -887,7 +950,7 @@ function MarketDetailContent() {
               </div>
             )}
 
-            {!isLoadingBrandData && sortedAccounts.length === 0 && (
+            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) === 0 && (
               <div style={{ padding: '32px 24px', textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, background: `radial-gradient(ellipse at center, ${clientColor}04 0%, transparent 70%)` }}>
                 <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No activity for this brand in this territory yet.</div>
                 <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
@@ -896,6 +959,11 @@ function MarketDetailContent() {
                     : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to auto-populate accounts from your CRM.</>
                   }
                 </div>
+              </div>
+            )}
+            {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && sortedAccounts.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: t.text.muted, opacity: 0.6 }}>
+                No accounts match this filter.
               </div>
             )}
           </div>

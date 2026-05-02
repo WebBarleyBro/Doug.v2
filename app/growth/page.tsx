@@ -22,20 +22,16 @@ function TerritoryCard({
   market,
   zones,
   snapshots,
-  clientChips,
 }: {
   market: Market
   zones: ZoneWithMarket[]
   snapshots: Record<string, ZoneMetricSnapshot>
-  clientColor: string
-  clientChips?: { name: string; color: string }[]
 }) {
   const [hovered, setHovered] = useState(false)
 
   const validSnaps = zones.map(z => snapshots[z.id]).filter(Boolean) as ZoneMetricSnapshot[]
   const scores = validSnaps.map(s => s.health_score).filter((h): h is number => h != null)
   const avgHealth = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
-  const totalAccounts = validSnaps.reduce((s, sn) => s + (sn.total_accounts ?? sn.target_set_size ?? 0), 0)
   const activeAccounts = validSnaps.reduce((s, sn) => s + (sn.active_accounts ?? 0), 0)
   const totalCases = validSnaps.reduce((s, sn) => s + (sn.total_cases_90d ?? 0), 0)
   const avgActivity = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.activity_rate_pct ?? sn.reach_pct ?? 0), 0) / validSnaps.length : null
@@ -45,10 +41,10 @@ function TerritoryCard({
   const avgTrend = trendSnaps.length > 0 ? trendSnaps.reduce((s, sn) => s + (sn.volume_trend_pct ?? 0), 0) / trendSnaps.length : null
 
   const color = healthColor(avgHealth)
-  const accentColor = clientChips?.[0]?.color || color
   const href = `/growth/markets/${market.id}`
   const geoParts = [...(market.cities ?? []).slice(0, 2), ...(market.states ?? []).slice(0, 1)].slice(0, 2)
   const hasData = validSnaps.length > 0 && avgHealth !== null
+  const hasMetrics = hasData && (avgActivity !== null || avgVelIdx !== null || avgRet !== null) && totalCases > 0
 
   return (
     <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
@@ -57,15 +53,15 @@ function TerritoryCard({
         onMouseLeave={() => setHovered(false)}
         style={{
           borderRadius: '14px',
-          border: `1px solid ${hovered ? accentColor + '40' : t.border.default}`,
+          border: `1px solid ${hovered ? color + '40' : t.border.default}`,
           background: hovered
-            ? `radial-gradient(ellipse at top left, ${accentColor}08 0%, transparent 55%), ${t.bg.elevated}`
+            ? `radial-gradient(ellipse at top left, ${color}08 0%, transparent 55%), ${t.bg.elevated}`
             : t.bg.elevated,
           padding: '16px',
           cursor: 'pointer',
           transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
           transition: 'border-color 150ms, transform 150ms, box-shadow 150ms, background 150ms',
-          boxShadow: hovered ? `0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px ${accentColor}18` : `0 1px 3px rgba(0,0,0,0.15)`,
+          boxShadow: hovered ? `0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px ${color}18` : `0 1px 3px rgba(0,0,0,0.15)`,
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -73,20 +69,8 @@ function TerritoryCard({
         {/* Top accent line */}
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: hasData ? `linear-gradient(90deg, ${color}, ${color}50)` : t.border.subtle, borderRadius: '14px 14px 0 0' }} />
 
-        {/* Client brand chips */}
-        {clientChips && clientChips.length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', marginTop: '4px' }}>
-            {clientChips.map(c => (
-              <span key={c.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', fontWeight: '800', color: c.color, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '4px', backgroundColor: c.color + '14', border: `1px solid ${c.color}25` }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: c.color, boxShadow: `0 0 4px ${c.color}` }} />
-                {c.name}
-              </span>
-            ))}
-          </div>
-        )}
-
         {/* Name + health score */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', marginTop: clientChips?.length ? 0 : '4px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', marginTop: '4px' }}>
           <div style={{ flex: 1, paddingRight: '12px', minWidth: 0 }}>
             <div style={{ fontSize: '15px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginBottom: '4px', lineHeight: 1.2 }}>
               {market.name}
@@ -114,28 +98,31 @@ function TerritoryCard({
           </div>
         </div>
 
-        {/* Metric bars */}
-        {validSnaps.length > 0 && (
+        {/* Metric bars — only when real data exists */}
+        {hasMetrics && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '13px' }}>
             {[
               { label: 'Activity', v: avgActivity },
               { label: 'Velocity', v: avgVelIdx },
               { label: 'Reorder',  v: avgRet },
             ].map(m => {
-              const c = m.v != null ? healthColor(m.v) : t.border.subtle
+              const c = m.v != null && m.v > 0 ? healthColor(m.v) : t.border.subtle
               return (
                 <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '9px', color: t.text.muted, fontWeight: '700', width: '42px', letterSpacing: '0.04em', flexShrink: 0, opacity: 0.6 }}>{m.label}</span>
                   <div style={{ flex: 1, height: '4px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
-                    {m.v != null && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, background: `linear-gradient(90deg, ${c}, ${c}90)`, borderRadius: '2px', boxShadow: `0 0 6px ${c}` }} />}
+                    {m.v != null && m.v > 0 && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, background: `linear-gradient(90deg, ${c}, ${c}90)`, borderRadius: '2px', boxShadow: `0 0 6px ${c}` }} />}
                   </div>
-                  <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null ? c : '#333', width: '30px', textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                    {m.v != null ? `${Math.round(m.v)}` : '—'}
+                  <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null && m.v > 0 ? c : '#333', width: '30px', textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {m.v != null && m.v > 0 ? `${Math.round(m.v)}` : '—'}
                   </span>
                 </div>
               )
             })}
           </div>
+        )}
+        {!hasMetrics && validSnaps.length > 0 && (
+          <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.4, marginBottom: '13px' }}>No data yet — open territory and click Refresh</div>
         )}
 
         {/* Footer */}
@@ -143,15 +130,14 @@ function TerritoryCard({
           <span style={{ fontSize: '11px', color: t.text.muted, opacity: 0.7 }}>
             {totalCases > 0 ? (
               <>
-                <span style={{ color: t.status.success, fontWeight: '700' }}>{activeAccounts}</span> buying · {totalCases} cs
+                {totalCases} cs · <span style={{ color: t.status.success, fontWeight: '700' }}>{activeAccounts} active</span>
                 {avgTrend !== null && Math.abs(avgTrend) >= 5 && (
                   <span style={{ color: avgTrend > 0 ? t.status.success : t.status.danger, fontWeight: '700', marginLeft: '4px' }}>
                     {avgTrend > 0 ? '↑' : '↓'}{Math.abs(Math.round(avgTrend))}%
                   </span>
                 )}
               </>
-            ) : totalAccounts > 0 ? `${activeAccounts} of ${totalAccounts} active`
-              : zones.length === 0 ? 'No brands yet' : 'No data yet'}
+            ) : zones.length === 0 ? 'No brands tracked yet' : 'Open territory · click Refresh'}
           </span>
           <ChevronRight size={11} color={color} style={{ opacity: hovered ? 0.8 : 0.3, transition: 'opacity 150ms' }} />
         </div>
@@ -295,7 +281,7 @@ function GrowthDashboardContent() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '28px', flex: 1 }}>
             {[
               { label: 'Territories', val: marketEntries.length },
-              { label: 'Customers',   val: totalActive },
+              { label: 'Active Accts', val: totalActive },
               { label: 'Brands',      val: clientsWithZones.length },
             ].map(s => (
               <div key={s.label}>
@@ -339,22 +325,14 @@ function GrowthDashboardContent() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-              {filteredEntries.map(({ market, zones: mZones }) => {
-                const chips = mZones
-                  .map(z => clients.find(c => c.slug === z.client_slug))
-                  .filter((c): c is Client => !!c)
-                  .map(c => ({ name: c.name, color: c.color || t.gold }))
-                return (
-                  <TerritoryCard
-                    key={market.id}
-                    market={market}
-                    zones={mZones}
-                    snapshots={snapshots}
-                    clientColor={t.gold}
-                    clientChips={chips}
-                  />
-                )
-              })}
+              {filteredEntries.map(({ market, zones: mZones }) => (
+                <TerritoryCard
+                  key={market.id}
+                  market={market}
+                  zones={mZones}
+                  snapshots={snapshots}
+                />
+              ))}
             </div>
           )}
 

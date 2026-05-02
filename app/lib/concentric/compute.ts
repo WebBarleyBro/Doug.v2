@@ -2,6 +2,7 @@
 // Import only from API routes, server actions, or cron jobs (uses service role).
 
 import { getSupabaseAdmin } from '../supabase-server'
+import { matchesGeoTerms } from './geo'
 import type {
   Zone, Market, ZoneMetrics, AccountZoneMetric, AccountZoneStatus, SupplyHeadroom,
 } from './types'
@@ -76,19 +77,51 @@ export async function computeZoneMetrics(zoneId: string): Promise<ZoneMetrics> {
   const effectiveActivityThreshold = market.default_reach_threshold   // reusing existing DB column
   const effectiveRetentionThreshold = market.default_retention_threshold
 
-  // 2. Fetch active Target Set members
-  const { data: targetRows } = await sb
-    .from('zone_target_accounts')
-    .select('account_id, accounts(id, name, address, account_type)')
-    .eq('zone_id', zoneId)
-    .is('removed_at', null)
+  // 2. Build account list from CRM activity + market geo filter
+  // (replaces zone_target_accounts — no manual target list required)
+  const geoTerms: string[] = [
+    ...(market.cities ?? []),
+    ...(market.counties ?? []),
+    ...(market.states ?? []),
+    ...(market.zip_codes ?? []),
+  ].map((g: string) => g.toLowerCase().trim()).filter(Boolean)
 
-  if (!targetRows || targetRows.length === 0) {
+  const [visRes, plRes, orRes] = await Promise.all([
+    sb.from('visits').select('account_id').eq('client_slug', clientSlug),
+    sb.from('placements').select('account_id').eq('client_slug', clientSlug).is('lost_at', null),
+    sb.from('purchase_orders').select('account_id').eq('client_slug', clientSlug).in('status', ['sent', 'fulfilled']),
+  ])
+
+  const brandAccountIds = new Set<string>([
+    ...(visRes.data ?? []).map((r: any) => r.account_id as string),
+    ...(plRes.data ?? []).map((r: any) => r.account_id as string),
+    ...(orRes.data ?? []).map((r: any) => r.account_id as string),
+  ].filter(Boolean))
+
+  if (brandAccountIds.size === 0) {
     const snap = await fetchTrendSnapshot(sb, zoneId)
     return { ...emptyMetrics(effectiveActivityThreshold, effectiveRetentionThreshold), health_trend_30d: snap }
   }
 
-  const accountIds = targetRows.map((r: any) => r.account_id as string)
+  const { data: accountsRaw } = await sb
+    .from('accounts')
+    .select('id, name, address, account_type')
+    .in('id', [...brandAccountIds])
+
+  const filteredAccounts = geoTerms.length > 0
+    ? (accountsRaw ?? []).filter((a: any) => matchesGeoTerms(a.address ?? '', geoTerms))
+    : (accountsRaw ?? [])
+
+  if (filteredAccounts.length === 0) {
+    const snap = await fetchTrendSnapshot(sb, zoneId)
+    return { ...emptyMetrics(effectiveActivityThreshold, effectiveRetentionThreshold), health_trend_30d: snap }
+  }
+
+  const accountIds = filteredAccounts.map((a: any) => a.id as string)
+  const targetRows = filteredAccounts.map((a: any) => ({
+    account_id: a.id as string,
+    accounts: a,
+  }))
 
   // 3. All-time sent/fulfilled orders — capped at 2 years to avoid unbounded queries
   const twoYearsAgo = isoDate(daysAgo(730))
