@@ -180,6 +180,7 @@ export async function updateAccountClients(accountId: string, clientSlugs: strin
     )
   }
   invalidate('accounts:all')
+  invalidatePrefix('dashboard-stats')
 }
 
 export function getOverdueAccounts(): Promise<Account[]> {
@@ -190,14 +191,14 @@ export function getOverdueAccounts(): Promise<Account[]> {
       .select('id, name, address, account_type, visit_frequency_days, last_visited, account_clients(client_slug)')
       .not('visit_frequency_days', 'is', null)
       .order('last_visited', { ascending: true, nullsFirst: true })
-      .limit(100)
+      .limit(150)
     if (error) throw error
     return (data || []).filter((a: any) => {
-      if (!a.last_visited) return false  // never visited — not overdue, just unvisited
+      if (!a.last_visited) return true  // never visited — treat as maximally overdue
       const days = daysAgoMT(a.last_visited)
       const freq = a.visit_frequency_days || 21
       return days !== null && days >= freq - 1  // include accounts due tomorrow
-    }).slice(0, 20)
+    }).slice(0, 30)
   })
 }
 
@@ -386,7 +387,7 @@ export function getFollowUpVisits(): Promise<Visit[]> {
       .is('follow_up_dismissed_at', null)
       .gte('visited_at', since)
       .order('visited_at', { ascending: false })
-      .limit(200)
+      .limit(500)
     if (error) throw error
     // One entry per account — keep the most recent (already sorted desc)
     const seen = new Set<string>()
@@ -788,6 +789,7 @@ export async function completeTask(id: string) {
   const sb = getSupabase()
   await sb.from('tasks').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', id)
   invalidate('tasks:all')
+  invalidatePrefix('dashboard-stats')
 }
 
 export async function unCompleteTask(id: string) {

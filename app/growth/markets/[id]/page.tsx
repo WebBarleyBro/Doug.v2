@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Trash2, X, RefreshCw, ChevronRight, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
+import { Pencil, Trash2, X, RefreshCw, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -12,7 +12,7 @@ import { getSupabase } from '../../../lib/supabase'
 import { matchesGeoTerms } from '../../../lib/concentric/geo'
 import {
   getMarket, updateMarket, deleteMarket,
-  createZone, deleteZone,
+  createZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
 import { HealthRing, ArcGauge, Sparkline, healthColor } from '../../_components'
@@ -231,8 +231,6 @@ function MarketDetailContent() {
     states: [] as string[], zip_codes: [] as string[],
     default_reach_threshold: 55, default_retention_threshold: 65, notes: '',
   })
-  const [removeBrandSlug, setRemoveBrandSlug] = useState<string | null>(null)
-
   // ── Load ──────────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
@@ -490,19 +488,6 @@ function MarketDetailContent() {
     finally { setComputingSlugs(prev => { const s = new Set(prev); s.delete(slug); return s }) }
   }
 
-  async function handleRemoveBrand() {
-    if (!removeBrandSlug) return
-    const zone = market?.zones.find(z => z.client_slug === removeBrandSlug)
-    if (!zone) { setRemoveBrandSlug(null); return }
-    try {
-      await deleteZone(zone.id)
-      toast('Brand removed from territory')
-      if (activeClientTab === removeBrandSlug) setActiveClientTab('')
-      setRemoveBrandSlug(null)
-      load()
-    } catch (err: any) { toast(err.message || 'Failed', 'error') }
-  }
-
   // ── Loading ───────────────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -583,133 +568,138 @@ function MarketDetailContent() {
         {activeClientTab && (
           <div style={{ maxWidth: '860px', margin: '0 auto', padding: '20px 24px 60px' }}>
 
-            {/* ── Stat tiles ────────────────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '14px' }}>
-              {[
-                { label: 'Tracked', value: summaryStats.tracked, sub: 'accounts in territory', color: t.text.secondary, icon: null },
-                { label: 'Buying Now', value: summaryStats.buyingNow, sub: 'ordered last 90 days', color: t.status.success, icon: TrendingUp },
-                { label: 'On Shelf', value: summaryStats.placements, sub: 'active placements', color: clientColor, icon: null },
-              ].map(s => {
-                const Icon = s.icon
-                return (
-                  <div key={s.label} style={{
-                    padding: '16px 14px 14px',
-                    borderRadius: '12px',
-                    background: s.value > 0
-                      ? `linear-gradient(135deg, ${s.color}08 0%, transparent 60%), ${t.bg.elevated}`
-                      : t.bg.elevated,
-                    border: `1px solid ${t.border.default}`,
-                    borderTop: `3px solid ${s.value > 0 ? s.color : t.border.default}`,
-                    boxShadow: s.value > 0 ? `0 4px 24px ${s.color}10` : 'none',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
-                      <div style={{
-                        fontSize: '32px', fontWeight: '900', color: s.value > 0 ? s.color : t.text.muted,
-                        lineHeight: 1, letterSpacing: '-0.04em', fontVariantNumeric: 'tabular-nums',
-                        textShadow: s.value > 0 ? `0 0 28px ${s.color}50` : 'none',
-                      }}>
-                        {isLoadingBrandData ? '—' : s.value}
-                      </div>
-                      {Icon && s.value > 0 && <Icon size={16} color={s.color} style={{ opacity: 0.6, flexShrink: 0, marginTop: '4px' }} />}
-                    </div>
-                    <div style={{ fontSize: '10px', fontWeight: '700', color: s.value > 0 ? s.color : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.09em', marginTop: '6px', opacity: s.value > 0 ? 0.9 : 0.5 }}>{s.label}</div>
-                    <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px', opacity: 0.5 }}>{s.sub}</div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* ── Command panel ─────────────────────────────────────────────── */}
+            {/* ── Hero Panel: Health + Volume + Live Stats ──────────────────── */}
             <div style={{
-              display: 'flex', gap: '10px', marginBottom: '14px',
-              padding: '20px', borderRadius: '14px',
-              background: `radial-gradient(ellipse at top left, ${clientColor}07 0%, transparent 55%), ${t.bg.elevated}`,
-              border: `1px solid ${clientColor}20`,
-              boxShadow: `0 0 40px ${clientColor}08, inset 0 1px 0 ${clientColor}10`,
-              flexWrap: 'wrap',
+              display: 'flex', gap: '0', marginBottom: '12px',
+              borderRadius: '16px',
+              border: `1px solid ${clientColor}25`,
+              background: `radial-gradient(ellipse at top left, ${clientColor}10 0%, transparent 55%), ${t.bg.elevated}`,
+              boxShadow: `0 0 60px ${clientColor}06, inset 0 1px 0 ${clientColor}12`,
+              overflow: 'hidden', flexWrap: 'wrap',
             }}>
-              {/* Health */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.7 }}>Territory Health</div>
-                <HealthRing score={activeSnap?.health_score ?? null} size={100} strokeWidth={8} />
+              {/* Health Ring */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: '8px', padding: '24px 22px',
+                borderRight: `1px solid ${t.border.subtle}`, flexShrink: 0,
+                background: `radial-gradient(ellipse at center, ${clientColor}08 0%, transparent 70%)`,
+              }}>
+                <span style={{ fontSize: '9px', fontWeight: '800', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.7 }}>Health</span>
+                <HealthRing score={activeSnap?.health_score ?? null} size={88} strokeWidth={7} />
                 {activeSparklines.length > 1 && (
-                  <Sparkline data={activeSparklines.map(s => s.health_score)} width={96} height={28} color={healthColor(activeSnap?.health_score ?? null)} />
+                  <Sparkline data={activeSparklines.map(s => s.health_score)} width={80} height={22} color={healthColor(activeSnap?.health_score ?? null)} />
                 )}
-                <button
-                  onClick={handleRecompute} disabled={isComputing || isLoadingBrandData}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: isComputing ? 'default' : 'pointer', color: t.text.muted, fontSize: '10px', padding: '2px 6px', borderRadius: '5px', opacity: isComputing ? 0.5 : 0.6 }}
-                >
-                  <RefreshCw size={10} />
-                  {isComputing ? 'Computing…' : activeSnap?.computed_at ? (() => { const d = daysSince(activeSnap.computed_at); return d === 0 ? 'Updated today' : d === 1 ? 'Updated yesterday' : `Updated ${d}d ago` })() : 'No data — click to compute'}
-                </button>
               </div>
 
-              <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', flexShrink: 0 }} />
-
-              {/* Cases */}
-              <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '10px', padding: '0 6px' }}>
-                <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.7 }}>Cases · 90 Days</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '52px', fontWeight: '900', color: t.text.primary, lineHeight: 1, letterSpacing: '-0.04em', fontVariantNumeric: 'tabular-nums', textShadow: '0 0 40px rgba(255,255,255,0.06)' }}>
-                    {isLoadingBrandData ? '—' : (activeSnap?.total_cases_90d ?? '—')}
-                  </span>
-                  {trendLabel && !isLoadingBrandData && (
-                    <span style={{ fontSize: '20px', fontWeight: '800', color: trendColor, textShadow: `0 0 20px ${trendColor}60`, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      {trendPct && trendPct > 5 ? <TrendingUp size={16} /> : trendPct && trendPct < -5 ? <TrendingDown size={16} /> : null}
-                      {trendLabel}
+              {/* Volume + inline live stats */}
+              <div style={{ flex: 1, minWidth: '200px', padding: '20px 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '14px' }}>
+                {/* Cases 90d */}
+                <div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '5px', opacity: 0.7 }}>Cases · 90 Days</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                    <span style={{ fontSize: '44px', fontWeight: '900', color: t.text.primary, lineHeight: 1, letterSpacing: '-0.04em', fontVariantNumeric: 'tabular-nums', textShadow: activeSnap?.total_cases_90d ? '0 0 40px rgba(255,255,255,0.08)' : 'none' }}>
+                      {activeSnap?.total_cases_90d ?? '—'}
                     </span>
+                    {trendLabel && (
+                      <span style={{ fontSize: '16px', fontWeight: '800', color: trendColor, textShadow: `0 0 14px ${trendColor}50`, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        {trendPct && trendPct > 5 ? <TrendingUp size={14} /> : trendPct && trendPct < -5 ? <TrendingDown size={14} /> : null}
+                        {trendLabel}
+                      </span>
+                    )}
+                  </div>
+                  {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && (
+                    <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.55, marginTop: '3px' }}>vs {activeSnap.cases_prior_90d} cs prior 90 days</div>
                   )}
                 </div>
-                {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && activeSnap.total_cases_90d != null && (
+
+                {/* Accounts + placements counts */}
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div>
-                    <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '6px', opacity: 0.6 }}>vs {activeSnap.cases_prior_90d} prior quarter</div>
-                    <div style={{ position: 'relative', height: '3px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.min(100, (activeSnap.total_cases_90d / Math.max(activeSnap.total_cases_90d, activeSnap.cases_prior_90d)) * 100)}%`, backgroundColor: trendColor, borderRadius: '2px', boxShadow: `0 0 10px ${trendColor}` }} />
+                    <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: summaryStats.tracked > 0 ? t.text.primary : '#2a2a2a' }}>
+                      {isLoadingBrandData ? '·' : summaryStats.tracked}
                     </div>
+                    <div style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: t.text.muted, opacity: 0.6 }}>Accounts</div>
                   </div>
-                )}
-                {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: t.status.warning }}>
-                    <AlertTriangle size={12} />
-                    {activeSnap.accounts_lost} account{activeSnap.accounts_lost !== 1 ? 's' : ''} went quiet this quarter
+                  <div>
+                    <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', textShadow: summaryStats.placements > 0 ? `0 0 18px ${clientColor}40` : 'none' }}>
+                      {isLoadingBrandData ? '·' : summaryStats.placements}
+                    </div>
+                    <div style={{ fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', opacity: summaryStats.placements > 0 ? 0.85 : 0.3 }}>Placements</div>
                   </div>
-                )}
+                  {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
+                    <div>
+                      <div style={{ fontSize: '26px', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', color: t.status.warning }}>
+                        {activeSnap.accounts_lost}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '9px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '3px', color: t.status.warning, opacity: 0.85 }}>
+                        <AlertTriangle size={9} /> Went Quiet
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Refresh */}
+              <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', borderLeft: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
+                <button onClick={handleRecompute} disabled={isComputing || isLoadingBrandData}
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', fontSize: '11px', cursor: isComputing ? 'default' : 'pointer', border: `1px solid ${t.goldBorder}`, backgroundColor: t.goldDim, color: t.gold, fontWeight: '600', opacity: isComputing ? 0.6 : 1 }}>
+                  <RefreshCw size={11} /> {isComputing ? 'Computing…' : 'Refresh'}
+                </button>
+                <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5, textAlign: 'right', maxWidth: '110px' }}>
+                  {activeSnap?.computed_at
+                    ? (() => { const d = daysSince(activeSnap.computed_at); return d === 0 ? 'Updated today' : d === 1 ? 'Updated yesterday' : `Updated ${d}d ago` })()
+                    : isComputing ? 'Computing…' : 'Not computed'}
+                </span>
               </div>
             </div>
 
-            {/* ── Arc Gauges ─────────────────────────────────────────────────── */}
-            <div style={{
-              display: 'flex', gap: '0', marginBottom: '24px',
-              padding: '20px 8px 8px', borderRadius: '14px',
-              background: `radial-gradient(ellipse at center top, ${clientColor}05 0%, transparent 60%), ${t.bg.elevated}`,
-              border: `1px solid ${t.border.default}`,
-              boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
-            }}>
-              <ArcGauge
-                label="Activity Rate"
-                value={activeSnap?.activity_rate_pct ?? null}
-                target={market.default_reach_threshold}
-                unit="%"
-                note={activeSnap?.active_accounts != null && activeSnap?.total_accounts != null
-                  ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
-                  : undefined}
-              />
-              <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
-              <ArcGauge label="Reorder Rate" value={activeSnap?.retention_pct ?? null} target={market.default_retention_threshold} unit="%" />
-              <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
-              <ArcGauge
-                label="Velocity Index"
-                value={activeSnap?.velocity_index ?? null}
-                target={100}
-                unit=""
-                note={activeSnap?.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
-              />
-            </div>
+            {/* ── Performance Gauges (only when snapshot exists) ─────────────── */}
+            {activeSnap ? (
+              <div style={{
+                display: 'flex', gap: '0', marginBottom: '20px',
+                padding: '20px 8px 8px', borderRadius: '14px',
+                background: `radial-gradient(ellipse at center top, ${clientColor}05 0%, transparent 60%), ${t.bg.elevated}`,
+                border: `1px solid ${t.border.default}`,
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
+              }}>
+                <ArcGauge
+                  label="Activity Rate"
+                  value={activeSnap.activity_rate_pct ?? null}
+                  target={market.default_reach_threshold}
+                  unit="%"
+                  note={activeSnap.active_accounts != null && activeSnap.total_accounts != null
+                    ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
+                    : undefined}
+                />
+                <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
+                <ArcGauge label="Reorder Rate" value={activeSnap.retention_pct ?? null} target={market.default_retention_threshold} unit="%" />
+                <div style={{ width: '1px', background: `linear-gradient(to bottom, transparent, ${t.border.subtle}, transparent)`, alignSelf: 'stretch', margin: '0 4px' }} />
+                <ArcGauge
+                  label="Velocity Index"
+                  value={activeSnap.velocity_index ?? null}
+                  target={100}
+                  unit=""
+                  note={activeSnap.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
+                />
+              </div>
+            ) : !isComputing && activeBrandData && activeBrandData.activityAccounts.length > 0 ? (
+              <div style={{
+                marginBottom: '20px', padding: '16px 20px',
+                borderRadius: '12px', border: `1px dashed ${clientColor}25`,
+                background: `radial-gradient(ellipse at left, ${clientColor}04 0%, transparent 70%)`,
+                display: 'flex', alignItems: 'center', gap: '14px',
+              }}>
+                <AlertTriangle size={15} color={t.text.muted} style={{ opacity: 0.4, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.secondary, marginBottom: '2px' }}>Performance analytics not yet computed</div>
+                  <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>Click Refresh to calculate activity rate, reorder rate, and velocity index for this territory.</div>
+                </div>
+              </div>
+            ) : null}
 
             {/* ── Account Monitor ────────────────────────────────────────────── */}
             {!isLoadingBrandData && sortedAccounts.length > 0 && (
               <div style={{ marginBottom: '24px' }}>
-                {/* Header bar */}
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   marginBottom: '10px', padding: '8px 14px',
@@ -725,7 +715,6 @@ function MarketDetailContent() {
                   </span>
                 </div>
 
-                {/* Column labels */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', gap: '16px', padding: '0 14px 5px 27px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>
                   <span>Account</span>
                   <span style={{ textAlign: 'right' }}>Placements</span>
@@ -765,26 +754,6 @@ function MarketDetailContent() {
                   }
                 </div>
               </div>
-            )}
-
-            {/* ── Refresh bar ───────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.subtle}`, marginTop: '24px' }}>
-              <span style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
-                {activeSnap
-                  ? `Last computed: ${new Date(activeSnap.computed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                  : isComputing ? 'Computing metrics…' : 'Metrics not yet computed'}
-              </span>
-              <button onClick={handleRecompute} disabled={isComputing}
-                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '6px', fontSize: '11px', cursor: isComputing ? 'default' : 'pointer', border: `1px solid ${t.goldBorder}`, backgroundColor: t.goldDim, color: t.gold, fontWeight: '600', opacity: isComputing ? 0.6 : 1 }}>
-                <RefreshCw size={11} /> {isComputing ? 'Computing…' : 'Refresh Metrics'}
-              </button>
-            </div>
-
-            {activeZone && (
-              <button onClick={() => setRemoveBrandSlug(activeClientTab)}
-                style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '12px', cursor: 'pointer' }}>
-                <Trash2 size={12} /> Remove Brand from Territory
-              </button>
             )}
           </div>
         )}
@@ -853,16 +822,6 @@ function MarketDetailContent() {
         danger
         onConfirm={handleDeleteMarket}
         onClose={() => setDeleteMarketModal(false)}
-      />
-
-      <ConfirmModal
-        isOpen={!!removeBrandSlug}
-        title="Remove brand from territory?"
-        message={`Remove ${clients.find(c => c.slug === removeBrandSlug)?.name ?? 'this brand'} from ${market.name}? Metric history will be deleted.`}
-        confirmLabel="Remove"
-        danger
-        onConfirm={handleRemoveBrand}
-        onClose={() => setRemoveBrandSlug(null)}
       />
     </LayoutShell>
   )

@@ -203,7 +203,8 @@ export function resolveTotal(o: { po_line_items?: any[]; total_amount?: any; tot
       const lineTotal = Number(li.total || 0)
       if (lineTotal > 0) return sum + lineTotal
       const price = Number(li.unit_price || li.price || 0)
-      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
+      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0)
+      if (qty <= 0 || price <= 0) return sum
       return sum + price * qty
     }, 0)
     if (fromItems > 0) return fromItems

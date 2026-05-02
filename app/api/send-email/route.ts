@@ -5,6 +5,23 @@ import { getSupabaseAdmin } from '../../lib/supabase-server'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// In-memory rate limiter: 10 emails per user per hour
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>()
+const RATE_LIMIT = 10
+const WINDOW_MS = 60 * 60 * 1000
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(userId)
+  if (!entry || now - entry.windowStart > WINDOW_MS) {
+    rateLimitMap.set(userId, { count: 1, windowStart: now })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT) return false
+  entry.count++
+  return true
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Auth check via session cookie
@@ -17,6 +34,9 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single()
     if (profile?.role === 'portal') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!checkRateLimit(user.id)) {
+      return NextResponse.json({ error: 'Rate limit exceeded — max 10 emails per hour' }, { status: 429 })
+    }
 
     const payload = await request.json()
     const { to, subject, replyTo, html, orderId } = payload

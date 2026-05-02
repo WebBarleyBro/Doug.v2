@@ -273,7 +273,7 @@ export async function getLatestSnapshotsByZone(
     .select('zone_id, snapshot_date, health_score, activity_rate_pct, reach_pct, velocity, velocity_index, retention_pct, active_accounts, target_set_size, total_accounts, total_cases_90d, cases_prior_90d, volume_trend_pct, accounts_lost, computed_at')
     .in('zone_id', zoneIds)
     .order('snapshot_date', { ascending: false })
-    .limit(zoneIds.length * 3)  // 3 rows per zone max; we only keep the latest
+    .limit(zoneIds.length * 10)  // keep enough rows per zone to guarantee we get the latest
   if (error) throw error
 
   const map: Record<string, ZoneMetricSnapshot> = {}
