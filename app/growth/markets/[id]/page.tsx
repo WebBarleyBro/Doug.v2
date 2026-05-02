@@ -2,16 +2,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Star, Pencil, Trash2, X, Search, RefreshCw, Settings2, ChevronRight } from 'lucide-react'
+import { Plus, Star, Pencil, Trash2, X, Search, RefreshCw, ChevronRight } from 'lucide-react'
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
 import { getClients, getAccounts } from '../../../lib/data'
+import { clientLogoUrl } from '../../../lib/constants'
 import { getSupabase } from '../../../lib/supabase'
 import {
   getMarket, updateMarket, deleteMarket,
-  createZone, updateZone, deleteZone,
+  createZone, deleteZone,
   getZoneTargetAccounts, addAccountToZone, removeAccountFromZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
@@ -53,6 +54,7 @@ function TagInput({ label, values, onChange }: { label: string; values: string[]
 
 interface ZoneDetail {
   targets: { id: string; account_id: string; accounts: Account | null }[]
+  activityAccounts: Account[]  // auto-detected from CRM data, not manually added targets
   placementsByAccount: Record<string, { product_name: string; status: string }[]>
   lastVisitByAccount: Record<string, { visited_at: string; status: string }>
   ordersByAccount: Record<string, { status: string; total_amount: number | null }[]>
@@ -114,16 +116,6 @@ function MarketDetailContent() {
 
   // Remove target
   const [removeTargetModal, setRemoveTargetModal] = useState<{ accountId: string; clientSlug: string; name: string } | null>(null)
-
-  // Performance settings (per brand)
-  const [settingsSlug, setSettingsSlug] = useState<string | null>(null)
-  const [settingsForm, setSettingsForm] = useState({
-    velocity_target: 1,
-    reach_threshold: '' as string | number,
-    retention_threshold: '' as string | number,
-    notes: '',
-  })
-  const [savingSettings, setSavingSettings] = useState(false)
   const [removeBrandSlug, setRemoveBrandSlug] = useState<string | null>(null)
 
   // ── Initial load ──────────────────────────────────────────────────────────
@@ -232,20 +224,30 @@ function MarketDetailContent() {
       setZoneSparklines(prev => ({ ...prev, [zone.id]: sparks }))
 
       const targetIds = rawTargets.map(ta => ta.account_id).filter(Boolean)
+
+      // Auto-detect accounts with existing CRM activity for this brand in territory
+      const activityAccs = zone.client_slug
+        ? territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(zone.client_slug!))
+        : []
+      const activityIds = activityAccs.map(a => a.id)
+
+      // Fetch data for both target accounts AND activity accounts
+      const allIds = [...new Set([...targetIds, ...activityIds])]
+
       const placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
       const lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
       const ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
 
-      if (zone.client_slug && targetIds.length > 0) {
+      if (zone.client_slug && allIds.length > 0) {
         const sb = getSupabase()
         const [plRes, vRes, orRes] = await Promise.all([
           sb.from('placements').select('account_id, product_name, status')
-            .eq('client_slug', zone.client_slug).in('account_id', targetIds).is('lost_at', null),
+            .eq('client_slug', zone.client_slug).in('account_id', allIds).is('lost_at', null),
           sb.from('visits').select('account_id, visited_at, status')
-            .eq('client_slug', zone.client_slug).in('account_id', targetIds)
+            .eq('client_slug', zone.client_slug).in('account_id', allIds)
             .order('visited_at', { ascending: false }),
           sb.from('purchase_orders').select('account_id, status, total_amount')
-            .eq('client_slug', zone.client_slug).in('account_id', targetIds)
+            .eq('client_slug', zone.client_slug).in('account_id', allIds)
             .in('status', ['sent', 'fulfilled', 'draft']).order('created_at', { ascending: false }),
         ])
         for (const p of plRes.data ?? []) {
@@ -261,16 +263,16 @@ function MarketDetailContent() {
         }
       }
 
-      // Attach account objects
+      // Attach account objects to targets
       const targets = rawTargets.map(ta => ({
         ...ta,
         accounts: allAccounts.find(a => a.id === ta.account_id) ?? null,
       }))
 
-      setZoneDetails(prev => ({ ...prev, [zone.id]: { targets, placementsByAccount, lastVisitByAccount, ordersByAccount } }))
+      setZoneDetails(prev => ({ ...prev, [zone.id]: { targets, activityAccounts: activityAccs, placementsByAccount, lastVisitByAccount, ordersByAccount } }))
     } catch (e) { console.error('zone.detail', e) }
     finally { setLoadingZoneIds(prev => { const s = new Set(prev); s.delete(zone.id); return s }) }
-  }, [allAccounts])
+  }, [allAccounts, territoryAccounts, brandActivity])
 
   useEffect(() => {
     if (!activeClientTab || !market || allAccounts.length === 0) return
@@ -337,8 +339,11 @@ function MarketDetailContent() {
   // Accounts in geo NOT yet targets for active brand
   const suggestedAccounts = useMemo(() => {
     if (!activeClientTab || !hasGeoTags) return []
-    return territoryAccounts.filter(a => !(targetMap[a.id] ?? []).includes(activeClientTab))
-  }, [territoryAccounts, activeClientTab, targetMap, hasGeoTags])
+    return territoryAccounts.filter(a =>
+      !(targetMap[a.id] ?? []).includes(activeClientTab) &&
+      !(brandActivity[a.id] ?? []).includes(activeClientTab)
+    )
+  }, [territoryAccounts, activeClientTab, targetMap, brandActivity, hasGeoTags])
 
   const searchedAddAccounts = useMemo(() => {
     if (addTargetSearch.length < 2) return []
@@ -354,8 +359,8 @@ function MarketDetailContent() {
   const activeClient = activeClientTab ? clients.find(c => c.slug === activeClientTab) ?? null : null
   const activeDetail = activeZone ? zoneDetails[activeZone.id] ?? null : null
   const activeSparklines = activeZone ? zoneSparklines[activeZone.id] ?? [] : []
-  const effectiveReach = (activeZone?.reach_threshold ?? market?.default_reach_threshold) ?? 55
-  const effectiveRetention = (activeZone?.retention_threshold ?? market?.default_retention_threshold) ?? 65
+  const effectiveReach = market?.default_reach_threshold ?? 55
+  const effectiveRetention = market?.default_retention_threshold ?? 65
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -454,6 +459,18 @@ function MarketDetailContent() {
     if (!zone) return
     setComputingSlugs(prev => new Set([...prev, activeClientTab]))
     try {
+      // Auto-sync: add any activity accounts not yet in the zone target list
+      // so the universe = "in market" accounts + "pursuing" accounts
+      const activityAccts = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(activeClientTab))
+      if (activityAccts.length > 0) {
+        const existingTargets = await getZoneTargetAccounts(zone.id)
+        const existingIds = new Set(existingTargets.map(ta => ta.account_id))
+        const toAdd = activityAccts.filter(a => !existingIds.has(a.id))
+        if (toAdd.length > 0) {
+          await Promise.all(toAdd.map(a => addAccountToZone(zone.id, a.id)))
+        }
+      }
+
       const res = await fetch(`/api/growth/recompute/${zone.id}`, { method: 'POST' })
       if (!res.ok) throw new Error((await res.json()).error || 'Recompute failed')
       const newSnaps = await getLatestSnapshotsByZone([zone.id])
@@ -463,24 +480,6 @@ function MarketDetailContent() {
     finally { setComputingSlugs(prev => { const s = new Set(prev); s.delete(activeClientTab); return s }) }
   }
 
-  async function handleSaveSettings() {
-    if (!settingsSlug) return
-    const zone = market?.zones.find(z => z.client_slug === settingsSlug)
-    if (!zone) return
-    setSavingSettings(true)
-    try {
-      await updateZone(zone.id, {
-        velocity_target: Number(settingsForm.velocity_target),
-        reach_threshold: settingsForm.reach_threshold !== '' ? Number(settingsForm.reach_threshold) : null,
-        retention_threshold: settingsForm.retention_threshold !== '' ? Number(settingsForm.retention_threshold) : null,
-        notes: settingsForm.notes || undefined,
-      })
-      toast('Settings saved')
-      setSettingsSlug(null)
-      load()
-    } catch (err: any) { toast(err.message || 'Failed', 'error') }
-    finally { setSavingSettings(false) }
-  }
 
   async function handleRemoveBrand() {
     if (!removeBrandSlug) return
@@ -608,11 +607,17 @@ function MarketDetailContent() {
               {territoryClients.map(c => {
                 const color = c.color || t.gold
                 const active = activeClientTab === c.slug
+                const logo = clientLogoUrl(c)
                 return (
-                  <button key={c.slug} onClick={() => setActiveClientTab(c.slug)}
-                    style={{ padding: '11px 18px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: 'none', borderBottom: `2px solid ${active ? color : 'transparent'}`, backgroundColor: 'transparent', color: active ? color : t.text.muted, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '-1px' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                    {c.name}
+                  <button key={c.slug} onClick={() => setActiveClientTab(c.slug)} title={c.name}
+                    style={{ padding: '8px 14px', cursor: 'pointer', border: 'none', borderBottom: `2px solid ${active ? color : 'transparent'}`, backgroundColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '-1px', opacity: active ? 1 : 0.45, transition: 'opacity 150ms' }}>
+                    {logo ? (
+                      <img src={logo} alt={c.name} style={{ height: '28px', width: 'auto', maxWidth: '80px', objectFit: 'contain', display: 'block' }} />
+                    ) : (
+                      <span style={{ width: 28, height: 28, borderRadius: '6px', backgroundColor: color + '22', border: `1px solid ${color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '800', color }}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </button>
                 )
               })}
@@ -660,10 +665,14 @@ function MarketDetailContent() {
                         onMouseEnter={e => (e.currentTarget.style.borderColor = color + '60')}
                         onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                            <div style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: color }} />
-                            <span style={{ fontSize: '15px', fontWeight: '800', color: t.text.primary }}>{c.name}</span>
-                          </div>
+                          {(() => {
+                            const logo = clientLogoUrl(c)
+                            return logo ? (
+                              <img src={logo} alt={c.name} style={{ height: '32px', width: 'auto', maxWidth: '110px', objectFit: 'contain', display: 'block' }} />
+                            ) : (
+                              <span style={{ fontSize: '15px', fontWeight: '800', color: t.text.primary }}>{c.name}</span>
+                            )
+                          })()}
                           <HealthRing score={snap?.health_score ?? null} size={52} strokeWidth={5} showLabel={false} />
                         </div>
                         {snap ? (
@@ -712,35 +721,48 @@ function MarketDetailContent() {
                   <MetricTile
                     label="Reach"
                     value={activeSnap?.reach_pct ?? null}
-                    target={effectiveReach}
+                    target={market.default_reach_threshold}
                     unit="%"
-                    note={!activeZone?.reach_threshold ? `Default ${market.default_reach_threshold}% from territory` : undefined}
                   />
                   <MetricTile
                     label="Velocity"
                     value={activeSnap?.velocity_index ?? null}
                     target={100}
                     unit=""
-                    note={activeSnap?.velocity != null
-                      ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo · target ${activeZone?.velocity_target ?? 1}`
-                      : `Target: ${activeZone?.velocity_target ?? 1} cs/acct/mo`}
+                    note={activeSnap?.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
                   />
                   <MetricTile
                     label="Retention"
                     value={activeSnap?.retention_pct ?? null}
-                    target={effectiveRetention}
+                    target={market.default_retention_threshold}
                     unit="%"
-                    note={!activeZone?.retention_threshold ? `Default ${market.default_retention_threshold}% from territory` : undefined}
                   />
-                  <div style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '14px 16px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Target Set</div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>
-                      {activeSnap?.target_set_size ?? territoryAccounts.filter(a => (targetMap[a.id] ?? []).includes(activeClientTab)).length}
-                    </div>
-                    {activeSnap?.active_accounts != null && (
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '6px' }}>{activeSnap.active_accounts} active</div>
-                    )}
-                  </div>
+                  {(() => {
+                    const inMarket = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(activeClientTab)).length
+                    const pursuing = activeDetail
+                      ? activeDetail.targets.filter(ta => !(brandActivity[ta.account_id] ?? []).includes(activeClientTab)).length
+                      : territoryAccounts.filter(a => (targetMap[a.id] ?? []).includes(activeClientTab) && !(brandActivity[a.id] ?? []).includes(activeClientTab)).length
+                    const total = inMarket + pursuing
+                    return (
+                      <div style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '10px', padding: '14px 16px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Universe</div>
+                        <div style={{ fontSize: '24px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>{total}</div>
+                        <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '6px', lineHeight: 1.4 }}>
+                          <span style={{ color: t.status.success, fontWeight: '700' }}>{inMarket}</span> in market
+                          {pursuing > 0 && <><span style={{ margin: '0 3px' }}>·</span><span style={{ color: t.gold, fontWeight: '700' }}>{pursuing}</span> pursuing</>}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* Formula reference */}
+                <div style={{ fontSize: '10px', color: t.text.muted, marginBottom: '16px', lineHeight: 1.6, padding: '8px 12px', borderRadius: '7px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
+                  <span style={{ fontWeight: '700', color: t.text.secondary }}>Reach</span> = accounts active in territory ÷ universe (active + pursuing)
+                  <span style={{ margin: '0 8px', color: t.border.default }}>·</span>
+                  <span style={{ fontWeight: '700', color: t.text.secondary }}>Velocity</span> = cases/acct/mo vs territory target
+                  <span style={{ margin: '0 8px', color: t.border.default }}>·</span>
+                  <span style={{ fontWeight: '700', color: t.text.secondary }}>Retention</span> = reorder + menu placement rate
                 </div>
 
                 {/* Sparklines */}
@@ -812,146 +834,165 @@ function MarketDetailContent() {
                   </button>
                 </div>
 
-                {/* Settings + Remove */}
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => {
-                    setSettingsSlug(activeClientTab)
-                    setSettingsForm({ velocity_target: activeZone?.velocity_target ?? 1, reach_threshold: activeZone?.reach_threshold ?? '', retention_threshold: activeZone?.retention_threshold ?? '', notes: activeZone?.notes ?? '' })
-                  }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.secondary, fontSize: '12px', cursor: 'pointer' }}>
-                    <Settings2 size={12} /> Performance Settings
+                {activeZone && (
+                  <button onClick={() => setRemoveBrandSlug(activeClientTab)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '12px', cursor: 'pointer' }}>
+                    <Trash2 size={12} /> Remove Brand from Territory
                   </button>
-                  {activeZone && (
-                    <button onClick={() => setRemoveBrandSlug(activeClientTab)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '7px', border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger, fontSize: '12px', cursor: 'pointer' }}>
-                      <Trash2 size={12} /> Remove Tracking
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
 
               {/* RIGHT: Accounts panel */}
               <div style={{ padding: '24px', position: 'sticky', top: 0, maxHeight: '100vh', overflowY: 'auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <div>
-                    <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary, margin: 0 }}>Target Accounts</h2>
-                    {activeDetail && (
-                      <p style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', marginBottom: 0 }}>
-                        {activeDetail.targets.length} account{activeDetail.targets.length !== 1 ? 's' : ''} being worked
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={() => { setAddTargetSlugs([activeClientTab]); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
-                    <Plus size={12} /> Add
-                  </button>
-                </div>
 
                 {isLoadingDetail ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: t.text.muted, fontSize: '12px', marginTop: '10px' }}>Loading accounts…</div>
-                ) : !activeDetail || activeDetail.targets.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 16px', marginTop: '12px', border: `2px dashed ${t.border.default}`, borderRadius: '10px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.secondary, marginBottom: '6px' }}>No target accounts yet</div>
-                    <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '14px' }}>
-                      Target accounts are the venues and stores you're actively working for {activeClient?.name ?? 'this brand'} in this territory.
-                    </div>
-                    <button onClick={() => { setAddTargetSlugs([activeClientTab]); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', fontWeight: '600', fontSize: '12px', backgroundColor: t.gold, color: '#0f0e0c', cursor: 'pointer', border: 'none' }}>
-                      <Plus size={12} /> Add Target Account
-                    </button>
-                  </div>
+                  <div style={{ padding: '32px', textAlign: 'center', color: t.text.muted, fontSize: '12px' }}>Loading accounts…</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
-                    {activeDetail.targets.map(ta => {
-                      const acct = ta.accounts
-                      if (!acct) return null
-                      const daysSince = acct.last_visited
-                        ? Math.floor((Date.now() - new Date(acct.last_visited).getTime()) / 86400000)
-                        : null
-                      const statusKey = daysSince === null ? 'untouched' : daysSince <= 90 ? 'active' : daysSince <= 180 ? 'lapsed' : 'dormant'
-                      const placements = activeDetail.placementsByAccount[acct.id] ?? []
-                      const lastVisit = activeDetail.lastVisitByAccount[acct.id]
-                      const orders = activeDetail.ordersByAccount[acct.id] ?? []
-                      const lastVisitDays = lastVisit
-                        ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
-                        : null
-                      const clientColor = activeClient?.color || t.gold
+                  <>
+                    {/* ── In Market (auto-detected from CRM activity) ───────────── */}
+                    {activeDetail && activeDetail.activityAccounts.length > 0 && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                          In Market · {activeDetail.activityAccounts.length} account{activeDetail.activityAccounts.length !== 1 ? 's' : ''}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {activeDetail.activityAccounts.map(acct => {
+                            const placements = activeDetail.placementsByAccount[acct.id] ?? []
+                            const lastVisit = activeDetail.lastVisitByAccount[acct.id]
+                            const orders = activeDetail.ordersByAccount[acct.id] ?? []
+                            const lastVisitDays = lastVisit
+                              ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
+                              : null
+                            return (
+                              <Link key={acct.id} href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                                <div style={{ padding: '11px 12px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, cursor: 'pointer', transition: 'border-color 150ms', borderLeft: `3px solid ${activeClient?.color || t.gold}` }}
+                                  onMouseEnter={e => (e.currentTarget.style.borderColor = (activeClient?.color || t.gold) + '60')}
+                                  onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
+                                    <ChevronRight size={12} color={t.text.muted} />
+                                  </div>
+                                  {placements.length > 0 ? (
+                                    <div style={{ fontSize: '11px', color: t.status.success, marginBottom: '2px' }}>
+                                      <span style={{ fontWeight: '700' }}>{placements.length}</span> placement{placements.length !== 1 ? 's' : ''}
+                                      <span style={{ color: t.text.muted }}> · {placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '2px' }}>No placements yet</div>
+                                  )}
+                                  {orders.length > 0 && (
+                                    <div style={{ fontSize: '11px', color: t.gold, marginBottom: '2px' }}>
+                                      {orders.length} order{orders.length !== 1 ? 's' : ''}
+                                      <span style={{ color: t.text.muted }}> · {orders[0].status}</span>
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: '10px', color: t.text.muted }}>
+                                    {lastVisit
+                                      ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
+                                      : 'No visits for this brand yet'}
+                                  </div>
+                                </div>
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Pursuing (manual targets without active CRM data) ──────── */}
+                    {(() => {
+                      const pursuing = activeDetail
+                        ? activeDetail.targets.filter(ta => !(brandActivity[ta.account_id] ?? []).includes(activeClientTab))
+                        : []
                       return (
-                        <div key={ta.id} style={{ position: 'relative' }}>
-                          <Link href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-                            <div style={{ padding: '11px 12px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, cursor: 'pointer', transition: 'border-color 150ms' }}
-                              onMouseEnter={e => (e.currentTarget.style.borderColor = (activeClient?.color || t.gold) + '60')}
-                              onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
-                                <AccountStatusBadge status={statusKey} />
-                                <ChevronRight size={12} color={t.text.muted} />
-                              </div>
-                              {placements.length > 0 ? (
-                                <div style={{ fontSize: '11px', color: t.status.success, marginBottom: '2px' }}>
-                                  <span style={{ fontWeight: '700' }}>{placements.length}</span> placement{placements.length !== 1 ? 's' : ''}
-                                  <span style={{ color: t.text.muted }}> · {placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
-                                </div>
-                              ) : (
-                                <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '2px' }}>No placements</div>
-                              )}
-                              {orders.length > 0 && (
-                                <div style={{ fontSize: '11px', color: t.gold, marginBottom: '2px' }}>
-                                  {orders.length} order{orders.length !== 1 ? 's' : ''}
-                                  <span style={{ color: t.text.muted }}> · {orders[0].status}</span>
-                                </div>
-                              )}
-                              <div style={{ fontSize: '10px', color: t.text.muted }}>
-                                {lastVisit
-                                  ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
-                                  : 'No visits for this brand yet'}
-                              </div>
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Pursuing · {pursuing.length} account{pursuing.length !== 1 ? 's' : ''}
                             </div>
-                          </Link>
-                          <button
-                            onClick={e => { e.preventDefault(); setRemoveTargetModal({ accountId: acct.id, clientSlug: activeClientTab, name: acct.name }) }}
-                            style={{ position: 'absolute', top: '8px', right: '30px', background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '2px', opacity: 0.4, display: 'flex', alignItems: 'center' }}
-                            title="Remove from targets">
-                            <X size={11} />
-                          </button>
+                            <button onClick={() => { setAddTargetSlugs([activeClientTab]); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
+                              <Plus size={10} /> Add
+                            </button>
+                          </div>
+                          {pursuing.length === 0 ? (
+                            <div style={{ padding: '14px 16px', borderRadius: '8px', border: `2px dashed ${t.border.default}`, textAlign: 'center' }}>
+                              <div style={{ fontSize: '12px', color: t.text.muted }}>No pursuit accounts yet</div>
+                              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '3px' }}>Add accounts you're trying to get into</div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {pursuing.map(ta => {
+                                const acct = ta.accounts
+                                if (!acct) return null
+                                const lastVisit = activeDetail!.lastVisitByAccount[acct.id]
+                                const lastVisitDays = lastVisit
+                                  ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
+                                  : null
+                                return (
+                                  <div key={ta.id} style={{ position: 'relative' }}>
+                                    <Link href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                                      <div style={{ padding: '11px 12px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, cursor: 'pointer', transition: 'border-color 150ms' }}
+                                        onMouseEnter={e => (e.currentTarget.style.borderColor = (activeClient?.color || t.gold) + '60')}
+                                        onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                          <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
+                                          <ChevronRight size={12} color={t.text.muted} />
+                                        </div>
+                                        <div style={{ fontSize: '10px', color: t.text.muted }}>
+                                          {lastVisit
+                                            ? `Last contact ${lastVisitDays === 0 ? 'today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
+                                            : 'No visits logged yet'}
+                                        </div>
+                                      </div>
+                                    </Link>
+                                    <button
+                                      onClick={e => { e.preventDefault(); setRemoveTargetModal({ accountId: acct.id, clientSlug: activeClientTab, name: acct.name }) }}
+                                      style={{ position: 'absolute', top: '8px', right: '30px', background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '2px', opacity: 0.4, display: 'flex', alignItems: 'center' }}
+                                      title="Remove from pursuing">
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )
-                    })}
-                  </div>
-                )}
+                    })()}
 
-                {/* Suggested from territory geo */}
-                {suggestedAccounts.length > 0 && (
-                  <div style={{ marginTop: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                        In {market.name} · {suggestedAccounts.length} not yet targeted
-                      </div>
-                      {suggestedAccounts.length > 1 && (
-                        <button onClick={handleAddAll} disabled={addingAll}
-                          style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: addingAll ? 'default' : 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, opacity: addingAll ? 0.6 : 1 }}>
-                          <Plus size={10} /> {addingAll ? 'Adding…' : 'Add All'}
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                      {suggestedAccounts.map(a => (
-                        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary }}>{a.name}</div>
-                            {a.address && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '1px' }}>{a.address.split(',')[0]}</div>}
-                            {(brandActivity[a.id] ?? []).includes(activeClientTab) && (
-                              <div style={{ fontSize: '10px', color: activeClient?.color || t.gold, marginTop: '1px', fontWeight: '600' }}>Has CRM activity</div>
-                            )}
+                    {/* ── Accounts to explore (not yet active or targeted) ──────── */}
+                    {suggestedAccounts.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Explore · {suggestedAccounts.length} in territory
                           </div>
-                          <button
-                            onClick={() => { setTargetModal({ accountId: a.id, name: a.name, preSlug: activeClientTab }); setTargetingSlugs([activeClientTab]) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', flexShrink: 0, marginLeft: '8px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
-                            <Plus size={10} /> Target
-                          </button>
+                          {suggestedAccounts.length > 1 && (
+                            <button onClick={handleAddAll} disabled={addingAll}
+                              style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: addingAll ? 'default' : 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, opacity: addingAll ? 0.6 : 1 }}>
+                              <Plus size={10} /> {addingAll ? 'Adding…' : 'Add All'}
+                            </button>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {suggestedAccounts.map(a => (
+                            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary }}>{a.name}</div>
+                                {a.address && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '1px' }}>{a.address.split(',')[0]}</div>}
+                              </div>
+                              <button
+                                onClick={() => { setTargetModal({ accountId: a.id, name: a.name, preSlug: activeClientTab }); setTargetingSlugs([activeClientTab]) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', flexShrink: 0, marginLeft: '8px', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
+                                <Plus size={10} /> Pursue
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {!hasGeoTags && (
@@ -1068,42 +1109,6 @@ function MarketDetailContent() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Performance Settings Modal ───────────────────────────────────────── */}
-      {settingsSlug && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
-          <div style={{ backgroundColor: t.bg.page, borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '400px', border: `1px solid ${t.border.default}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Performance Settings</h2>
-              <button onClick={() => setSettingsSlug(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted }}><X size={16} /></button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>Velocity Target (cases / active account / month)</label>
-                <input type="number" min="0.1" step="0.1" value={settingsForm.velocity_target} onChange={e => setSettingsForm(f => ({ ...f, velocity_target: Number(e.target.value) }))} style={inputStyle} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label style={labelStyle}>Reach Target (%) <span style={{ color: t.text.muted, fontSize: '10px', fontWeight: '400' }}>— default {market?.default_reach_threshold}%</span></label>
-                  <input type="number" min="0" max="100" value={settingsForm.reach_threshold} onChange={e => setSettingsForm(f => ({ ...f, reach_threshold: e.target.value }))} placeholder={String(market?.default_reach_threshold ?? 55)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Retention Target (%) <span style={{ color: t.text.muted, fontSize: '10px', fontWeight: '400' }}>— default {market?.default_retention_threshold}%</span></label>
-                  <input type="number" min="0" max="100" value={settingsForm.retention_threshold} onChange={e => setSettingsForm(f => ({ ...f, retention_threshold: e.target.value }))} placeholder={String(market?.default_retention_threshold ?? 65)} style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Notes</label>
-                <textarea value={settingsForm.notes} onChange={e => setSettingsForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setSettingsSlug(null)} style={btnSecondary}>Cancel</button>
-                <button onClick={handleSaveSettings} disabled={savingSettings} style={{ ...btnPrimary, opacity: savingSettings ? 0.6 : 1 }}>{savingSettings ? 'Saving…' : 'Save'}</button>
-              </div>
-            </div>
           </div>
         </div>
       )}
