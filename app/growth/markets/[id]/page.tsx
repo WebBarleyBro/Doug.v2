@@ -513,7 +513,7 @@ function MarketDetailContent() {
     try {
       const zone = market?.zones.find(z => z.client_slug === removeTargetModal.clientSlug)
       if (zone) await removeAccountFromZone(zone.id, removeTargetModal.accountId)
-      toast('Removed from targets')
+      toast('Removed from pursuing')
       setZoneDetails({})
       await load()
     } catch (err: any) { toast(err.message || 'Failed', 'error') }
@@ -541,7 +541,7 @@ function MarketDetailContent() {
         }
       }
 
-      const res = await fetch(`/api/growth/recompute/${zone.id}`, { method: 'POST' })
+      const res = await fetch(`/api/growth/recompute/${zone.id}`, { method: 'POST', signal: AbortSignal.timeout(30000) })
       if (!res.ok) throw new Error((await res.json()).error || 'Recompute failed')
 
       // Refresh market state (zone may have just been created) + snapshots + zone detail
@@ -698,7 +698,7 @@ function MarketDetailContent() {
             <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '16px' }}>
               <button onClick={() => { setAddTargetSlugs(activeClientTab ? [activeClientTab] : []); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, cursor: 'pointer' }}>
-                <Plus size={12} /> Add Target Account
+                <Plus size={12} /> Add to Pursuing
               </button>
             </div>
           </div>
@@ -821,7 +821,7 @@ function MarketDetailContent() {
                         <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Universe</div>
                         <div style={{ fontSize: '24px', fontWeight: '800', color: t.text.primary, lineHeight: 1 }}>{total}</div>
                         <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '6px', lineHeight: 1.4 }}>
-                          <span style={{ color: t.status.success, fontWeight: '700' }}>{inMarket}</span> in market
+                          <span style={{ color: t.status.success, fontWeight: '700' }}>{inMarket}</span> active
                           {pursuing > 0 && <><span style={{ margin: '0 3px' }}>·</span><span style={{ color: t.gold, fontWeight: '700' }}>{pursuing}</span> pursuing</>}
                         </div>
                       </div>
@@ -922,18 +922,21 @@ function MarketDetailContent() {
                   <div style={{ padding: '32px', textAlign: 'center', color: t.text.muted, fontSize: '12px' }}>Loading accounts…</div>
                 ) : (
                   <>
-                    {/* ── In Market (auto-detected from CRM activity) ───────────── */}
+                    {/* ── Active (auto-detected from CRM activity) ─────────────── */}
                     {(() => {
                       const inMarket = activeBrandData?.activityAccounts ?? []
                       if (inMarket.length === 0 && !activeBrandData) return null
                       return (
                         <div style={{ marginBottom: '20px' }}>
-                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
-                            In Market · {inMarket.length} account{inMarket.length !== 1 ? 's' : ''}
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Active · {inMarket.length}
+                            </div>
+                            <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px' }}>Accounts you're already working with this brand</div>
                           </div>
                           {inMarket.length === 0 ? (
                             <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
-                              <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>No CRM activity for this brand in territory yet</div>
+                              <div style={{ fontSize: '12px', color: t.text.muted }}>No active accounts yet in this territory</div>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -959,7 +962,7 @@ function MarketDetailContent() {
                                           <span style={{ color: t.text.muted }}> · {placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
                                         </div>
                                       ) : (
-                                        <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '2px' }}>No placements yet</div>
+                                        <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '2px' }}>No placements</div>
                                       )}
                                       {orders.length > 0 && (
                                         <div style={{ fontSize: '11px', color: t.gold, marginBottom: '2px' }}>
@@ -970,7 +973,7 @@ function MarketDetailContent() {
                                       <div style={{ fontSize: '10px', color: t.text.muted }}>
                                         {lastVisit
                                           ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
-                                          : 'No visits for this brand yet'}
+                                          : 'Not yet visited for this brand'}
                                       </div>
                                     </div>
                                   </Link>
@@ -990,12 +993,15 @@ function MarketDetailContent() {
                       const isLoadingPursuing = activeZone ? loadingZoneIds.has(activeZone.id) : false
                       return (
                         <div style={{ marginBottom: '20px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                              Pursuing · {isLoadingPursuing ? '…' : pursuing.length}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                Pursuing · {isLoadingPursuing ? '…' : pursuing.length}
+                              </div>
+                              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px' }}>Accounts you're actively working to get into</div>
                             </div>
                             <button onClick={() => { setAddTargetSlugs([activeClientTab]); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
-                              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
+                              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, flexShrink: 0 }}>
                               <Plus size={10} /> Add
                             </button>
                           </div>
@@ -1003,8 +1009,8 @@ function MarketDetailContent() {
                             <div style={{ fontSize: '11px', color: t.text.muted, padding: '8px 0' }}>Loading…</div>
                           ) : pursuing.length === 0 ? (
                             <div style={{ padding: '12px 14px', borderRadius: '8px', border: `2px dashed ${t.border.default}`, textAlign: 'center' }}>
-                              <div style={{ fontSize: '12px', color: t.text.muted }}>No pursuit accounts yet</div>
-                              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '3px' }}>Add accounts you're trying to get into</div>
+                              <div style={{ fontSize: '12px', color: t.text.muted }}>No accounts being pursued yet</div>
+                              <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '3px' }}>Pick from Opportunities below, or add manually</div>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1027,8 +1033,8 @@ function MarketDetailContent() {
                                         </div>
                                         <div style={{ fontSize: '10px', color: t.text.muted }}>
                                           {lastVisit
-                                            ? `Last contact ${lastVisitDays === 0 ? 'today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
-                                            : 'No visits logged yet'}
+                                            ? `Last visited ${lastVisitDays === 0 ? 'today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
+                                            : 'Not yet visited'}
                                         </div>
                                       </div>
                                     </Link>
@@ -1047,17 +1053,20 @@ function MarketDetailContent() {
                       )
                     })()}
 
-                    {/* ── Accounts to explore (not yet active or targeted) ──────── */}
+                    {/* ── Opportunities (in territory, not yet active or targeted) ── */}
                     {suggestedAccounts.length > 0 && (
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                            Explore · {suggestedAccounts.length} in territory
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Opportunities · {suggestedAccounts.length}
+                            </div>
+                            <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px' }}>In territory, not yet approached for this brand</div>
                           </div>
                           {suggestedAccounts.length > 1 && (
                             <button onClick={handleAddAll} disabled={addingAll}
-                              style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: addingAll ? 'default' : 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, opacity: addingAll ? 0.6 : 1 }}>
-                              <Plus size={10} /> {addingAll ? 'Adding…' : 'Add All'}
+                              style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: addingAll ? 'default' : 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold, opacity: addingAll ? 0.6 : 1, flexShrink: 0 }}>
+                              <Plus size={10} /> {addingAll ? 'Adding…' : 'Pursue All'}
                             </button>
                           )}
                         </div>
@@ -1101,11 +1110,11 @@ function MarketDetailContent() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
           <div style={{ backgroundColor: t.bg.page, borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '380px', border: `1px solid ${t.border.default}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Set as Target</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Add to Pursuing</h2>
               <button onClick={() => { setTargetModal(null); setTargetingSlugs([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted }}><X size={16} /></button>
             </div>
             <div style={{ fontSize: '12px', color: t.text.muted, marginBottom: '16px' }}>{targetModal.name}</div>
-            <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Target for which brand?</label>
+            <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Pursue for which brand?</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
               {clients.map(c => {
                 const checked = targetingSlugs.includes(c.slug)
@@ -1126,7 +1135,7 @@ function MarketDetailContent() {
               <button onClick={() => { setTargetModal(null); setTargetingSlugs([]) }} style={btnSecondary}>Cancel</button>
               <button onClick={handleSetTarget} disabled={targetingSlugs.length === 0 || savingTarget}
                 style={{ ...btnPrimary, opacity: (targetingSlugs.length === 0 || savingTarget) ? 0.6 : 1 }}>
-                {savingTarget ? 'Saving…' : 'Confirm'}
+                {savingTarget ? 'Adding…' : 'Start Pursuing'}
               </button>
             </div>
           </div>
@@ -1138,7 +1147,7 @@ function MarketDetailContent() {
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}>
           <div style={{ backgroundColor: t.bg.page, borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', border: `1px solid ${t.border.default}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Add Target Account</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: '700', color: t.text.primary }}>Add to Pursuing</h2>
               <button onClick={() => { setAddTargetOpen(false); setAddTargetSelectedId(null); setAddTargetSlugs([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted }}><X size={16} /></button>
             </div>
             {!addTargetSelectedId ? (
@@ -1169,7 +1178,7 @@ function MarketDetailContent() {
                   <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{allAccounts.find(a => a.id === addTargetSelectedId)?.name}</span>
                   <button onClick={() => setAddTargetSelectedId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted }}><X size={13} /></button>
                 </div>
-                <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Target for which brand(s)?</label>
+                <label style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Pursue for which brand(s)?
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                   {clients.map(c => {
                     const checked = addTargetSlugs.includes(c.slug)
@@ -1190,7 +1199,7 @@ function MarketDetailContent() {
                   <button onClick={() => { setAddTargetOpen(false); setAddTargetSelectedId(null); setAddTargetSlugs([]) }} style={btnSecondary}>Cancel</button>
                   <button onClick={handleAddTarget} disabled={addTargetSlugs.length === 0 || savingAddTarget}
                     style={{ ...btnPrimary, opacity: (addTargetSlugs.length === 0 || savingAddTarget) ? 0.6 : 1 }}>
-                    {savingAddTarget ? 'Adding…' : 'Add Target'}
+                    {savingAddTarget ? 'Adding…' : 'Start Pursuing'}
                   </button>
                 </div>
               </>
@@ -1204,7 +1213,7 @@ function MarketDetailContent() {
         message={`Delete "${market.name}"? This cannot be undone.`}
         confirmLabel="Delete" onConfirm={handleDeleteMarket} onClose={() => setDeleteMarketModal(false)} />
       <ConfirmModal isOpen={!!removeTargetModal} title="Remove from Targets"
-        message={removeTargetModal ? `Remove "${removeTargetModal.name}" from targets?` : ''}
+        message={removeTargetModal ? `Remove "${removeTargetModal.name}" from pursuing?` : ''}
         confirmLabel="Remove" onConfirm={handleRemoveTarget} onClose={() => setRemoveTargetModal(null)} />
       <ConfirmModal isOpen={!!removeBrandSlug} title="Remove Brand Tracking"
         message={`Stop tracking ${clients.find(c => c.slug === removeBrandSlug)?.name ?? 'this brand'} in ${market.name}? Target accounts and metric history will be removed.`}

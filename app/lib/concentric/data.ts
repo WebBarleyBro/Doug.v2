@@ -270,7 +270,7 @@ export async function getLatestSnapshotsByZone(
   // Fetch recent snapshots for all zones and keep only the latest per zone
   const { data, error } = await sb
     .from('zone_metric_snapshots')
-    .select('zone_id, snapshot_date, health_score, reach_pct, velocity_index, retention_pct, active_accounts, target_set_size')
+    .select('zone_id, snapshot_date, health_score, reach_pct, velocity, velocity_index, retention_pct, active_accounts, target_set_size, total_cases_90d, computed_at')
     .in('zone_id', zoneIds)
     .order('snapshot_date', { ascending: false })
   if (error) throw error

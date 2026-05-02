@@ -39,7 +39,7 @@ async function syncZoneActivityAccounts(
   const [vRes, pRes, oRes] = await Promise.all([
     sb.from('visits').select('account_id').eq('client_slug', clientSlug).in('account_id', geoAccountIds),
     sb.from('placements').select('account_id').eq('client_slug', clientSlug).in('account_id', geoAccountIds).is('lost_at', null),
-    sb.from('purchase_orders').select('account_id').eq('client_slug', clientSlug).in('account_id', geoAccountIds).in('status', ['sent', 'fulfilled', 'draft']),
+    sb.from('purchase_orders').select('account_id').eq('client_slug', clientSlug).in('account_id', geoAccountIds).in('status', ['sent', 'fulfilled']),
   ])
 
   const activityIds = new Set([
