@@ -20,6 +20,24 @@ import { HealthRing, MetricTile, AccountStatusBadge, Sparkline, healthColor } fr
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
 
+// ─── Geo matching ─────────────────────────────────────────────────────────────
+// Match a CRM account address against territory geo terms.
+// Uses comma-part matching so "denver" won't match "789 S Denver Blvd, Colorado Springs, CO"
+// but will match "123 Main St, Denver, CO 80203".
+function matchesGeoTerms(address: string, geoTerms: string[]): boolean {
+  if (!address || geoTerms.length === 0) return false
+  const parts = address.toLowerCase().split(',').map(p => p.trim())
+  return geoTerms.some(term => {
+    const t = term.toLowerCase().trim()
+    if (!t) return false
+    // Zip codes (5 digits): simple contains on full address
+    if (/^\d{5}$/.test(t)) return address.toLowerCase().includes(t)
+    // City/county/state: must be a standalone comma-separated part
+    // e.g. "denver" matches part "denver" or "denver co" (state abbr appended)
+    return parts.some(part => part === t || part.startsWith(t + ' ') || part.endsWith(' ' + t))
+  })
+}
+
 // ─── TagInput ─────────────────────────────────────────────────────────────────
 
 function TagInput({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }) {
@@ -52,9 +70,17 @@ function TagInput({ label, values, onChange }: { label: string; values: string[]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// CRM data for a brand in this territory — loaded without needing a zone
+interface BrandData {
+  activityAccounts: Account[]
+  placementsByAccount: Record<string, { product_name: string; status: string }[]>
+  lastVisitByAccount: Record<string, { visited_at: string; status: string }>
+  ordersByAccount: Record<string, { status: string; total_amount: number | null }[]>
+}
+
+// Zone detail — target (pursuing) accounts only, loaded when zone exists
 interface ZoneDetail {
   targets: { id: string; account_id: string; accounts: Account | null }[]
-  activityAccounts: Account[]  // auto-detected from CRM data, not manually added targets
   placementsByAccount: Record<string, { product_name: string; status: string }[]>
   lastVisitByAccount: Record<string, { visited_at: string; status: string }>
   ordersByAccount: Record<string, { status: string; total_amount: number | null }[]>
@@ -78,7 +104,10 @@ function MarketDetailContent() {
   // accountId → clientSlugs this account is a target for
   const [targetMap, setTargetMap] = useState<Record<string, string[]>>({})
   const [snapshots, setSnapshots] = useState<Record<string, ZoneMetricSnapshot>>({})
-  // Zone detail data (lazy loaded per zone when brand tab clicked)
+  // CRM data per brand slug — loaded without needing a zone
+  const [brandDataBySlug, setBrandDataBySlug] = useState<Record<string, BrandData>>({})
+  const [loadingBrandSlugs, setLoadingBrandSlugs] = useState<Set<string>>(new Set())
+  // Zone detail (pursuing targets + snapshots) — loaded when zone exists
   const [zoneDetails, setZoneDetails] = useState<Record<string, ZoneDetail>>({})
   const [zoneSparklines, setZoneSparklines] = useState<Record<string, ZoneMetricSnapshot[]>>({})
   const [loadingZoneIds, setLoadingZoneIds] = useState<Set<string>>(new Set())
@@ -139,13 +168,13 @@ function MarketDetailContent() {
       const accs = await getAccounts({ limit: 500 })
       setAllAccounts(accs)
 
-      // Geo-match accounts to territory
+      // Geo-match accounts to territory using comma-part matching
       const geoTerms = [
         ...(m.cities ?? []), ...(m.counties ?? []),
         ...(m.states ?? []), ...(m.zip_codes ?? []),
-      ].map(g => g.toLowerCase())
+      ].map(g => g.toLowerCase().trim()).filter(Boolean)
       const geoAccs = geoTerms.length > 0
-        ? accs.filter(a => geoTerms.some(g => (a.address ?? '').toLowerCase().includes(g)))
+        ? accs.filter(a => matchesGeoTerms(a.address ?? '', geoTerms))
         : []
 
       // Load zone targets + snapshots in parallel
@@ -212,42 +241,27 @@ function MarketDetailContent() {
     }
   }, [market, brandActivity, clients, activeClientTab])
 
-  // ── Lazy load zone detail when brand tab clicked ───────────────────────────
+  // ── Load CRM data for a brand in this territory (no zone needed) ─────────
 
-  const loadZoneDetail = useCallback(async (zone: Zone) => {
-    setLoadingZoneIds(prev => new Set([...prev, zone.id]))
+  const loadBrandData = useCallback(async (slug: string) => {
+    setLoadingBrandSlugs(prev => new Set([...prev, slug]))
     try {
-      const [rawTargets, sparks] = await Promise.all([
-        getZoneTargetAccounts(zone.id),
-        getZoneSnapshots(zone.id, 30),
-      ])
-      setZoneSparklines(prev => ({ ...prev, [zone.id]: sparks }))
-
-      const targetIds = rawTargets.map(ta => ta.account_id).filter(Boolean)
-
-      // Auto-detect accounts with existing CRM activity for this brand in territory
-      const activityAccs = zone.client_slug
-        ? territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(zone.client_slug!))
-        : []
-      const activityIds = activityAccs.map(a => a.id)
-
-      // Fetch data for both target accounts AND activity accounts
-      const allIds = [...new Set([...targetIds, ...activityIds])]
-
+      const activityAccts = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(slug))
+      const activityIds = activityAccts.map(a => a.id)
       const placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
       const lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
       const ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
 
-      if (zone.client_slug && allIds.length > 0) {
+      if (activityIds.length > 0) {
         const sb = getSupabase()
         const [plRes, vRes, orRes] = await Promise.all([
           sb.from('placements').select('account_id, product_name, status')
-            .eq('client_slug', zone.client_slug).in('account_id', allIds).is('lost_at', null),
+            .eq('client_slug', slug).in('account_id', activityIds).is('lost_at', null),
           sb.from('visits').select('account_id, visited_at, status')
-            .eq('client_slug', zone.client_slug).in('account_id', allIds)
+            .eq('client_slug', slug).in('account_id', activityIds)
             .order('visited_at', { ascending: false }),
           sb.from('purchase_orders').select('account_id, status, total_amount')
-            .eq('client_slug', zone.client_slug).in('account_id', allIds)
+            .eq('client_slug', slug).in('account_id', activityIds)
             .in('status', ['sent', 'fulfilled', 'draft']).order('created_at', { ascending: false }),
         ])
         for (const p of plRes.data ?? []) {
@@ -263,16 +277,69 @@ function MarketDetailContent() {
         }
       }
 
-      // Attach account objects to targets
+      setBrandDataBySlug(prev => ({ ...prev, [slug]: { activityAccounts: activityAccts, placementsByAccount, lastVisitByAccount, ordersByAccount } }))
+    } catch (e) { console.error('brand.data', e) }
+    finally { setLoadingBrandSlugs(prev => { const s = new Set(prev); s.delete(slug); return s }) }
+  }, [territoryAccounts, brandActivity])
+
+  useEffect(() => {
+    if (!activeClientTab || territoryAccounts.length === 0) return
+    if (!brandDataBySlug[activeClientTab] && !loadingBrandSlugs.has(activeClientTab)) {
+      loadBrandData(activeClientTab)
+    }
+  }, [activeClientTab, territoryAccounts, brandDataBySlug, loadingBrandSlugs, loadBrandData])
+
+  // ── Lazy load zone pursuing targets + snapshots when zone exists ──────────
+
+  const loadZoneDetail = useCallback(async (zone: Zone) => {
+    setLoadingZoneIds(prev => new Set([...prev, zone.id]))
+    try {
+      const [rawTargets, sparks] = await Promise.all([
+        getZoneTargetAccounts(zone.id),
+        getZoneSnapshots(zone.id, 30),
+      ])
+      setZoneSparklines(prev => ({ ...prev, [zone.id]: sparks }))
+
+      // Only load data for pursuing targets (activity account data comes from loadBrandData)
+      const targetIds = rawTargets.map(ta => ta.account_id).filter(Boolean)
+      const placementsByAccount: Record<string, { product_name: string; status: string }[]> = {}
+      const lastVisitByAccount: Record<string, { visited_at: string; status: string }> = {}
+      const ordersByAccount: Record<string, { status: string; total_amount: number | null }[]> = {}
+
+      if (zone.client_slug && targetIds.length > 0) {
+        const sb = getSupabase()
+        const [plRes, vRes, orRes] = await Promise.all([
+          sb.from('placements').select('account_id, product_name, status')
+            .eq('client_slug', zone.client_slug).in('account_id', targetIds).is('lost_at', null),
+          sb.from('visits').select('account_id, visited_at, status')
+            .eq('client_slug', zone.client_slug).in('account_id', targetIds)
+            .order('visited_at', { ascending: false }),
+          sb.from('purchase_orders').select('account_id, status, total_amount')
+            .eq('client_slug', zone.client_slug).in('account_id', targetIds)
+            .in('status', ['sent', 'fulfilled', 'draft']).order('created_at', { ascending: false }),
+        ])
+        for (const p of plRes.data ?? []) {
+          if (!placementsByAccount[p.account_id]) placementsByAccount[p.account_id] = []
+          placementsByAccount[p.account_id].push(p)
+        }
+        for (const v of vRes.data ?? []) {
+          if (!lastVisitByAccount[v.account_id]) lastVisitByAccount[v.account_id] = v
+        }
+        for (const o of orRes.data ?? []) {
+          if (!ordersByAccount[o.account_id]) ordersByAccount[o.account_id] = []
+          ordersByAccount[o.account_id].push(o)
+        }
+      }
+
       const targets = rawTargets.map(ta => ({
         ...ta,
         accounts: allAccounts.find(a => a.id === ta.account_id) ?? null,
       }))
 
-      setZoneDetails(prev => ({ ...prev, [zone.id]: { targets, activityAccounts: activityAccs, placementsByAccount, lastVisitByAccount, ordersByAccount } }))
+      setZoneDetails(prev => ({ ...prev, [zone.id]: { targets, placementsByAccount, lastVisitByAccount, ordersByAccount } }))
     } catch (e) { console.error('zone.detail', e) }
     finally { setLoadingZoneIds(prev => { const s = new Set(prev); s.delete(zone.id); return s }) }
-  }, [allAccounts, territoryAccounts, brandActivity])
+  }, [allAccounts])
 
   useEffect(() => {
     if (!activeClientTab || !market || allAccounts.length === 0) return
@@ -455,13 +522,16 @@ function MarketDetailContent() {
 
   async function handleRecompute() {
     if (!activeClientTab) return
-    const zone = await getOrCreateZone(activeClientTab)
-    if (!zone) return
-    setComputingSlugs(prev => new Set([...prev, activeClientTab]))
+    const slug = activeClientTab
+    setComputingSlugs(prev => new Set([...prev, slug]))
     try {
-      // Auto-sync: add any activity accounts not yet in the zone target list
-      // so the universe = "in market" accounts + "pursuing" accounts
-      const activityAccts = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(activeClientTab))
+      // Create zone if needed (invisible infrastructure for snapshot storage)
+      const zone = await getOrCreateZone(slug)
+      if (!zone) throw new Error('Could not create tracking record')
+
+      // Sync all activity accounts into zone target list so the universe is complete:
+      // universe = accounts we're active in + accounts we're pursuing
+      const activityAccts = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(slug))
       if (activityAccts.length > 0) {
         const existingTargets = await getZoneTargetAccounts(zone.id)
         const existingIds = new Set(existingTargets.map(ta => ta.account_id))
@@ -473,11 +543,13 @@ function MarketDetailContent() {
 
       const res = await fetch(`/api/growth/recompute/${zone.id}`, { method: 'POST' })
       if (!res.ok) throw new Error((await res.json()).error || 'Recompute failed')
-      const newSnaps = await getLatestSnapshotsByZone([zone.id])
-      setSnapshots(prev => ({ ...prev, ...newSnaps }))
+
+      // Refresh market state (zone may have just been created) + snapshots + zone detail
+      setZoneDetails({})
+      await load()
       toast('Metrics updated')
     } catch (err: any) { toast(err.message || 'Recompute failed', 'error') }
-    finally { setComputingSlugs(prev => { const s = new Set(prev); s.delete(activeClientTab); return s }) }
+    finally { setComputingSlugs(prev => { const s = new Set(prev); s.delete(slug); return s }) }
   }
 
 
@@ -505,7 +577,8 @@ function MarketDetailContent() {
   const geoParts = [...(market.cities ?? []), ...(market.counties?.map(c => `${c} County`) ?? []), ...(market.states ?? [])].filter(Boolean)
   const geoSummary = geoParts.slice(0, 4).join(' · ') + (geoParts.length > 4 ? ` +${geoParts.length - 4} more` : '')
   const isComputing = computingSlugs.has(activeClientTab)
-  const isLoadingDetail = activeZone ? loadingZoneIds.has(activeZone.id) : false
+  const isLoadingBrandData = loadingBrandSlugs.has(activeClientTab)
+  const activeBrandData = activeClientTab ? brandDataBySlug[activeClientTab] ?? null : null
 
   return (
     <LayoutShell>
@@ -738,7 +811,7 @@ function MarketDetailContent() {
                     unit="%"
                   />
                   {(() => {
-                    const inMarket = territoryAccounts.filter(a => (brandActivity[a.id] ?? []).includes(activeClientTab)).length
+                    const inMarket = activeBrandData?.activityAccounts.length ?? 0
                     const pursuing = activeDetail
                       ? activeDetail.targets.filter(ta => !(brandActivity[ta.account_id] ?? []).includes(activeClientTab)).length
                       : territoryAccounts.filter(a => (targetMap[a.id] ?? []).includes(activeClientTab) && !(brandActivity[a.id] ?? []).includes(activeClientTab)).length
@@ -845,78 +918,91 @@ function MarketDetailContent() {
               {/* RIGHT: Accounts panel */}
               <div style={{ padding: '24px', position: 'sticky', top: 0, maxHeight: '100vh', overflowY: 'auto' }}>
 
-                {isLoadingDetail ? (
+                {isLoadingBrandData ? (
                   <div style={{ padding: '32px', textAlign: 'center', color: t.text.muted, fontSize: '12px' }}>Loading accounts…</div>
                 ) : (
                   <>
                     {/* ── In Market (auto-detected from CRM activity) ───────────── */}
-                    {activeDetail && activeDetail.activityAccounts.length > 0 && (
-                      <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
-                          In Market · {activeDetail.activityAccounts.length} account{activeDetail.activityAccounts.length !== 1 ? 's' : ''}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {activeDetail.activityAccounts.map(acct => {
-                            const placements = activeDetail.placementsByAccount[acct.id] ?? []
-                            const lastVisit = activeDetail.lastVisitByAccount[acct.id]
-                            const orders = activeDetail.ordersByAccount[acct.id] ?? []
-                            const lastVisitDays = lastVisit
-                              ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
-                              : null
-                            return (
-                              <Link key={acct.id} href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-                                <div style={{ padding: '11px 12px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, cursor: 'pointer', transition: 'border-color 150ms', borderLeft: `3px solid ${activeClient?.color || t.gold}` }}
-                                  onMouseEnter={e => (e.currentTarget.style.borderColor = (activeClient?.color || t.gold) + '60')}
-                                  onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                    <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
-                                    <ChevronRight size={12} color={t.text.muted} />
-                                  </div>
-                                  {placements.length > 0 ? (
-                                    <div style={{ fontSize: '11px', color: t.status.success, marginBottom: '2px' }}>
-                                      <span style={{ fontWeight: '700' }}>{placements.length}</span> placement{placements.length !== 1 ? 's' : ''}
-                                      <span style={{ color: t.text.muted }}> · {placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
+                    {(() => {
+                      const inMarket = activeBrandData?.activityAccounts ?? []
+                      if (inMarket.length === 0 && !activeBrandData) return null
+                      return (
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>
+                            In Market · {inMarket.length} account{inMarket.length !== 1 ? 's' : ''}
+                          </div>
+                          {inMarket.length === 0 ? (
+                            <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
+                              <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>No CRM activity for this brand in territory yet</div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {inMarket.map(acct => {
+                                const placements = activeBrandData!.placementsByAccount[acct.id] ?? []
+                                const lastVisit = activeBrandData!.lastVisitByAccount[acct.id]
+                                const orders = activeBrandData!.ordersByAccount[acct.id] ?? []
+                                const lastVisitDays = lastVisit
+                                  ? Math.floor((Date.now() - new Date(lastVisit.visited_at).getTime()) / 86400000)
+                                  : null
+                                return (
+                                  <Link key={acct.id} href={`/accounts/${acct.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                                    <div style={{ padding: '11px 12px', borderRadius: '8px', backgroundColor: t.bg.elevated, border: `1px solid ${t.border.default}`, cursor: 'pointer', transition: 'border-color 150ms', borderLeft: `3px solid ${activeClient?.color || t.gold}` }}
+                                      onMouseEnter={e => (e.currentTarget.style.borderColor = (activeClient?.color || t.gold) + '60')}
+                                      onMouseLeave={e => (e.currentTarget.style.borderColor = t.border.default)}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, flex: 1 }}>{acct.name}</span>
+                                        <ChevronRight size={12} color={t.text.muted} />
+                                      </div>
+                                      {placements.length > 0 ? (
+                                        <div style={{ fontSize: '11px', color: t.status.success, marginBottom: '2px' }}>
+                                          <span style={{ fontWeight: '700' }}>{placements.length}</span> placement{placements.length !== 1 ? 's' : ''}
+                                          <span style={{ color: t.text.muted }}> · {placements.map(p => p.product_name || p.status).slice(0, 2).join(', ')}</span>
+                                        </div>
+                                      ) : (
+                                        <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '2px' }}>No placements yet</div>
+                                      )}
+                                      {orders.length > 0 && (
+                                        <div style={{ fontSize: '11px', color: t.gold, marginBottom: '2px' }}>
+                                          {orders.length} order{orders.length !== 1 ? 's' : ''}
+                                          <span style={{ color: t.text.muted }}> · {orders[0].status}</span>
+                                        </div>
+                                      )}
+                                      <div style={{ fontSize: '10px', color: t.text.muted }}>
+                                        {lastVisit
+                                          ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
+                                          : 'No visits for this brand yet'}
+                                      </div>
                                     </div>
-                                  ) : (
-                                    <div style={{ fontSize: '11px', color: t.text.muted, fontStyle: 'italic', marginBottom: '2px' }}>No placements yet</div>
-                                  )}
-                                  {orders.length > 0 && (
-                                    <div style={{ fontSize: '11px', color: t.gold, marginBottom: '2px' }}>
-                                      {orders.length} order{orders.length !== 1 ? 's' : ''}
-                                      <span style={{ color: t.text.muted }}> · {orders[0].status}</span>
-                                    </div>
-                                  )}
-                                  <div style={{ fontSize: '10px', color: t.text.muted }}>
-                                    {lastVisit
-                                      ? `${lastVisitDays === 0 ? 'Today' : `${lastVisitDays}d ago`} · ${lastVisit.status}`
-                                      : 'No visits for this brand yet'}
-                                  </div>
-                                </div>
-                              </Link>
-                            )
-                          })}
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {/* ── Pursuing (manual targets without active CRM data) ──────── */}
                     {(() => {
                       const pursuing = activeDetail
                         ? activeDetail.targets.filter(ta => !(brandActivity[ta.account_id] ?? []).includes(activeClientTab))
                         : []
+                      const isLoadingPursuing = activeZone ? loadingZoneIds.has(activeZone.id) : false
                       return (
                         <div style={{ marginBottom: '20px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                              Pursuing · {pursuing.length} account{pursuing.length !== 1 ? 's' : ''}
+                              Pursuing · {isLoadingPursuing ? '…' : pursuing.length}
                             </div>
                             <button onClick={() => { setAddTargetSlugs([activeClientTab]); setAddTargetSelectedId(null); setAddTargetSearch(''); setAddTargetOpen(true) }}
                               style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`, color: t.gold }}>
                               <Plus size={10} /> Add
                             </button>
                           </div>
-                          {pursuing.length === 0 ? (
-                            <div style={{ padding: '14px 16px', borderRadius: '8px', border: `2px dashed ${t.border.default}`, textAlign: 'center' }}>
+                          {isLoadingPursuing ? (
+                            <div style={{ fontSize: '11px', color: t.text.muted, padding: '8px 0' }}>Loading…</div>
+                          ) : pursuing.length === 0 ? (
+                            <div style={{ padding: '12px 14px', borderRadius: '8px', border: `2px dashed ${t.border.default}`, textAlign: 'center' }}>
                               <div style={{ fontSize: '12px', color: t.text.muted }}>No pursuit accounts yet</div>
                               <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '3px' }}>Add accounts you're trying to get into</div>
                             </div>
