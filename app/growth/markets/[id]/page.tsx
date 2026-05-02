@@ -10,6 +10,7 @@ import { t, inputStyle, labelStyle, selectStyle, btnPrimary, btnSecondary } from
 import { getClients, getAccounts } from '../../../lib/data'
 import { clientLogoUrl } from '../../../lib/constants'
 import { getSupabase } from '../../../lib/supabase'
+import { matchesGeoTerms } from '../../../lib/concentric/geo'
 import {
   getMarket, updateMarket, deleteMarket,
   createZone, deleteZone,
@@ -19,24 +20,6 @@ import {
 import { HealthRing, MetricTile, AccountStatusBadge, Sparkline, healthColor } from '../../_components'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
-
-// ─── Geo matching ─────────────────────────────────────────────────────────────
-// Match a CRM account address against territory geo terms.
-// Uses comma-part matching so "denver" won't match "789 S Denver Blvd, Colorado Springs, CO"
-// but will match "123 Main St, Denver, CO 80203".
-function matchesGeoTerms(address: string, geoTerms: string[]): boolean {
-  if (!address || geoTerms.length === 0) return false
-  const parts = address.toLowerCase().split(',').map(p => p.trim())
-  return geoTerms.some(term => {
-    const t = term.toLowerCase().trim()
-    if (!t) return false
-    // Zip codes (5 digits): simple contains on full address
-    if (/^\d{5}$/.test(t)) return address.toLowerCase().includes(t)
-    // City/county/state: must be a standalone comma-separated part
-    // e.g. "denver" matches part "denver" or "denver co" (state abbr appended)
-    return parts.some(part => part === t || part.startsWith(t + ' ') || part.endsWith(' ' + t))
-  })
-}
 
 // ─── TagInput ─────────────────────────────────────────────────────────────────
 
@@ -117,6 +100,7 @@ function MarketDetailContent() {
   // Active brand tab
   const [activeClientTab, setActiveClientTab] = useState<string>(searchParams.get('client') ?? '')
   const didAutoSelect = useRef(false)
+  const autoRecomputedSlugs = useRef<Set<string>>(new Set())
 
   // Territory edit
   const [editing, setEditing] = useState(false)
@@ -348,6 +332,22 @@ function MarketDetailContent() {
       loadZoneDetail(zone)
     }
   }, [activeClientTab, market, allAccounts, zoneDetails, loadingZoneIds, loadZoneDetail])
+
+  // Auto-recompute when a brand tab first opens and has activity but no snapshot
+  useEffect(() => {
+    if (!activeClientTab) return
+    if (loadingBrandSlugs.has(activeClientTab)) return
+    const brandData = brandDataBySlug[activeClientTab]
+    if (!brandData || brandData.activityAccounts.length === 0) return
+    const zone = (market?.zones ?? []).find(z => z.client_slug === activeClientTab)
+    const snap = zone ? snapshots[zone.id] ?? null : null
+    if (snap !== null) return
+    if (autoRecomputedSlugs.current.has(activeClientTab)) return
+    autoRecomputedSlugs.current.add(activeClientTab)
+    handleRecompute()
+  // handleRecompute reads fresh state via closure; safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClientTab, loadingBrandSlugs, brandDataBySlug, market, snapshots])
 
   // ── Google Maps autocomplete ───────────────────────────────────────────────
 
