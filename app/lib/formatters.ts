@@ -73,7 +73,8 @@ export function todayMT(): string {
 
 export function saveDateMT(dateStr: string): string {
   if (!dateStr) return new Date().toISOString()
-  return new Date(dateStr + 'T12:00:00').toISOString()
+  // Explicitly UTC — never let the browser's local timezone shift the date
+  return new Date(dateStr + 'T12:00:00Z').toISOString()
 }
 
 export function relativeTimeStr(dateStr: string | null | undefined): string | null {

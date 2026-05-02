@@ -22,7 +22,6 @@ function TerritoryCard({
   market,
   zones,
   snapshots,
-  clientColor,
   clientChips,
 }: {
   market: Market
@@ -42,19 +41,14 @@ function TerritoryCard({
   const avgActivity = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.activity_rate_pct ?? sn.reach_pct ?? 0), 0) / validSnaps.length : null
   const avgVelIdx   = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.velocity_index ?? 0), 0) / validSnaps.length : null
   const avgRet      = validSnaps.length > 0 ? validSnaps.reduce((s, sn) => s + (sn.retention_pct ?? 0), 0) / validSnaps.length : null
-  // Volume trend: positive = at least one zone growing
   const trendSnaps = validSnaps.filter(s => s.volume_trend_pct !== null)
   const avgTrend = trendSnaps.length > 0 ? trendSnaps.reduce((s, sn) => s + (sn.volume_trend_pct ?? 0), 0) / trendSnaps.length : null
 
   const color = healthColor(avgHealth)
-
+  const accentColor = clientChips?.[0]?.color || color
   const href = `/growth/markets/${market.id}`
-
-  const geoParts = [
-    ...(market.cities ?? []),
-    ...(market.counties?.map(c => `${c} County`) ?? []),
-    ...(market.states ?? []),
-  ].slice(0, 3)
+  const geoParts = [...(market.cities ?? []).slice(0, 2), ...(market.states ?? []).slice(0, 1)].slice(0, 2)
+  const hasData = validSnaps.length > 0 && avgHealth !== null
 
   return (
     <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
@@ -62,79 +56,104 @@ function TerritoryCard({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          borderRadius: '12px',
-          border: `1px solid ${hovered ? color + '55' : t.border.default}`,
-          backgroundColor: t.bg.elevated,
+          borderRadius: '14px',
+          border: `1px solid ${hovered ? accentColor + '40' : t.border.default}`,
+          background: hovered
+            ? `radial-gradient(ellipse at top left, ${accentColor}08 0%, transparent 55%), ${t.bg.elevated}`
+            : t.bg.elevated,
           padding: '16px',
           cursor: 'pointer',
           transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
-          transition: 'border-color 150ms, transform 150ms, box-shadow 150ms',
-          boxShadow: hovered ? `0 8px 28px rgba(0,0,0,0.35), 0 0 0 1px ${color}20` : 'none',
+          transition: 'border-color 150ms, transform 150ms, box-shadow 150ms, background 150ms',
+          boxShadow: hovered ? `0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px ${accentColor}18` : `0 1px 3px rgba(0,0,0,0.15)`,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        {/* Client chips — shown when multiple brands have focus areas in this territory */}
+        {/* Top accent line */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: hasData ? `linear-gradient(90deg, ${color}, ${color}50)` : t.border.subtle, borderRadius: '14px 14px 0 0' }} />
+
+        {/* Client brand chips */}
         {clientChips && clientChips.length > 0 && (
-          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px', marginTop: '4px' }}>
             {clientChips.map(c => (
-              <span key={c.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: '700', color: c.color, letterSpacing: '0.04em' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: c.color, display: 'inline-block', flexShrink: 0 }} />
+              <span key={c.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '9px', fontWeight: '800', color: c.color, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '4px', backgroundColor: c.color + '14', border: `1px solid ${c.color}25` }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: c.color, boxShadow: `0 0 4px ${c.color}` }} />
                 {c.name}
               </span>
             ))}
           </div>
         )}
 
-        {/* Name + health */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+        {/* Name + health score */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', marginTop: clientChips?.length ? 0 : '4px' }}>
           <div style={{ flex: 1, paddingRight: '12px', minWidth: 0 }}>
-            <div style={{ fontSize: '14px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.01em', marginBottom: '3px' }}>
+            <div style={{ fontSize: '15px', fontWeight: '800', color: t.text.primary, letterSpacing: '-0.02em', marginBottom: '4px', lineHeight: 1.2 }}>
               {market.name}
+              {market.priority && <span style={{ fontSize: '11px', color: t.gold, marginLeft: '6px' }}>★</span>}
             </div>
             {geoParts.length > 0 && (
-              <div style={{ fontSize: '10px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <MapPin size={9} />
+              <div style={{ fontSize: '10px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.7 }}>
+                <MapPin size={8} />
                 {geoParts.join(' · ')}
               </div>
             )}
-            {zones.length > 1 && (
-              <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '3px' }}>
-                {zones.map(z => channelLabel(z.channel)).join(' + ')}
-              </div>
-            )}
           </div>
-          <HealthRing score={avgHealth} size={58} strokeWidth={5} showLabel={false} />
+          {/* Health score — big number style */}
+          <div style={{ textAlign: 'center', flexShrink: 0 }}>
+            <div style={{
+              fontSize: '26px', fontWeight: '900', lineHeight: 1,
+              color: hasData ? color : t.text.muted,
+              letterSpacing: '-0.04em',
+              textShadow: hasData ? `0 0 20px ${color}60` : 'none',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {hasData ? avgHealth : '—'}
+            </div>
+            <div style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px', opacity: 0.5 }}>health</div>
+          </div>
         </div>
 
         {/* Metric bars */}
         {validSnaps.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '13px' }}>
             {[
-              { label: 'ACTIV', v: avgActivity },
-              { label: 'VEL',   v: avgVelIdx },
-              { label: 'RET',   v: avgRet },
-            ].map(m => (
-              <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '8px', color: t.text.muted, fontWeight: '700', width: '26px', letterSpacing: '0.07em', flexShrink: 0 }}>{m.label}</span>
-                <div style={{ flex: 1, height: '3px', borderRadius: '2px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
-                  {m.v != null && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, backgroundColor: healthColor(m.v), borderRadius: '2px' }} />}
+              { label: 'Activity', v: avgActivity },
+              { label: 'Velocity', v: avgVelIdx },
+              { label: 'Reorder',  v: avgRet },
+            ].map(m => {
+              const c = m.v != null ? healthColor(m.v) : t.border.subtle
+              return (
+                <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '9px', color: t.text.muted, fontWeight: '700', width: '42px', letterSpacing: '0.04em', flexShrink: 0, opacity: 0.6 }}>{m.label}</span>
+                  <div style={{ flex: 1, height: '4px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
+                    {m.v != null && <div style={{ height: '100%', width: `${Math.min(m.v, 100)}%`, background: `linear-gradient(90deg, ${c}, ${c}90)`, borderRadius: '2px', boxShadow: `0 0 6px ${c}` }} />}
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null ? c : '#333', width: '30px', textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {m.v != null ? `${Math.round(m.v)}` : '—'}
+                  </span>
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: '800', color: m.v != null ? healthColor(m.v) : t.text.muted, width: '30px', textAlign: 'right', flexShrink: 0 }}>
-                  {m.v != null ? `${Math.round(m.v)}%` : '—'}
-                </span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${t.border.subtle}`, paddingTop: '9px' }}>
-          <span style={{ fontSize: '10px', color: t.text.muted }}>
-            {totalCases > 0
-              ? <>{activeAccounts} active · <span style={{ color: avgTrend !== null ? (avgTrend > 5 ? t.status.success : avgTrend < -5 ? t.status.danger : t.text.muted) : t.text.muted, fontWeight: '700' }}>{totalCases} cs{avgTrend !== null ? ` ${avgTrend > 0 ? '↑' : '↓'}${Math.abs(Math.round(avgTrend))}%` : ''}</span></>
-              : totalAccounts > 0 ? `${activeAccounts} active of ${totalAccounts}`
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid rgba(255,255,255,0.05)`, paddingTop: '10px' }}>
+          <span style={{ fontSize: '11px', color: t.text.muted, opacity: 0.7 }}>
+            {totalCases > 0 ? (
+              <>
+                <span style={{ color: t.status.success, fontWeight: '700' }}>{activeAccounts}</span> buying · {totalCases} cs
+                {avgTrend !== null && Math.abs(avgTrend) >= 5 && (
+                  <span style={{ color: avgTrend > 0 ? t.status.success : t.status.danger, fontWeight: '700', marginLeft: '4px' }}>
+                    {avgTrend > 0 ? '↑' : '↓'}{Math.abs(Math.round(avgTrend))}%
+                  </span>
+                )}
+              </>
+            ) : totalAccounts > 0 ? `${activeAccounts} of ${totalAccounts} active`
               : zones.length === 0 ? 'No brands yet' : 'No data yet'}
           </span>
-          <ChevronRight size={11} color={t.text.muted} style={{ opacity: hovered ? 1 : 0.4, transition: 'opacity 150ms' }} />
+          <ChevronRight size={11} color={color} style={{ opacity: hovered ? 0.8 : 0.3, transition: 'opacity 150ms' }} />
         </div>
       </div>
     </Link>
@@ -320,15 +339,22 @@ function GrowthDashboardContent() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-              {filteredEntries.map(({ market, zones: mZones }) => (
-                <TerritoryCard
-                  key={market.id}
-                  market={market}
-                  zones={mZones}
-                  snapshots={snapshots}
-                  clientColor={t.gold}
-                />
-              ))}
+              {filteredEntries.map(({ market, zones: mZones }) => {
+                const chips = mZones
+                  .map(z => clients.find(c => c.slug === z.client_slug))
+                  .filter((c): c is Client => !!c)
+                  .map(c => ({ name: c.name, color: c.color || t.gold }))
+                return (
+                  <TerritoryCard
+                    key={market.id}
+                    market={market}
+                    zones={mZones}
+                    snapshots={snapshots}
+                    clientColor={t.gold}
+                    clientChips={chips}
+                  />
+                )
+              })}
             </div>
           )}
 
