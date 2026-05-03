@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
@@ -16,6 +17,13 @@ import { clientLogoUrl } from '../lib/constants'
 import { matchesGeoTerms } from '../lib/concentric/geo'
 import type { Client } from '../lib/types'
 import type { Market } from '../lib/concentric/types'
+import type { MapPin } from './MapView'
+
+const MapView = dynamic(() => import('./MapView'), { ssr: false, loading: () => (
+  <div style={{ width: '100%', height: '100%', minHeight: '340px', borderRadius: '12px', background: '#0a0906', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <span style={{ fontSize: '11px', color: t.text.muted, opacity: 0.4 }}>Loading map…</span>
+  </div>
+) })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +35,7 @@ type OrderRow = {
 }
 type VisitRow   = { id: string; account_id: string; user_id: string; client_slug: string; visited_at: string; status: string }
 type PlacRow    = { id: string; account_id: string; client_slug: string; status: string; created_at: string; lost_at: string | null }
-type AcctRow    = { id: string; name: string; address: string | null; account_type: string; priority: string | null }
+type AcctRow    = { id: string; name: string; address: string | null; account_type: string; priority: string | null; lat: number | null; lng: number | null }
 type ProfileRow = { id: string; name: string | null; full_name: string | null; role: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -669,6 +677,7 @@ function CommandContent() {
   const [panel, setPanel]         = useState<'revenue' | 'visits' | 'placements' | 'reps'>('revenue')
   const [bucket, setBucket]       = useState<string | null>(null)
   const [loading, setLoading]     = useState(true)
+  const [geocoding, setGeocoding] = useState(false)
 
   const [clients,    setClients]    = useState<Client[]>([])
   const [markets,    setMarkets]    = useState<Market[]>([])
@@ -689,7 +698,7 @@ function CommandContent() {
       const [cls, mkts, acRes, orRes, plRes, prRes, vRes] = await Promise.all([
         getClients(),
         getMarkets(),
-        sb.from('accounts').select('id, name, address, account_type, priority').order('name').limit(2000),
+        sb.from('accounts').select('id, name, address, account_type, priority, lat, lng').order('name').limit(2000),
         sb.from('purchase_orders')
           .select('id, account_id, client_slug, status, total_amount, sent_at, created_at, commission_amount, po_line_items(total, unit_price, cases, bottles, quantity)')
           .in('status', ['sent', 'fulfilled'])
@@ -833,6 +842,62 @@ function CommandContent() {
   // Table orders: only current period for revenue column
   const tableOrders = useMemo(() => pOrders, [pOrders])
 
+  // ── Geocoding ─────────────────────────────────────────────────────────────
+
+  const handleGeocode = useCallback(async () => {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+    if (!token || geocoding) return
+    setGeocoding(true)
+    const sb = getSupabase()
+    const toGeocode = accounts.filter(a => !a.lat && a.address)
+    for (const acct of toGeocode.slice(0, 100)) {
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(acct.address!)}.json?access_token=${token}&limit=1&country=us`
+        const res = await fetch(url)
+        const data = await res.json()
+        const feature = data.features?.[0]
+        if (!feature) continue
+        const [lng, lat] = feature.center as [number, number]
+        await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
+        setAccounts(prev => prev.map(a => a.id === acct.id ? { ...a, lat, lng } : a))
+      } catch { continue }
+    }
+    setGeocoding(false)
+  }, [accounts, geocoding])
+
+  // ── Map pins ──────────────────────────────────────────────────────────────
+
+  const mapPins = useMemo((): MapPin[] => {
+    const latestOrder: Record<string, { date: string; rev: number }> = {}
+    for (const o of orders) {
+      const d = o.sent_at || o.created_at
+      const prev = latestOrder[o.account_id]
+      if (!prev || d > prev.date) latestOrder[o.account_id] = { date: d, rev: (prev?.rev ?? 0) + resolveTotal(o) }
+      else latestOrder[o.account_id].rev += resolveTotal(o)
+    }
+    return territoryAccts
+      .filter(a => a.lat != null && a.lng != null)
+      .map(a => {
+        const ord = latestOrder[a.id]
+        const ageMs = ord ? Date.now() - new Date(ord.date).getTime() : null
+        const color = ageMs === null ? 'rgba(255,255,255,0.25)'
+          : ageMs < 30 * 86400000  ? t.status.success
+          : ageMs < 90 * 86400000  ? t.gold
+          : ageMs < 180 * 86400000 ? t.status.warning
+          : t.status.danger
+        return {
+          id: a.id, name: a.name, accountType: a.account_type,
+          lat: a.lat!, lng: a.lng!, color,
+          lastOrderDate: ord?.date ?? null, revenue: ord?.rev ?? 0,
+        }
+      })
+  }, [territoryAccts, orders])
+
+  const ungeocodedCount = useMemo(
+    () => territoryAccts.filter(a => !a.lat && a.address).length,
+    [territoryAccts]
+  )
+
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
 
   const selectStyle: React.CSSProperties = {
@@ -938,7 +1003,17 @@ function CommandContent() {
 
             {/* Map */}
             <div style={{ flex: '0 0 55%', minWidth: 0 }}>
-              <MapPanel accounts={territoryAccts} dist={recencyDist} />
+              <MapView
+                pins={mapPins}
+                totalAccounts={territoryAccts.length}
+                ungeocodedCount={geocoding ? 0 : ungeocodedCount}
+                onGeocodeRequest={handleGeocode}
+              />
+              {geocoding && (
+                <div style={{ marginTop: '6px', fontSize: '10px', color: t.gold, textAlign: 'center', opacity: 0.7 }}>
+                  Mapping accounts… this runs once and saves permanently.
+                </div>
+              )}
             </div>
 
             {/* Data panel */}
