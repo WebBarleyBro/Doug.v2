@@ -6,7 +6,7 @@ import {
   Home, MapPin, Users, Calendar, BarChart3, DollarSign,
   ShoppingCart, TrendingUp, Megaphone, Shield, Package,
   BookOpen, ChevronRight, ChevronLeft, Search, Bell, X, Menu, Plus,
-  LogOut, Map, ClipboardList, UserCircle, FolderOpen, Upload,
+  LogOut, Map, ClipboardList, UserCircle, FolderOpen, Upload, Zap,
 } from 'lucide-react'
 import { t, btnPrimary } from './lib/theme'
 import { signOut } from './lib/auth'
@@ -45,6 +45,7 @@ const ownerNav = [
   { href: '/clients',     label: 'Clients',     icon: Users },
   { href: '/placements',  label: 'Placements',  icon: Package },
   { href: '/orders',      label: 'Orders',      icon: ShoppingCart },
+  { href: '/command',     label: 'Intelligence', icon: Zap },
   { href: '/finance',     label: 'Finance',     icon: DollarSign },
   { href: '/analytics',   label: 'Analytics',   icon: BarChart3 },
   { href: '/growth',      label: 'Growth',      icon: TrendingUp },
@@ -62,6 +63,7 @@ const repNav = [
   { href: '/clients',    label: 'Clients',    icon: Users },
   { href: '/placements', label: 'Placements', icon: Package },
   { href: '/orders',     label: 'Orders',     icon: ShoppingCart },
+  { href: '/command',    label: 'Intelligence', icon: Zap },
   { href: '/growth',     label: 'Growth',     icon: TrendingUp },
   { href: '/calendar',   label: 'Calendar',   icon: Calendar },
   { href: '/contacts',   label: 'Contacts',   icon: UserCircle },
