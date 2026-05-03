@@ -5,6 +5,8 @@ import { t } from '../lib/theme'
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
+type MapBounds = { north: number; south: number; east: number; west: number }
+
 export type MapPin = {
   id: string
   name: string
@@ -17,12 +19,13 @@ export type MapPin = {
 }
 
 export default function MapView({
-  pins, totalAccounts, ungeocodedCount, onGeocodeRequest,
+  pins, totalAccounts, ungeocodedCount, onGeocodeRequest, onBoundsChange,
 }: {
   pins: MapPin[]
   totalAccounts: number
   ungeocodedCount: number
   onGeocodeRequest: () => void
+  onBoundsChange?: (bounds: MapBounds) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -30,6 +33,8 @@ export default function MapView({
   const [popup, setPopup] = useState<{ name: string; type: string; rev: number; date: string | null; id: string } | null>(null)
   const pinsRef = useRef(pins)
   pinsRef.current = pins
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  onBoundsChangeRef.current = onBoundsChange
 
   // Init map
   useEffect(() => {
@@ -92,6 +97,21 @@ export default function MapView({
         })
         map.on('mouseenter', 'accounts-dot', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'accounts-dot', () => { map.getCanvas().style.cursor = '' })
+
+        // Emit bounds on pan/zoom (debounced)
+        let boundsTimer: ReturnType<typeof setTimeout> | null = null
+        const emitBounds = () => {
+          if (boundsTimer) clearTimeout(boundsTimer)
+          boundsTimer = setTimeout(() => {
+            const b = map.getBounds()
+            onBoundsChangeRef.current?.({
+              north: b.getNorth(), south: b.getSouth(),
+              east: b.getEast(), west: b.getWest(),
+            })
+          }, 300)
+        }
+        map.on('moveend', emitBounds)
+        emitBounds() // emit initial bounds
 
         setReady(true)
       })

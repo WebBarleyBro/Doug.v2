@@ -10,14 +10,13 @@ import { Activity, Zap } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import { t } from '../lib/theme'
 import { getClients } from '../lib/data'
-import { getMarkets } from '../lib/concentric/data'
 import { getSupabase } from '../lib/supabase'
 import { formatCurrency, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
-import { matchesGeoTerms } from '../lib/concentric/geo'
 import type { Client } from '../lib/types'
-import type { Market } from '../lib/concentric/types'
 import type { MapPin } from './MapView'
+
+type MapBounds = { north: number; south: number; east: number; west: number } | null
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false, loading: () => (
   <div style={{ width: '100%', height: '100%', minHeight: '340px', borderRadius: '12px', background: '#0a0906', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -573,10 +572,20 @@ function RepsPanel({ visits, profiles }: { visits: VisitRow[]; profiles: Profile
 
 // ─── AccountsTable ────────────────────────────────────────────────────────────
 
+type SortCol = 'name' | 'lastOrder' | 'lastVisit' | 'revenue'
+
 function AccountsTable({ accounts, orders, visits, clients }: {
   accounts: AcctRow[]; orders: OrderRow[]; visits: VisitRow[]; clients: Client[]
 }) {
   const nowMs = useMemo(() => Date.now(), [])
+  const [sortCol, setSortCol] = useState<SortCol>('lastOrder')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function handleSort(col: SortCol) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
   const orderMap = useMemo(() => {
     const m: Record<string, { date: string; rev: number }> = {}
     for (const o of orders) {
@@ -598,20 +607,54 @@ function AccountsTable({ accounts, orders, visits, clients }: {
     return m
   }, [orders])
 
+  const sorted = useMemo(() => {
+    const arr = [...accounts]
+    const dir = sortDir === 'asc' ? 1 : -1
+    arr.sort((a, b) => {
+      if (sortCol === 'name') return dir * a.name.localeCompare(b.name)
+      if (sortCol === 'lastOrder') {
+        const da = orderMap[a.id]?.date ?? ''
+        const db = orderMap[b.id]?.date ?? ''
+        return dir * (da < db ? -1 : da > db ? 1 : 0)
+      }
+      if (sortCol === 'lastVisit') {
+        const da = visitMap[a.id] ?? ''
+        const db = visitMap[b.id] ?? ''
+        return dir * (da < db ? -1 : da > db ? 1 : 0)
+      }
+      if (sortCol === 'revenue') {
+        return dir * ((orderMap[a.id]?.rev ?? 0) - (orderMap[b.id]?.rev ?? 0))
+      }
+      return 0
+    })
+    return arr
+  }, [accounts, sortCol, sortDir, orderMap, visitMap])
+
   if (accounts.length === 0) return (
     <div style={{ textAlign: 'center', padding: '32px', color: t.text.muted, fontSize: '12px', opacity: 0.4 }}>No accounts match the current filters.</div>
   )
+
+  const colStyle = (col: SortCol): React.CSSProperties => ({
+    fontSize: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.12em',
+    color: sortCol === col ? t.gold : t.text.muted,
+    opacity: sortCol === col ? 1 : 0.4,
+    cursor: 'pointer', background: 'none', border: 'none', padding: 0, textAlign: 'left',
+    display: 'flex', alignItems: 'center', gap: '3px',
+  })
 
   return (
     <div>
       {/* Header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 80px 90px 90px 80px 80px', gap: '12px', padding: '8px 14px', marginBottom: '2px' }}>
-        {['Account', 'Type', 'Last Order', 'Last Visit', 'Rev (period)', 'Brands'].map(h => (
-          <div key={h} style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.4 }}>{h}</div>
-        ))}
+        <button onClick={() => handleSort('name')} style={colStyle('name')}>Account {sortCol === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button>
+        <div style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.4 }}>Type</div>
+        <button onClick={() => handleSort('lastOrder')} style={colStyle('lastOrder')}>Last Order {sortCol === 'lastOrder' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button>
+        <button onClick={() => handleSort('lastVisit')} style={colStyle('lastVisit')}>Last Visit {sortCol === 'lastVisit' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button>
+        <button onClick={() => handleSort('revenue')} style={colStyle('revenue')}>Revenue {sortCol === 'revenue' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button>
+        <div style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.4 }}>Brands</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-        {accounts.slice(0, 60).map(a => {
+        {sorted.slice(0, 60).map(a => {
           const ord = orderMap[a.id]
           const lastVisit = visitMap[a.id]
           const brands = [...(brandMap[a.id] ?? [])]
@@ -657,9 +700,9 @@ function AccountsTable({ accounts, orders, visits, clients }: {
             </Link>
           )
         })}
-        {accounts.length > 60 && (
+        {sorted.length > 60 && (
           <div style={{ padding: '10px', textAlign: 'center', fontSize: '10px', color: t.text.muted, opacity: 0.35 }}>
-            +{accounts.length - 60} more accounts — use filters to narrow results
+            +{sorted.length - 60} more accounts — use filters to narrow results
           </div>
         )}
       </div>
@@ -671,16 +714,15 @@ function AccountsTable({ accounts, orders, visits, clients }: {
 
 function CommandContent() {
   const [period, setPeriod]       = useState(30)
-  const [marketId, setMarketId]   = useState('all')
   const [brandSlug, setBrandSlug] = useState('all')
   const [repId, setRepId]         = useState('all')
   const [panel, setPanel]         = useState<'revenue' | 'visits' | 'placements' | 'reps'>('revenue')
   const [bucket, setBucket]       = useState<string | null>(null)
   const [loading, setLoading]     = useState(true)
   const [geocoding, setGeocoding] = useState(false)
+  const [mapBounds, setMapBounds] = useState<MapBounds>(null)
 
   const [clients,    setClients]    = useState<Client[]>([])
-  const [markets,    setMarkets]    = useState<Market[]>([])
   const [accounts,   setAccounts]   = useState<AcctRow[]>([])
   const [orders,     setOrders]     = useState<OrderRow[]>([])
   const [visits,     setVisits]     = useState<VisitRow[]>([])
@@ -695,9 +737,8 @@ function CommandContent() {
       const sb = getSupabase()
       const twoYearsAgo = isoAgo(730)
       const oneYearAgo  = isoAgo(365)
-      const [cls, mkts, acRes, orRes, plRes, prRes, vRes] = await Promise.all([
+      const [cls, acRes, orRes, plRes, prRes, vRes] = await Promise.all([
         getClients(),
-        getMarkets(),
         sb.from('accounts').select('id, name, address, account_type, priority, lat, lng').order('name').limit(2000),
         sb.from('purchase_orders')
           .select('id, account_id, client_slug, status, total_amount, sent_at, created_at, commission_amount, po_line_items(total, unit_price, cases, bottles, quantity)')
@@ -708,8 +749,13 @@ function CommandContent() {
         sb.from('visits').select('id, account_id, user_id, client_slug, visited_at, status').gte('visited_at', oneYearAgo).order('visited_at', { ascending: false }),
       ])
       setClients(cls)
-      setMarkets(mkts)
-      setAccounts((acRes.data ?? []) as AcctRow[])
+      // If lat/lng columns don't exist yet (migration 033 not run), fall back gracefully
+      if (acRes.error) {
+        const { data: acBasic } = await sb.from('accounts').select('id, name, address, account_type, priority').order('name').limit(2000)
+        setAccounts(((acBasic ?? []) as any[]).map(a => ({ ...a, lat: null, lng: null })) as AcctRow[])
+      } else {
+        setAccounts((acRes.data ?? []) as AcctRow[])
+      }
       setOrders((orRes.data ?? []) as OrderRow[])
       setPlacements((plRes.data ?? []) as PlacRow[])
       setProfiles((prRes.data ?? []) as ProfileRow[])
@@ -728,24 +774,19 @@ function CommandContent() {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const nowMs = useMemo(() => Date.now(), [])
-  const accountMap   = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a])),        [accounts])
-  const clientRates  = useMemo(() => Object.fromEntries(clients.map(c => [c.slug, c.commission_rate ?? 0])), [clients])
-  const marketGeoMap = useMemo(() => {
-    const m: Record<string, string[]> = {}
-    for (const mk of markets) {
-      m[mk.id] = [...(mk.cities ?? []), ...(mk.counties ?? []), ...(mk.states ?? []), ...(mk.zip_codes ?? [])]
-        .map(g => g.toLowerCase().trim()).filter(Boolean)
-    }
-    return m
-  }, [markets])
+  const accountMap  = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a])), [accounts])
+  const clientRates = useMemo(() => Object.fromEntries(clients.map(c => [c.slug, c.commission_rate ?? 0])), [clients])
 
-  const inTerritory = useCallback((acct: AcctRow) => {
-    if (marketId === 'all') return true
-    const terms = marketGeoMap[marketId] ?? []
-    return terms.length === 0 || matchesGeoTerms(acct.address ?? '', terms)
-  }, [marketId, marketGeoMap])
+  const hasGeoAccounts = useMemo(() => accounts.some(a => a.lat != null && a.lng != null), [accounts])
 
-  const territoryAccts = useMemo(() => accounts.filter(inTerritory), [accounts, inTerritory])
+  const inBounds = useCallback((acct: AcctRow) => {
+    if (!mapBounds || !hasGeoAccounts) return true
+    if (!acct.lat || !acct.lng) return true // ungeocoded always included
+    return acct.lat >= mapBounds.south && acct.lat <= mapBounds.north &&
+           acct.lng >= mapBounds.west  && acct.lng <= mapBounds.east
+  }, [mapBounds, hasGeoAccounts])
+
+  const territoryAccts = useMemo(() => accounts.filter(inBounds), [accounts, inBounds])
 
   const periodStartMs = nowMs - period * 86400000
   const priorStartMs  = nowMs - period * 2 * 86400000
@@ -755,16 +796,16 @@ function CommandContent() {
     if (dateMs < periodStartMs) return false
     if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
     const acct = accountMap[o.account_id]
-    return acct ? inTerritory(acct) : true
-  }, [periodStartMs, brandSlug, accountMap, inTerritory])
+    return acct ? inBounds(acct) : true
+  }, [periodStartMs, brandSlug, accountMap, inBounds])
 
   const filterPrior = useCallback((o: OrderRow) => {
     const dateMs = new Date(o.sent_at || o.created_at).getTime()
     if (dateMs < priorStartMs || dateMs >= periodStartMs) return false
     if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
     const acct = accountMap[o.account_id]
-    return acct ? inTerritory(acct) : true
-  }, [priorStartMs, periodStartMs, brandSlug, accountMap, inTerritory])
+    return acct ? inBounds(acct) : true
+  }, [priorStartMs, periodStartMs, brandSlug, accountMap, inBounds])
 
   const filterVisit = useCallback((v: VisitRow) => {
     const dateMs = new Date(v.visited_at).getTime()
@@ -772,14 +813,14 @@ function CommandContent() {
     if (brandSlug !== 'all' && v.client_slug !== brandSlug) return false
     if (repId !== 'all' && v.user_id !== repId) return false
     const acct = accountMap[v.account_id]
-    return acct ? inTerritory(acct) : true
-  }, [periodStartMs, brandSlug, repId, accountMap, inTerritory])
+    return acct ? inBounds(acct) : true
+  }, [periodStartMs, brandSlug, repId, accountMap, inBounds])
 
   const filterPlac = useCallback((p: PlacRow) => {
     if (brandSlug !== 'all' && p.client_slug !== brandSlug) return false
     const acct = accountMap[p.account_id]
-    return acct ? inTerritory(acct) : true
-  }, [brandSlug, accountMap, inTerritory])
+    return acct ? inBounds(acct) : true
+  }, [brandSlug, accountMap, inBounds])
 
   const pOrders     = useMemo(() => orders.filter(filterOrder),  [orders, filterOrder])
   const prOrders    = useMemo(() => orders.filter(filterPrior),  [orders, filterPrior])
@@ -815,7 +856,7 @@ function CommandContent() {
     for (const o of orders) {
       if (brandSlug !== 'all' && o.client_slug !== brandSlug) continue
       const acct = accountMap[o.account_id]
-      if (!acct || !inTerritory(acct)) continue
+      if (!acct || !inBounds(acct)) continue
       const ms = new Date(o.sent_at || o.created_at).getTime()
       if (!latest[o.account_id] || ms > latest[o.account_id]) latest[o.account_id] = ms
     }
@@ -830,7 +871,7 @@ function CommandContent() {
       else old.push(a)
     }
     return { d30, d90, d180, old, none }
-  }, [orders, brandSlug, accountMap, inTerritory, territoryAccts, nowMs])
+  }, [orders, brandSlug, accountMap, inBounds, territoryAccts, nowMs])
 
   // Accounts table list (filtered by recency bucket)
   const tableAccounts = useMemo(() => {
@@ -954,12 +995,6 @@ function CommandContent() {
             ))}
           </div>
 
-          {/* Territory */}
-          <select value={marketId} onChange={e => setMarketId(e.target.value)} style={selectStyle}>
-            <option value="all">All Territories</option>
-            {markets.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-
           {/* Brand */}
           <select value={brandSlug} onChange={e => setBrandSlug(e.target.value)} style={selectStyle}>
             <option value="all">All Brands</option>
@@ -1008,6 +1043,7 @@ function CommandContent() {
                 totalAccounts={territoryAccts.length}
                 ungeocodedCount={geocoding ? 0 : ungeocodedCount}
                 onGeocodeRequest={handleGeocode}
+                onBoundsChange={setMapBounds}
               />
               {geocoding && (
                 <div style={{ marginTop: '6px', fontSize: '10px', color: t.gold, textAlign: 'center', opacity: 0.7 }}>
@@ -1060,7 +1096,7 @@ function CommandContent() {
                 Accounts
               </span>
               <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35, marginLeft: '4px' }}>
-                {bucket ? `${tableAccounts.length} in segment` : `${tableAccounts.length} in territory`}
+                {bucket ? `${tableAccounts.length} in segment` : mapBounds && hasGeoAccounts ? `${tableAccounts.length} in view` : `${tableAccounts.length} accounts`}
               </span>
             </div>
             <div style={{ padding: '8px' }}>
