@@ -15,7 +15,7 @@ import {
   createZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
-import { HealthRing, Sparkline, healthColor } from '../../_components'
+import { HealthRing, Sparkline, healthColor, CompactGauge, StatusBar } from '../../_components'
 import { formatCurrency } from '../../../lib/formatters'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
@@ -88,34 +88,12 @@ function relativeDate(dateStr: string | null | undefined): string {
   return `${Math.floor(d / 365)}yr ago`
 }
 
-// ─── Compact Gauge ────────────────────────────────────────────────────────────
-
-function CompactGauge({ label, value, target, unit = '%', note }: {
-  label: string; value: number | null; target: number; unit?: string; note?: string
-}) {
-  const pct = value !== null ? Math.min(100, Math.max(0, value)) : null
-  const targetPct = Math.min(100, Math.max(0, target))
-  const color = pct === null ? '#333'
-    : pct >= target ? t.status.success
-    : pct >= target * 0.7 ? t.status.warning
-    : t.status.danger
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-        <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.65 }}>{label}</span>
-        <span style={{ fontSize: '18px', fontWeight: '900', color: pct !== null ? color : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: pct !== null && pct >= target ? `0 0 14px ${color}50` : 'none' }}>
-          {pct !== null ? `${Math.round(pct)}${unit}` : '—'}
-        </span>
-      </div>
-      <div style={{ position: 'relative', height: '3px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.06)' }}>
-        {pct !== null && (
-          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, borderRadius: '2px', backgroundColor: color, boxShadow: `0 0 8px ${color}60` }} />
-        )}
-        <div style={{ position: 'absolute', left: `${targetPct}%`, top: '-3px', bottom: '-3px', width: '1px', backgroundColor: 'rgba(255,255,255,0.18)' }} />
-      </div>
-      {note && <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.45, marginTop: '4px' }}>{note}</div>}
-    </div>
-  )
+function getAccountStatus(orders: OrderData[]): 'active' | 'lapsed' | 'dormant' | 'untouched' {
+  if (!orders.length) return 'untouched'
+  const latest = Math.max(...orders.map(o => new Date(o.sent_at || o.created_at).getTime()))
+  if (latest >= NOW_MS - D90_MS) return 'active'
+  if (latest >= NOW_MS - D180_MS) return 'lapsed'
+  return 'dormant'
 }
 
 // ─── Account Row ──────────────────────────────────────────────────────────────
@@ -477,13 +455,31 @@ function MarketDetailContent() {
   }, [activeBrandData])
 
   const summaryStats = useMemo(() => {
-    if (!activeBrandData) return { tracked: 0, buyingNow: 0, placements: 0 }
+    if (!activeBrandData) return { tracked: 0, buyingNow: 0, placements: 0, revenue90d: 0 }
     const tracked = activeBrandData.activityAccounts.length
     const buyingNow = activeBrandData.activityAccounts.filter(a =>
       (activeBrandData.ordersByAccount[a.id] ?? []).some(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
     ).length
     const placements = Object.values(activeBrandData.placementsByAccount).reduce((sum, pl) => sum + pl.length, 0)
-    return { tracked, buyingNow, placements }
+    const revenue90d = activeBrandData.activityAccounts.reduce((sum, a) => {
+      return sum + (activeBrandData.ordersByAccount[a.id] ?? [])
+        .filter(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
+        .reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
+    }, 0)
+    return { tracked, buyingNow, placements, revenue90d }
+  }, [activeBrandData])
+
+  const statusBreakdown = useMemo(() => {
+    if (!activeBrandData) return { active: 0, lapsed: 0, dormant: 0, untouched: 0 }
+    let active = 0, lapsed = 0, dormant = 0, untouched = 0
+    for (const a of activeBrandData.activityAccounts) {
+      const s = getAccountStatus(activeBrandData.ordersByAccount[a.id] ?? [])
+      if (s === 'active') active++
+      else if (s === 'lapsed') lapsed++
+      else if (s === 'dormant') dormant++
+      else untouched++
+    }
+    return { active, lapsed, dormant, untouched }
   }, [activeBrandData])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -837,6 +833,18 @@ function MarketDetailContent() {
                   </div>
                   <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.placements > 0 ? clientColor : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.placements > 0 ? 0.75 : 0.55 }}>Placements</div>
                 </div>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.buyingNow > 0 ? `${t.status.success}0c` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.buyingNow > 0 ? t.status.success + '30' : t.border.subtle}` }}>
+                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.buyingNow > 0 ? t.status.success : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: summaryStats.buyingNow > 0 ? `0 0 14px ${t.status.success}40` : 'none' }}>
+                    {isLoadingBrandData ? '·' : summaryStats.buyingNow}
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.buyingNow > 0 ? t.status.success : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.buyingNow > 0 ? 0.75 : 0.55 }}>Buying Now</div>
+                </div>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.revenue90d > 0 ? `${t.gold}09` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.revenue90d > 0 ? t.goldBorder : t.border.subtle}` }}>
+                  <div style={{ fontSize: summaryStats.revenue90d >= 10000 ? '16px' : '20px', fontWeight: '900', color: summaryStats.revenue90d > 0 ? t.gold : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, letterSpacing: '-0.02em', textShadow: summaryStats.revenue90d > 0 ? `0 0 14px ${t.gold}30` : 'none' }}>
+                    {isLoadingBrandData ? '·' : summaryStats.revenue90d > 0 ? formatCurrency(summaryStats.revenue90d) : '—'}
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.revenue90d > 0 ? t.gold : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.revenue90d > 0 ? 0.7 : 0.55 }}>Revenue 90d</div>
+                </div>
                 {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
                   <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)', gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <AlertTriangle size={11} color={t.status.danger} />
@@ -913,6 +921,16 @@ function MarketDetailContent() {
 
               {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && (
                 <>
+                  {/* Account lifecycle status bar */}
+                  <div style={{ marginBottom: '10px' }}>
+                    <StatusBar
+                      active={statusBreakdown.active}
+                      lapsed={statusBreakdown.lapsed}
+                      dormant={statusBreakdown.dormant}
+                      untouched={statusBreakdown.untouched}
+                    />
+                  </div>
+
                   {/* Sort + Filter bar */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '8px 12px', background: t.bg.elevated, border: `1px solid ${clientColor}15`, borderRadius: '8px', marginBottom: '10px' }}>
                     <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Sort</span>

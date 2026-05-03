@@ -120,7 +120,6 @@ export function TrendBadge({ delta }: { delta: number | null }) {
 
 // ─── Sparkline (SVG, no dependencies) ────────────────────────────────────────
 
-let _sparkId = 0
 export function Sparkline({
   data,
   width = 120,
@@ -132,7 +131,8 @@ export function Sparkline({
   height?: number
   color?: string
 }) {
-  const id = `sp${_sparkId++}`
+  const idRef = useRef(`sp-${Math.random().toString(36).slice(2, 8)}`)
+  const id = idRef.current
   const c = color ?? t.gold
   const valid = data.filter((v): v is number => v !== null)
   if (valid.length < 2) return <div style={{ width, height }} />
@@ -221,6 +221,8 @@ export function HealthRing({
   strokeWidth?: number
   showLabel?: boolean
 }) {
+  const uidRef = useRef(`hr-${Math.random().toString(36).slice(2, 8)}`)
+  const uid = uidRef.current
   const r = (size - strokeWidth) / 2
   const circ = 2 * Math.PI * r
   const pct = score !== null ? Math.min(score, 100) / 100 : 0
@@ -229,24 +231,120 @@ export function HealthRing({
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ position: 'absolute', inset: 0 }}>
+      <svg width={size} height={size} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+        <defs>
+          <filter id={`${uid}-glow`} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
         <circle cx={size / 2} cy={size / 2} r={r}
-          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={r}
-          fill="none" stroke={color} strokeWidth={strokeWidth}
-          strokeDasharray={`${dash} ${circ - dash}`}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+          fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={strokeWidth} />
+        {dash > 0.5 && (
+          <>
+            <circle cx={size / 2} cy={size / 2} r={r}
+              fill="none" stroke={color} strokeWidth={strokeWidth + 2}
+              strokeDasharray={`${dash} ${circ - dash}`}
+              strokeLinecap="round"
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              filter={`url(#${uid}-glow)`}
+              opacity={0.5}
+            />
+            <circle cx={size / 2} cy={size / 2} r={r}
+              fill="none" stroke={color} strokeWidth={strokeWidth}
+              strokeDasharray={`${dash} ${circ - dash}`}
+              strokeLinecap="round"
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          </>
+        )}
       </svg>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: size * 0.29, fontWeight: '900', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontSize: size * 0.29, fontWeight: '900', color, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: score !== null && score > 0 ? `0 0 ${size * 0.3}px ${color}60` : 'none' }}>
           {score !== null ? Math.round(score) : '—'}
         </span>
         {showLabel && score !== null && (
-          <span style={{ fontSize: size * 0.12, color, opacity: 0.6, fontWeight: '700', letterSpacing: '0.05em', marginTop: '1px' }}>
+          <span style={{ fontSize: size * 0.12, color, opacity: 0.55, fontWeight: '700', letterSpacing: '0.05em', marginTop: '1px' }}>
             HEALTH
           </span>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Compact Gauge (horizontal bar with target tick + gap label) ──────────────
+
+export function CompactGauge({
+  label, value, target, unit = '%', note,
+}: {
+  label: string; value: number | null; target: number; unit?: string; note?: string
+}) {
+  const pct = value !== null ? Math.min(100, Math.max(0, value)) : null
+  const targetPct = Math.min(100, Math.max(0, target))
+  const color = pct === null ? '#333'
+    : pct >= target ? t.status.success
+    : pct >= target * 0.7 ? t.status.warning
+    : t.status.danger
+  const gap = value !== null ? Math.round(value - target) : null
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+        <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.65, paddingTop: '3px' }}>{label}</span>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '18px', fontWeight: '900', color: pct !== null ? color : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: pct !== null && pct >= target ? `0 0 16px ${color}60` : 'none' }}>
+            {pct !== null ? `${Math.round(pct)}${unit}` : '—'}
+          </div>
+          {gap !== null && (
+            <div style={{ fontSize: '9px', fontWeight: '700', color: gap >= 0 ? t.status.success : t.status.danger, marginTop: '1px' }}>
+              {gap >= 0 ? '+' : ''}{gap}{unit} vs target
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{ position: 'relative', height: '4px', borderRadius: '2px', backgroundColor: 'rgba(255,255,255,0.06)' }}>
+        {pct !== null && pct > 0 && (
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, borderRadius: '2px', background: `linear-gradient(90deg, ${color}45 0%, ${color} 100%)`, boxShadow: `0 0 10px ${color}50` }} />
+        )}
+        <div style={{ position: 'absolute', left: `${targetPct}%`, top: '-4px', bottom: '-4px', width: '1px', backgroundColor: 'rgba(255,255,255,0.28)', transform: 'translateX(-50%)' }} />
+      </div>
+      {note && <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.45, marginTop: '5px' }}>{note}</div>}
+    </div>
+  )
+}
+
+// ─── Status Bar (stacked account lifecycle distribution) ─────────────────────
+
+export function StatusBar({
+  active, lapsed, dormant, untouched,
+}: {
+  active: number; lapsed: number; dormant: number; untouched: number
+}) {
+  const total = active + lapsed + dormant + untouched
+  if (total === 0) return null
+  const segs = [
+    { count: active,    color: t.status.success, label: 'Active',    glow: true },
+    { count: lapsed,    color: t.status.warning,  label: 'Lapsed',   glow: false },
+    { count: dormant,   color: t.status.danger,   label: 'Dormant',  glow: false },
+    { count: untouched, color: 'rgba(255,255,255,0.12)', label: 'No orders', glow: false },
+  ].filter(s => s.count > 0)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', height: '5px', borderRadius: '3px', overflow: 'hidden', gap: '1px' }}>
+        {segs.map((s, i) => (
+          <div key={i} style={{ flex: s.count, backgroundColor: s.color, boxShadow: s.glow ? `0 0 8px ${s.color}80` : 'none' }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '12px', marginTop: '7px', flexWrap: 'wrap' }}>
+        {segs.map((s, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: s.color, boxShadow: s.glow ? `0 0 6px ${s.color}` : 'none', flexShrink: 0 }} />
+            <span style={{ fontSize: '11px', fontWeight: '800', color: s.color === 'rgba(255,255,255,0.12)' ? t.text.muted : s.color, opacity: s.color === 'rgba(255,255,255,0.12)' ? 0.5 : 1, fontVariantNumeric: 'tabular-nums' }}>{s.count}</span>
+            <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.45 }}>{s.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   )
