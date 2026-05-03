@@ -111,6 +111,7 @@ const ownerNavGroups: NavGroup[] = [
     { href: '/growth',     label: 'Growth',      icon: TrendingUp },
   ]},
   { label: 'INTEL', items: [
+    { href: '/command',    label: 'Intelligence', icon: Zap },
     { href: '/analytics',  label: 'Analytics',   icon: BarChart3 },
     { href: '/calendar',   label: 'Calendar',    icon: Calendar },
     { href: '/contacts',   label: 'Contacts',    icon: UserCircle },
@@ -135,6 +136,7 @@ const repNavGroups: NavGroup[] = [
     { href: '/growth',     label: 'Growth',      icon: TrendingUp },
   ]},
   { label: 'INTEL', items: [
+    { href: '/command',    label: 'Intelligence', icon: Zap },
     { href: '/calendar',   label: 'Calendar',    icon: Calendar },
     { href: '/contacts',   label: 'Contacts',    icon: UserCircle },
   ]},
