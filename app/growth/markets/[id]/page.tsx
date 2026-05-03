@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Trash2, X, RefreshCw, AlertTriangle, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
+import { Pencil, Trash2, X, RefreshCw, AlertTriangle, ChevronRight } from 'lucide-react'
 import LayoutShell, { useToast } from '../../../layout-shell'
 import ConfirmModal from '../../../components/ConfirmModal'
 import { t, inputStyle, labelStyle, btnPrimary, btnSecondary } from '../../../lib/theme'
@@ -15,7 +15,7 @@ import {
   createZone,
   getLatestSnapshotsByZone, getZoneSnapshots,
 } from '../../../lib/concentric/data'
-import { HealthRing, Sparkline, healthColor, CompactGauge, StatusBar } from '../../_components'
+import { HealthRing, Sparkline, healthColor, CompactGauge } from '../../_components'
 import { formatCurrency } from '../../../lib/formatters'
 import type { Market, Zone, ZoneMetricSnapshot } from '../../../lib/concentric/types'
 import type { Account, Client } from '../../../lib/types'
@@ -109,24 +109,17 @@ function AccountRow({
   maxAmount: number
 }) {
   const [hovered, setHovered] = useState(false)
-  const lastOrderDate = latestOrderDate(orders)
-  const lastOrderMs = lastOrderDate ? new Date(lastOrderDate).getTime() : 0
+  const status = getAccountStatus(orders)
   const orders90d = orders.filter(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
   const amount90d = orders90d.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
+  const lastOrderDate = latestOrderDate(orders)
   const activePlacements = (placements ?? []).length
   const barPct = maxAmount > 0 ? Math.round((amount90d / maxAmount) * 100) : 0
-  const daysSinceVisit = lastVisit ? daysSince(lastVisit.visited_at) : null
 
-  const signalColor = lastOrderMs >= NOW_MS - D90_MS ? t.status.success
-    : lastOrderMs >= NOW_MS - D180_MS ? t.status.warning
-    : lastOrderMs > 0 ? t.status.danger
-    : '#444'
-
-  const lastActivityStr = lastOrderDate
-    ? relativeDate(lastOrderDate)
-    : daysSinceVisit !== null
-      ? `visited ${relativeDate(lastVisit!.visited_at)}`
-      : '—'
+  const signalColor = status === 'active' ? t.status.success
+    : status === 'lapsed' ? t.status.warning
+    : status === 'dormant' ? t.status.danger
+    : 'rgba(255,255,255,0.12)'
 
   return (
     <Link href={`/accounts/${account.id}`} style={{ textDecoration: 'none', display: 'block' }}>
@@ -134,70 +127,74 @@ function AccountRow({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          padding: '10px 14px 8px',
-          borderRadius: '9px',
-          backgroundColor: hovered ? t.bg.elevated : 'transparent',
-          border: `1px solid ${hovered ? signalColor + '30' : t.border.subtle}`,
-          borderLeft: `3px solid ${signalColor}`,
+          padding: '9px 12px 7px',
+          borderRadius: '8px',
+          backgroundColor: hovered ? 'rgba(255,255,255,0.025)' : 'transparent',
+          borderLeft: `2px solid ${signalColor}`,
           cursor: 'pointer',
-          transition: 'background 100ms, border-color 100ms',
-          boxShadow: hovered ? `0 0 20px ${signalColor}08` : 'none',
+          transition: 'background 80ms',
         }}
       >
-        {/* Main row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', alignItems: 'center', gap: '16px' }}>
-          {/* Name + signal */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-            <span style={{
-              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-              backgroundColor: signalColor,
-              boxShadow: lastOrderMs >= NOW_MS - D90_MS ? `0 0 7px ${signalColor}` : 'none',
-            }} />
-            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {account.name}
-            </span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px 80px', alignItems: 'center', gap: '12px' }}>
+          {/* Name + meta */}
+          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, backgroundColor: signalColor, boxShadow: status === 'active' ? `0 0 6px ${signalColor}` : 'none' }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '13px', fontWeight: status === 'untouched' ? '500' : '700', color: status === 'untouched' ? t.text.muted : t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {account.name}
+              </div>
+              <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.35, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{account.account_type === 'on_premise' ? 'On-Prem' : account.account_type === 'off_premise' ? 'Off-Prem' : ''}</span>
+                {activePlacements > 0 && <span style={{ color: clientColor, opacity: 0.9, fontWeight: '700' }}>{activePlacements} placed</span>}
+              </div>
+            </div>
           </div>
 
-          {/* Placements */}
-          <span style={{
-            fontSize: '11px', whiteSpace: 'nowrap', textAlign: 'right',
-            color: activePlacements > 0 ? clientColor : '#333',
-            fontWeight: activePlacements > 0 ? '700' : '400',
-            opacity: activePlacements > 0 ? 1 : 0.5,
-          }}>
-            {activePlacements > 0 ? `${activePlacements} placed` : '—'}
-          </span>
+          {/* Primary metric */}
+          <div style={{ textAlign: 'right' }}>
+            {status === 'active' ? (
+              <>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: t.status.success, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 12px ${t.status.success}30` }}>
+                  {amount90d > 0 ? formatCurrency(amount90d) : `${orders90d.length} order${orders90d.length !== 1 ? 's' : ''}`}
+                </div>
+                <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>90d revenue</div>
+              </>
+            ) : lastOrderDate ? (
+              <>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: signalColor }}>{relativeDate(lastOrderDate)}</div>
+                <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>last order</div>
+              </>
+            ) : lastVisit ? (
+              <>
+                <div style={{ fontSize: '12px', color: t.text.muted }}>{relativeDate(lastVisit.visited_at)}</div>
+                <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>last visit</div>
+              </>
+            ) : (
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.1)' }}>—</div>
+            )}
+          </div>
 
-          {/* 90d revenue */}
-          <span style={{
-            fontSize: '12px', whiteSpace: 'nowrap', textAlign: 'right', minWidth: '72px',
-            fontWeight: orders90d.length > 0 ? '800' : '400',
-            fontVariantNumeric: 'tabular-nums',
-            color: orders90d.length > 0 ? t.text.primary : '#333',
-            opacity: orders90d.length > 0 ? 1 : 0.4,
-            textShadow: orders90d.length > 0 && amount90d > 0 ? `0 0 14px ${signalColor}30` : 'none',
-          }}>
-            {orders90d.length > 0 && amount90d > 0 ? formatCurrency(amount90d) : orders90d.length > 0 ? `${orders90d.length} order${orders90d.length !== 1 ? 's' : ''}` : 'no orders 90d'}
-          </span>
-
-          {/* Last activity */}
-          <span style={{
-            fontSize: '11px', color: t.text.muted, whiteSpace: 'nowrap', textAlign: 'right', minWidth: '72px',
-            opacity: lastOrderDate ? 0.9 : 0.4,
-          }}>
-            {lastActivityStr}
-          </span>
+          {/* Secondary metric */}
+          <div style={{ textAlign: 'right' }}>
+            {status === 'active' ? (
+              <>
+                <div style={{ fontSize: '11px', color: t.text.muted }}>{relativeDate(lastOrderDate)}</div>
+                <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>last order</div>
+              </>
+            ) : lastVisit ? (
+              <>
+                <div style={{ fontSize: '11px', color: t.text.muted }}>{relativeDate(lastVisit.visited_at)}</div>
+                <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>last visit</div>
+              </>
+            ) : (
+              <div style={{ fontSize: '11px', color: '#2a2a2a' }}>—</div>
+            )}
+          </div>
         </div>
 
-        {/* Activity bar */}
-        {barPct > 0 && (
-          <div style={{ marginTop: '7px', position: 'relative', height: '2px', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '1px' }}>
-            <div style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${barPct}%`, borderRadius: '1px',
-              backgroundColor: signalColor, opacity: 0.6,
-              boxShadow: `0 0 6px ${signalColor}`,
-            }} />
+        {status === 'active' && barPct > 0 && (
+          <div style={{ marginTop: '6px', marginLeft: '14px', height: '2px', borderRadius: '1px', backgroundColor: 'rgba(255,255,255,0.04)', position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${barPct}%`, borderRadius: '1px', backgroundColor: t.status.success, opacity: 0.65, boxShadow: `0 0 6px ${t.status.success}` }} />
           </div>
         )}
       </div>
@@ -223,8 +220,7 @@ function MarketDetailContent() {
   const [loadingSparklineIds, setLoadingSparklineIds] = useState<Set<string>>(new Set())
   const [computingSlugs, setComputingSlugs] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
-  const [accountSort, setAccountSort] = useState<'order' | 'revenue' | 'name' | 'placements'>('order')
-  const [accountFilter, setAccountFilter] = useState<'all' | 'ordered' | 'placed'>('all')
+  const [activeSegment, setActiveSegment] = useState<'all' | 'active' | 'lapsed' | 'dormant' | 'untouched'>('all')
 
   const [activeClientTab, setActiveClientTab] = useState<string>('')
   const autoRecomputedSlugs = useRef<Set<string>>(new Set())
@@ -409,40 +405,24 @@ function MarketDetailContent() {
   const isComputing = computingSlugs.has(activeClientTab)
   const activeBrandData = activeClientTab ? brandDataBySlug[activeClientTab] ?? null : null
 
-  const sortedAccounts = useMemo(() => {
-    if (!activeBrandData) return []
-    let list = [...activeBrandData.activityAccounts]
-
-    // Filter
-    if (accountFilter === 'ordered') {
-      list = list.filter(a => (activeBrandData.ordersByAccount[a.id] ?? []).some(o =>
-        new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS
-      ))
-    } else if (accountFilter === 'placed') {
-      list = list.filter(a => (activeBrandData.placementsByAccount[a.id] ?? []).length > 0)
+  const groupedAccounts = useMemo(() => {
+    const empty = { active: [] as Account[], lapsed: [] as Account[], dormant: [] as Account[], untouched: [] as Account[] }
+    if (!activeBrandData) return empty
+    const groups = { active: [] as Account[], lapsed: [] as Account[], dormant: [] as Account[], untouched: [] as Account[] }
+    for (const a of activeBrandData.activityAccounts) {
+      groups[getAccountStatus(activeBrandData.ordersByAccount[a.id] ?? [])].push(a)
     }
-
-    // Sort
-    return list.sort((a, b) => {
-      if (accountSort === 'name') return a.name.localeCompare(b.name)
-      if (accountSort === 'placements') {
-        return (activeBrandData.placementsByAccount[b.id] ?? []).length - (activeBrandData.placementsByAccount[a.id] ?? []).length
-      }
-      if (accountSort === 'revenue') {
-        const rev = (acc: Account) => (activeBrandData.ordersByAccount[acc.id] ?? [])
-          .filter(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
-          .reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
-        return rev(b) - rev(a)
-      }
-      // Default: most recent order first
-      const aLast = latestOrderDate(activeBrandData.ordersByAccount[a.id] ?? [])
-      const bLast = latestOrderDate(activeBrandData.ordersByAccount[b.id] ?? [])
-      if (aLast && bLast) return bLast > aLast ? 1 : -1
-      if (aLast) return -1
-      if (bLast) return 1
-      return (activeBrandData.placementsByAccount[b.id] ?? []).length - (activeBrandData.placementsByAccount[a.id] ?? []).length
-    })
-  }, [activeBrandData, accountSort, accountFilter])
+    const rev90 = (a: Account) => (activeBrandData.ordersByAccount[a.id] ?? [])
+      .filter(o => new Date(o.sent_at || o.created_at).getTime() >= NOW_MS - D90_MS)
+      .reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
+    const lastOrderMs = (a: Account) => { const d = latestOrderDate(activeBrandData.ordersByAccount[a.id] ?? []); return d ? new Date(d).getTime() : 0 }
+    const lastVisitMs = (a: Account) => { const v = activeBrandData.lastVisitByAccount[a.id]; return v ? new Date(v.visited_at).getTime() : 0 }
+    groups.active.sort((a, b) => rev90(b) - rev90(a))
+    groups.lapsed.sort((a, b) => lastOrderMs(a) - lastOrderMs(b))
+    groups.dormant.sort((a, b) => lastOrderMs(a) - lastOrderMs(b))
+    groups.untouched.sort((a, b) => lastVisitMs(b) - lastVisitMs(a))
+    return groups
+  }, [activeBrandData])
 
   // Per-account 90d amounts for activity bar scaling
   const maxAmount90d = useMemo(() => {
@@ -765,19 +745,19 @@ function MarketDetailContent() {
         {activeClientTab && (
           <div style={{ display: 'flex', minHeight: 'calc(100vh - 116px)' }}>
 
-            {/* ── Left Sidebar ────────────────────────────────────────────────── */}
+            {/* ── Left Sidebar ── */}
             <div style={{
-              width: '264px', flexShrink: 0,
+              width: '268px', flexShrink: 0,
               borderRight: `1px solid ${t.border.subtle}`,
               background: `radial-gradient(ellipse at top, ${clientColor}08 0%, transparent 55%), ${t.bg.elevated}`,
               position: 'sticky', top: 0, alignSelf: 'flex-start',
               maxHeight: 'calc(100vh - 116px)', overflowY: 'auto',
-              padding: '20px 18px',
-              display: 'flex', flexDirection: 'column', gap: '18px',
+              padding: '18px 16px',
+              display: 'flex', flexDirection: 'column', gap: '16px',
             }}>
 
               {/* Brand identity */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '16px', borderBottom: `1px solid ${clientColor}20` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '14px', borderBottom: `1px solid ${clientColor}20` }}>
                 {(() => {
                   const logo = activeClient ? clientLogoUrl(activeClient) : null
                   return logo
@@ -786,101 +766,96 @@ function MarketDetailContent() {
                 })()}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '14px', fontWeight: '800', color: clientColor, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeClient?.name}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{geoParts.length > 0 ? geoParts.join(' · ') : market.name}</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{geoParts.join(' · ') || market.name}</div>
                 </div>
               </div>
 
-              {/* Health ring + cases */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: `1px solid ${clientColor}18` }}>
-                <div style={{ flexShrink: 0 }}>
-                  <HealthRing score={activeSnap?.health_score ?? null} size={64} strokeWidth={6} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.6, marginBottom: '3px' }}>Cases · 90d</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                    <span style={{ fontSize: '32px', fontWeight: '900', color: activeSnap?.total_cases_90d ? t.text.primary : '#2a2a2a', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}>
-                      {activeSnap?.total_cases_90d ?? '—'}
-                    </span>
-                    {trendLabel && (
-                      <span style={{ fontSize: '12px', fontWeight: '800', color: trendColor, textShadow: `0 0 10px ${trendColor}50` }}>
-                        {trendPct && trendPct > 5 ? <TrendingUp size={11} style={{ display: 'inline', marginRight: 1 }} /> : trendPct && trendPct < -5 ? <TrendingDown size={11} style={{ display: 'inline', marginRight: 1 }} /> : null}
-                        {trendLabel}
+              {/* Revenue hero */}
+              {!isLoadingBrandData && (
+                <div style={{ padding: '16px 14px', borderRadius: '12px', background: `linear-gradient(135deg, ${t.gold}0e 0%, transparent 55%), rgba(0,0,0,0.28)`, border: `1px solid ${t.goldBorder}` }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.gold, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.65, marginBottom: '5px' }}>Revenue · 90 Days</div>
+                  <div style={{ fontSize: summaryStats.revenue90d >= 10000 ? '28px' : '34px', fontWeight: '900', color: summaryStats.revenue90d > 0 ? t.gold : '#2a2a2a', letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: summaryStats.revenue90d > 0 ? `0 0 30px ${t.gold}40` : 'none' }}>
+                    {summaryStats.revenue90d > 0 ? formatCurrency(summaryStats.revenue90d) : '—'}
+                  </div>
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${t.gold}18`, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '900', color: summaryStats.buyingNow > 0 ? t.status.success : '#333', fontVariantNumeric: 'tabular-nums', textShadow: summaryStats.buyingNow > 0 ? `0 0 10px ${t.status.success}40` : 'none' }}>{summaryStats.buyingNow}</span>
+                    <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.5 }}>of {summaryStats.tracked} buying</span>
+                    {summaryStats.buyingNow > 0 && summaryStats.tracked > 0 && (
+                      <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: '800', color: t.status.success, textShadow: `0 0 10px ${t.status.success}30` }}>
+                        {Math.round(summaryStats.buyingNow / summaryStats.tracked * 100)}%
                       </span>
                     )}
                   </div>
-                  {activeSnap?.cases_prior_90d != null && activeSnap.cases_prior_90d > 0 && (
-                    <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.4, marginTop: '2px' }}>vs {activeSnap.cases_prior_90d} cs prior 90d</div>
-                  )}
-                  {activeSparklines.length > 1 && (
-                    <div style={{ marginTop: '5px' }}>
-                      <Sparkline data={activeSparklines.map(s => s.health_score)} width={80} height={16} color={healthColor(activeSnap?.health_score ?? null)} />
+                  {summaryStats.placements > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '10px', color: clientColor, opacity: 0.8, fontWeight: '600' }}>
+                      {summaryStats.placements} active placement{summaryStats.placements !== 1 ? 's' : ''}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
 
-              {/* Quick stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.22)', border: `1px solid ${t.border.subtle}` }}>
-                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.tracked > 0 ? t.text.primary : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                    {isLoadingBrandData ? '·' : summaryStats.tracked}
-                  </div>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: 0.55 }}>Accounts</div>
+              {/* Account pipeline — clickable, filters the right panel */}
+              {!isLoadingBrandData && summaryStats.tracked > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.4, marginBottom: '4px' }}>Account Pipeline</div>
+                  {([
+                    { count: statusBreakdown.active,   label: 'Active buyers',        color: t.status.success,           glow: true,  seg: 'active'    as const },
+                    { count: statusBreakdown.lapsed,   label: 'Need re-engagement',   color: t.status.warning,            glow: false, seg: 'lapsed'    as const },
+                    { count: statusBreakdown.dormant,  label: 'Dormant >180d',        color: t.status.danger,             glow: false, seg: 'dormant'   as const },
+                    { count: statusBreakdown.untouched,label: 'Never ordered',        color: 'rgba(255,255,255,0.25)',    glow: false, seg: 'untouched' as const },
+                  ]).map(row => (
+                    <button key={row.seg} onClick={() => setActiveSegment(row.seg)} style={{
+                      background: activeSegment === row.seg ? `${row.color}10` : 'none',
+                      border: `1px solid ${activeSegment === row.seg ? row.color + '30' : 'transparent'}`,
+                      borderRadius: '7px', cursor: 'pointer', width: '100%', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '7px 8px', transition: 'background 100ms',
+                    }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: row.color, boxShadow: row.glow && row.count > 0 ? `0 0 6px ${row.color}` : 'none', flexShrink: 0 }} />
+                      <span style={{ fontSize: '20px', fontWeight: '900', color: row.count > 0 ? row.color : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, minWidth: '24px', textShadow: row.glow && row.count > 0 ? `0 0 10px ${row.color}50` : 'none' }}>{row.count}</span>
+                      <span style={{ fontSize: '10px', color: row.count > 0 ? t.text.secondary : t.text.muted, opacity: row.count > 0 ? 0.75 : 0.3 }}>{row.label}</span>
+                    </button>
+                  ))}
                 </div>
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.placements > 0 ? `${clientColor}10` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.placements > 0 ? clientColor + '30' : t.border.subtle}` }}>
-                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.placements > 0 ? clientColor : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: summaryStats.placements > 0 ? `0 0 16px ${clientColor}40` : 'none' }}>
-                    {isLoadingBrandData ? '·' : summaryStats.placements}
-                  </div>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.placements > 0 ? clientColor : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.placements > 0 ? 0.75 : 0.55 }}>Placements</div>
-                </div>
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.buyingNow > 0 ? `${t.status.success}0c` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.buyingNow > 0 ? t.status.success + '30' : t.border.subtle}` }}>
-                  <div style={{ fontSize: '24px', fontWeight: '900', color: summaryStats.buyingNow > 0 ? t.status.success : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: summaryStats.buyingNow > 0 ? `0 0 14px ${t.status.success}40` : 'none' }}>
-                    {isLoadingBrandData ? '·' : summaryStats.buyingNow}
-                  </div>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.buyingNow > 0 ? t.status.success : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.buyingNow > 0 ? 0.75 : 0.55 }}>Buying Now</div>
-                </div>
-                <div style={{ padding: '10px 12px', borderRadius: '8px', background: summaryStats.revenue90d > 0 ? `${t.gold}09` : 'rgba(0,0,0,0.22)', border: `1px solid ${summaryStats.revenue90d > 0 ? t.goldBorder : t.border.subtle}` }}>
-                  <div style={{ fontSize: summaryStats.revenue90d >= 10000 ? '16px' : '20px', fontWeight: '900', color: summaryStats.revenue90d > 0 ? t.gold : '#2a2a2a', fontVariantNumeric: 'tabular-nums', lineHeight: 1, letterSpacing: '-0.02em', textShadow: summaryStats.revenue90d > 0 ? `0 0 14px ${t.gold}30` : 'none' }}>
-                    {isLoadingBrandData ? '·' : summaryStats.revenue90d > 0 ? formatCurrency(summaryStats.revenue90d) : '—'}
-                  </div>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: summaryStats.revenue90d > 0 ? t.gold : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '4px', opacity: summaryStats.revenue90d > 0 ? 0.7 : 0.55 }}>Revenue 90d</div>
-                </div>
-                {activeSnap?.accounts_lost != null && activeSnap.accounts_lost > 0 && (
-                  <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)', gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle size={11} color={t.status.danger} />
-                    <span style={{ fontSize: '18px', fontWeight: '900', color: t.status.warning, fontVariantNumeric: 'tabular-nums' }}>{activeSnap.accounts_lost}</span>
-                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.status.warning, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.8 }}>Went Quiet</span>
-                  </div>
-                )}
-              </div>
+              )}
 
-              {/* Performance gauges */}
+              {/* Health + Cases (secondary — only shown when snapshot exists) */}
+              {activeSnap && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)', border: `1px solid ${clientColor}15` }}>
+                  <HealthRing score={activeSnap.health_score ?? null} size={52} strokeWidth={5} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5, marginBottom: '2px' }}>Cases · 90d</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontSize: '26px', fontWeight: '900', color: activeSnap.total_cases_90d ? t.text.primary : '#2a2a2a', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+                        {activeSnap.total_cases_90d ?? '—'}
+                      </span>
+                      {trendLabel && <span style={{ fontSize: '12px', fontWeight: '800', color: trendColor, textShadow: `0 0 8px ${trendColor}40` }}>{trendLabel}</span>}
+                    </div>
+                    {activeSparklines.length > 1 && (
+                      <div style={{ marginTop: '4px' }}>
+                        <Sparkline data={activeSparklines.map(s => s.health_score)} width={80} height={14} color={healthColor(activeSnap?.health_score ?? null)} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Computed performance gauges */}
               {activeSnap ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingTop: '16px', borderTop: `1px solid ${t.border.subtle}` }}>
-                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.4 }}>Performance</div>
-                  <CompactGauge
-                    label="Activity Rate"
-                    value={activeSnap.activity_rate_pct ?? null}
-                    target={market.default_reach_threshold}
-                    note={activeSnap.active_accounts != null && activeSnap.total_accounts != null
-                      ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered`
-                      : undefined}
-                  />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingTop: '14px', borderTop: `1px solid ${t.border.subtle}` }}>
+                  <div style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.4 }}>Computed Metrics</div>
+                  <CompactGauge label="Activity Rate" value={activeSnap.activity_rate_pct ?? null} target={market.default_reach_threshold}
+                    note={activeSnap.active_accounts != null && activeSnap.total_accounts != null ? `${activeSnap.active_accounts} of ${activeSnap.total_accounts} ordered` : undefined} />
                   <CompactGauge label="Reorder Rate" value={activeSnap.retention_pct ?? null} target={market.default_retention_threshold} />
-                  <CompactGauge
-                    label="Velocity Index"
-                    value={activeSnap.velocity_index ?? null}
-                    target={100}
-                    unit=""
-                    note={activeSnap.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined}
-                  />
+                  <CompactGauge label="Velocity Index" value={activeSnap.velocity_index ?? null} target={100} unit=""
+                    note={activeSnap.velocity != null ? `${activeSnap.velocity.toFixed(1)} cs/acct/mo` : undefined} />
                 </div>
               ) : !isComputing && activeBrandData && activeBrandData.activityAccounts.length > 0 ? (
-                <div style={{ padding: '13px', borderRadius: '9px', border: `1px dashed ${clientColor}25`, background: `${clientColor}04` }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: t.text.secondary, marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <AlertTriangle size={11} color={t.text.muted} style={{ opacity: 0.5 }} /> No analytics yet
+                <div style={{ padding: '12px', borderRadius: '9px', border: `1px dashed ${clientColor}25`, background: `${clientColor}04` }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: t.text.secondary, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={11} color={t.text.muted} style={{ opacity: 0.5 }} /> No computed metrics
                   </div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.55 }}>Click Refresh to compute performance metrics.</div>
+                  <div style={{ fontSize: '10px', color: t.text.muted, opacity: 0.55 }}>Tap Refresh to score this territory from CRM data.</div>
                 </div>
               ) : null}
 
@@ -898,91 +873,131 @@ function MarketDetailContent() {
               </div>
             </div>
 
-            {/* ── Right Panel ─────────────────────────────────────────────────── */}
-            <div style={{ flex: 1, minWidth: 0, padding: '16px 20px 60px', overflowY: 'auto' }}>
+            {/* ── Right Panel ── */}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
 
               {isLoadingBrandData && (
-                <div style={{ padding: '60px 24px', textAlign: 'center' }}>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px' }}>
                   <span style={{ fontSize: '12px', color: t.text.muted }}>Loading account data…</span>
                 </div>
               )}
 
               {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) === 0 && (
-                <div style={{ padding: '48px 24px', textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, background: `radial-gradient(ellipse at center, ${clientColor}04 0%, transparent 70%)`, marginTop: '8px' }}>
-                  <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No activity for this brand in this territory yet.</div>
-                  <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
-                    {hasGeoTags
-                      ? 'Log visits or orders at accounts in this area to start monitoring.'
-                      : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to auto-populate accounts from your CRM.</>
-                    }
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
+                  <div style={{ textAlign: 'center', borderRadius: '12px', border: `1px dashed ${t.border.default}`, padding: '48px 40px', background: `radial-gradient(ellipse at center, ${clientColor}04 0%, transparent 70%)` }}>
+                    <div style={{ fontSize: '13px', color: t.text.muted, marginBottom: '6px' }}>No CRM activity for {activeClient?.name} in this territory.</div>
+                    <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6 }}>
+                      {hasGeoTags
+                        ? 'Log visits or orders at accounts in this area to start monitoring.'
+                        : <><button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.gold, fontWeight: '600', padding: 0, fontSize: '11px' }}>Add cities or zip codes</button> to geo-match accounts.</>}
+                    </div>
                   </div>
                 </div>
               )}
 
               {!isLoadingBrandData && (activeBrandData?.activityAccounts.length ?? 0) > 0 && (
                 <>
-                  {/* Account lifecycle status bar */}
-                  <div style={{ marginBottom: '10px' }}>
-                    <StatusBar
-                      active={statusBreakdown.active}
-                      lapsed={statusBreakdown.lapsed}
-                      dormant={statusBreakdown.dormant}
-                      untouched={statusBreakdown.untouched}
-                    />
-                  </div>
-
-                  {/* Sort + Filter bar */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '8px 12px', background: t.bg.elevated, border: `1px solid ${clientColor}15`, borderRadius: '8px', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Sort</span>
+                  {/* ── Segment navigation ── */}
+                  <div style={{ display: 'flex', borderBottom: `1px solid ${t.border.subtle}`, overflowX: 'auto', flexShrink: 0 }}>
                     {([
-                      { key: 'order', label: 'Latest Order' },
-                      { key: 'revenue', label: '90d Revenue' },
-                      { key: 'placements', label: 'Placements' },
-                      { key: 'name', label: 'A–Z' },
-                    ] as { key: typeof accountSort; label: string }[]).map(s => (
-                      <button key={s.key} onClick={() => setAccountSort(s.key)} style={{ padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', border: `1px solid ${accountSort === s.key ? clientColor + '60' : t.border.subtle}`, backgroundColor: accountSort === s.key ? clientColor + '18' : 'transparent', color: accountSort === s.key ? clientColor : t.text.muted }}>{s.label}</button>
-                    ))}
-                    <div style={{ width: '1px', height: '14px', backgroundColor: t.border.subtle, margin: '0 2px' }} />
-                    <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>Filter</span>
-                    {([
-                      { key: 'all', label: 'All' },
-                      { key: 'ordered', label: 'Ordered 90d' },
-                      { key: 'placed', label: 'Has Placement' },
-                    ] as { key: typeof accountFilter; label: string }[]).map(f => (
-                      <button key={f.key} onClick={() => setAccountFilter(f.key)} style={{ padding: '3px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600', cursor: 'pointer', border: `1px solid ${accountFilter === f.key ? clientColor + '60' : t.border.subtle}`, backgroundColor: accountFilter === f.key ? clientColor + '18' : 'transparent', color: accountFilter === f.key ? clientColor : t.text.muted }}>{f.label}</button>
-                    ))}
-                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: t.text.muted, opacity: 0.4 }}>
-                      {sortedAccounts.length} of {activeBrandData?.activityAccounts.length ?? 0}
-                    </span>
+                      { key: 'all'       as const, label: 'All',       count: summaryStats.tracked,       color: t.text.muted,                 sub: null },
+                      { key: 'active'    as const, label: 'Buying',    count: statusBreakdown.active,     color: t.status.success,             sub: statusBreakdown.active > 0 ? formatCurrency(summaryStats.revenue90d) : null },
+                      { key: 'lapsed'    as const, label: 'Lapsed',    count: statusBreakdown.lapsed,     color: t.status.warning,             sub: '90–180d silent' },
+                      { key: 'dormant'   as const, label: 'Dormant',   count: statusBreakdown.dormant,    color: t.status.danger,              sub: '>180d silent' },
+                      { key: 'untouched' as const, label: 'No Orders', count: statusBreakdown.untouched,  color: 'rgba(255,255,255,0.35)',      sub: 'convert' },
+                    ]).map(seg => {
+                      const isActive = activeSegment === seg.key
+                      const hasData = seg.count > 0
+                      return (
+                        <button key={seg.key} onClick={() => setActiveSegment(seg.key)} style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                          padding: '12px 22px 10px', background: 'none', border: 'none', cursor: 'pointer',
+                          borderBottom: isActive ? `2px solid ${seg.color}` : '2px solid transparent',
+                          opacity: isActive ? 1 : hasData ? 0.5 : 0.2,
+                          transition: 'opacity 150ms', minWidth: '76px', flexShrink: 0,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                            <span style={{ fontSize: '22px', fontWeight: '900', color: isActive ? seg.color : (hasData ? seg.color : '#2a2a2a'), fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: isActive && hasData ? `0 0 18px ${seg.color}55` : 'none' }}>
+                              {seg.count}
+                            </span>
+                            <span style={{ fontSize: '9px', fontWeight: '700', color: isActive ? seg.color : t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: isActive ? 0.7 : 0.4 }}>
+                              {seg.label}
+                            </span>
+                          </div>
+                          {seg.sub != null && (
+                            <div style={{ fontSize: '10px', color: isActive ? seg.color : t.text.muted, opacity: isActive ? 0.65 : 0.3, marginTop: '2px', whiteSpace: 'nowrap' }}>
+                              {seg.sub}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
 
-                  {/* Column headers */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', gap: '16px', padding: '0 14px 5px 27px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.5 }}>
-                    <span>Account</span>
-                    <span style={{ textAlign: 'right' }}>Placements</span>
-                    <span style={{ textAlign: 'right', minWidth: '72px' }}>90-Day Revenue</span>
-                    <span style={{ textAlign: 'right', minWidth: '72px' }}>Last Activity</span>
-                  </div>
+                  {/* ── Account groups ── */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 60px' }}>
+                    {(() => {
+                      const SEG_CONFIG = {
+                        active:    { label: 'ACTIVE BUYERS',       color: t.status.success,          sub: 'Ordered in the last 90 days' },
+                        lapsed:    { label: 'NEEDS RE-ENGAGEMENT', color: t.status.warning,           sub: 'Last order 90–180 days ago' },
+                        dormant:   { label: 'DORMANT',             color: t.status.danger,            sub: 'No orders in 180+ days' },
+                        untouched: { label: 'CONVERSION PIPELINE', color: 'rgba(255,255,255,0.3)',   sub: 'Visited but never ordered' },
+                      }
+                      const visibleSegs: Array<'active' | 'lapsed' | 'dormant' | 'untouched'> =
+                        activeSegment === 'all'
+                          ? (['active', 'lapsed', 'dormant', 'untouched'] as const).filter(s => groupedAccounts[s].length > 0)
+                          : groupedAccounts[activeSegment].length > 0 ? [activeSegment] : []
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {sortedAccounts.map(acct => (
-                      <AccountRow
-                        key={acct.id}
-                        account={acct}
-                        orders={activeBrandData!.ordersByAccount[acct.id] ?? []}
-                        lastVisit={activeBrandData!.lastVisitByAccount[acct.id]}
-                        placements={activeBrandData!.placementsByAccount[acct.id]}
-                        clientColor={clientColor}
-                        maxAmount={maxAmount90d}
-                      />
-                    ))}
-                  </div>
+                      if (visibleSegs.length === 0) {
+                        return (
+                          <div style={{ padding: '40px', textAlign: 'center', fontSize: '12px', color: t.text.muted, opacity: 0.5 }}>
+                            No accounts in this segment.
+                          </div>
+                        )
+                      }
 
-                  {sortedAccounts.length === 0 && (
-                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: t.text.muted, opacity: 0.6 }}>
-                      No accounts match this filter.
-                    </div>
-                  )}
+                      return visibleSegs.map(seg => {
+                        const accounts = groupedAccounts[seg]
+                        const cfg = SEG_CONFIG[seg]
+                        const segRev = seg === 'active' ? summaryStats.revenue90d : 0
+                        return (
+                          <div key={seg} style={{ marginBottom: '24px' }}>
+                            {/* Section header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', paddingBottom: '8px', borderBottom: `1px solid ${cfg.color}22` }}>
+                              <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: cfg.color, boxShadow: seg === 'active' ? `0 0 7px ${cfg.color}` : 'none', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '10px', fontWeight: '800', color: cfg.color, letterSpacing: '0.1em' }}>{cfg.label}</span>
+                                <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.4, marginLeft: '8px' }}>{cfg.sub}</span>
+                              </div>
+                              <span style={{ fontSize: '10px', color: t.text.muted, opacity: 0.45, flexShrink: 0 }}>{accounts.length} acct{accounts.length !== 1 ? 's' : ''}</span>
+                              {segRev > 0 && <span style={{ fontSize: '13px', fontWeight: '800', color: t.status.success, textShadow: `0 0 10px ${t.status.success}30`, flexShrink: 0 }}>{formatCurrency(segRev)}</span>}
+                            </div>
+
+                            {/* Column headers */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px 80px', gap: '12px', padding: '0 12px 5px 22px', fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.35 }}>
+                              <span>Account</span>
+                              <span style={{ textAlign: 'right' }}>{seg === 'active' ? '90d Revenue' : seg === 'untouched' ? 'Last Visit' : 'Last Order'}</span>
+                              <span style={{ textAlign: 'right' }}>{seg === 'active' ? 'Last Order' : 'Last Visit'}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              {accounts.map(acct => (
+                                <AccountRow
+                                  key={acct.id}
+                                  account={acct}
+                                  orders={activeBrandData!.ordersByAccount[acct.id] ?? []}
+                                  lastVisit={activeBrandData!.lastVisitByAccount[acct.id]}
+                                  placements={activeBrandData!.placementsByAccount[acct.id]}
+                                  clientColor={clientColor}
+                                  maxAmount={maxAmount90d}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
                 </>
               )}
             </div>
