@@ -98,8 +98,8 @@ function resolveComm(o: OrderRow, rates: Record<string, number>): number {
 
 // ─── HeroTile ─────────────────────────────────────────────────────────────────
 
-function HeroTile({ label, value, sub, trend, color, loading }: {
-  label: string; value: string; sub?: string
+function HeroTile({ label, value, sub, desc, trend, color, loading }: {
+  label: string; value: string; sub?: string; desc?: string
   trend?: number | null; color?: string; loading?: boolean
 }) {
   const c = color ?? t.gold
@@ -137,6 +137,9 @@ function HeroTile({ label, value, sub, trend, color, loading }: {
           </span>
         )}
       </div>
+      {desc && !loading && (
+        <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.28, lineHeight: 1.4, marginTop: '1px' }}>{desc}</div>
+      )}
     </div>
   )
 }
@@ -718,9 +721,10 @@ function CommandContent() {
   const [repId, setRepId]         = useState('all')
   const [panel, setPanel]         = useState<'revenue' | 'visits' | 'placements' | 'reps'>('revenue')
   const [bucket, setBucket]       = useState<string | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [geocoding, setGeocoding] = useState(false)
-  const [mapBounds, setMapBounds] = useState<MapBounds>(null)
+  const [loading, setLoading]         = useState(true)
+  const [geocoding, setGeocoding]     = useState(false)
+  const [geocodeMsg, setGeocodeMsg]   = useState<string | null>(null)
+  const [mapBounds, setMapBounds]     = useState<MapBounds>(null)
 
   const [clients,    setClients]    = useState<Client[]>([])
   const [accounts,   setAccounts]   = useState<AcctRow[]>([])
@@ -741,7 +745,7 @@ function CommandContent() {
         getClients(),
         sb.from('accounts').select('id, name, address, account_type, priority, lat, lng').order('name').limit(2000),
         sb.from('purchase_orders')
-          .select('id, account_id, client_slug, status, total_amount, sent_at, created_at, commission_amount, po_line_items(total, unit_price, cases, bottles, quantity)')
+          .select('id, account_id, client_slug, status, total_amount, sent_at, created_at, commission_amount, po_line_items(*)')
           .in('status', ['sent', 'fulfilled'])
           .gte('created_at', twoYearsAgo),
         sb.from('placements').select('id, account_id, client_slug, status, created_at, lost_at'),
@@ -756,6 +760,7 @@ function CommandContent() {
       } else {
         setAccounts((acRes.data ?? []) as AcctRow[])
       }
+      if (orRes.error) console.error('command/orders query failed:', orRes.error)
       setOrders((orRes.data ?? []) as OrderRow[])
       setPlacements((plRes.data ?? []) as PlacRow[])
       setProfiles((prRes.data ?? []) as ProfileRow[])
@@ -887,23 +892,46 @@ function CommandContent() {
 
   const handleGeocode = useCallback(async () => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-    if (!token || geocoding) return
-    setGeocoding(true)
+    if (geocoding) return
+    if (!token) {
+      setGeocodeMsg('Mapbox token not found — restart the dev server and try again.')
+      return
+    }
     const sb = getSupabase()
     const toGeocode = accounts.filter(a => !a.lat && a.address)
-    for (const acct of toGeocode.slice(0, 100)) {
+    if (toGeocode.length === 0) {
+      setGeocodeMsg('No unmapped accounts with addresses found.')
+      return
+    }
+    setGeocoding(true)
+    setGeocodeMsg(null)
+    let mapped = 0
+    for (const acct of toGeocode.slice(0, 200)) {
       try {
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(acct.address!)}.json?access_token=${token}&limit=1&country=us`
         const res = await fetch(url)
-        const data = await res.json()
-        const feature = data.features?.[0]
+        if (!res.ok) { console.error('geocode fetch failed', res.status); continue }
+        const json = await res.json()
+        const feature = json.features?.[0]
         if (!feature) continue
         const [lng, lat] = feature.center as [number, number]
-        await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
+        const { error } = await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
+        if (error) {
+          console.error('geocode update failed:', error)
+          setGeocodeMsg(`DB update failed: ${error.message}`)
+          setGeocoding(false)
+          return
+        }
+        mapped++
         setAccounts(prev => prev.map(a => a.id === acct.id ? { ...a, lat, lng } : a))
-      } catch { continue }
+        setGeocodeMsg(`Mapping… ${mapped} of ${toGeocode.length}`)
+      } catch (err) {
+        console.error('geocode error:', err)
+      }
     }
     setGeocoding(false)
+    setGeocodeMsg(mapped > 0 ? `Done — ${mapped} accounts mapped.` : 'No coordinates found for these addresses.')
+    setTimeout(() => setGeocodeMsg(null), 5000)
   }, [accounts, geocoding])
 
   // ── Map pins ──────────────────────────────────────────────────────────────
@@ -1018,22 +1046,42 @@ function CommandContent() {
         <div style={{ padding: '20px 24px 48px' }}>
 
           {/* ── Hero metrics ─────────────────────────────────────────────── */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <HeroTile label="Revenue" value={metrics.revenue > 0 ? formatCurrency(metrics.revenue) : '—'} trend={metrics.revenueTrend} color={t.gold} loading={loading} />
-            <HeroTile label="Commission" value={metrics.commission > 0 ? formatCurrency(metrics.commission) : '—'} color={t.status.success} loading={loading} />
-            <HeroTile label="Active Buyers" value={loading ? '—' : String(metrics.buyingAccounts)} sub={`of ${metrics.totalAccounts} accounts`} color={t.status.success} loading={loading} />
-            <HeroTile label="Field Visits" value={loading ? '—' : String(metrics.visitCount)} sub={metrics.coverage > 0 ? `${Math.round(metrics.coverage)}% coverage` : undefined} color={t.status.info} loading={loading} />
-            <HeroTile label="Active Placements" value={loading ? '—' : String(metrics.activePlac)} sub={metrics.placementsWon > 0 ? `+${metrics.placementsWon} this period` : undefined} color={t.gold} loading={loading} />
-            <HeroTile label="Visit→Order Rate" value={metrics.visitToOrder != null ? `${Math.round(metrics.visitToOrder)}%` : '—'} sub={metrics.revPerVisit != null ? `${formatCurrency(metrics.revPerVisit)}/visit` : undefined} color={t.status.warning} loading={loading} />
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <HeroTile label="Revenue" value={loading ? '—' : formatCurrency(metrics.revenue)} trend={metrics.revenueTrend} color={t.gold} loading={loading}
+              desc="Total billed on sent/fulfilled orders in this period" />
+            <HeroTile label="Commission" value={loading ? '—' : formatCurrency(metrics.commission)} color={t.status.success} loading={loading}
+              desc="Barley Bros' cut — your commission rate × revenue" />
+            <HeroTile label="Active Buyers" value={loading ? '—' : String(metrics.buyingAccounts)} sub={`of ${metrics.totalAccounts} accounts`} color={t.status.success} loading={loading}
+              desc="Accounts with at least one order this period" />
+            <HeroTile label="Field Visits" value={loading ? '—' : String(metrics.visitCount)} sub={metrics.coverage > 0 ? `${Math.round(metrics.coverage)}% of accounts visited` : undefined} color={t.status.info} loading={loading}
+              desc="Total check-ins logged by the team" />
+            <HeroTile label="Active Placements" value={loading ? '—' : String(metrics.activePlac)} sub={metrics.placementsWon > 0 ? `+${metrics.placementsWon} won this period` : undefined} color={t.gold} loading={loading}
+              desc="Products currently on a shelf or menu" />
+            <HeroTile label="Visit → Order" value={loading ? '—' : metrics.visitToOrder != null ? `${Math.round(metrics.visitToOrder)}%` : '—'} sub={metrics.revPerVisit != null ? `${formatCurrency(metrics.revPerVisit)} avg per visit` : undefined} color={t.status.warning} loading={loading}
+              desc="Of accounts you visited, how many placed an order" />
           </div>
+          {!loading && (
+            <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.3, marginBottom: '16px', letterSpacing: '0.04em' }}>
+              Showing {PERIODS.find(p => p.days === period)?.label} window · {metrics.totalAccounts} accounts · {clients.length} brand{clients.length !== 1 ? 's' : ''}
+              {brandSlug !== 'all' ? ` · filtered to ${clients.find(c => c.slug === brandSlug)?.name ?? brandSlug}` : ''}
+            </div>
+          )}
 
           {/* ── Scan line ────────────────────────────────────────────────── */}
           <div style={{ height: '1px', background: `linear-gradient(90deg, transparent, ${t.gold}30, transparent)`, marginBottom: '16px' }} />
 
           {/* ── Recency bar ──────────────────────────────────────────────── */}
+          <div style={{ marginBottom: '6px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.5 }}>Order Recency</span>
+            <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.3 }}>When did each account last place an order? Click a bar to filter the map and table below.</span>
+          </div>
           <RecencyBar dist={recencyDist} active={bucket} onSelect={setBucket} />
 
           {/* ── Main panel: map + data ───────────────────────────────────── */}
+          <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.5 }}>Territory Map</span>
+            <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.3 }}>Pan or zoom — data updates to match what's visible. Pins colored by order recency.</span>
+          </div>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'stretch', minHeight: '360px' }}>
 
             {/* Map */}
@@ -1045,9 +1093,9 @@ function CommandContent() {
                 onGeocodeRequest={handleGeocode}
                 onBoundsChange={setMapBounds}
               />
-              {geocoding && (
-                <div style={{ marginTop: '6px', fontSize: '10px', color: t.gold, textAlign: 'center', opacity: 0.7 }}>
-                  Mapping accounts… this runs once and saves permanently.
+              {geocodeMsg && (
+                <div style={{ marginTop: '6px', fontSize: '10px', color: geocodeMsg.startsWith('DB') || geocodeMsg.startsWith('Mapbox') ? t.status.danger : t.gold, textAlign: 'center', opacity: 0.8 }}>
+                  {geocodeMsg}
                 </div>
               )}
             </div>
@@ -1090,13 +1138,16 @@ function CommandContent() {
 
           {/* ── Accounts table ───────────────────────────────────────────── */}
           <div style={{ background: 'rgba(255,255,255,0.012)', border: `1px solid rgba(255,255,255,0.05)`, borderRadius: '12px', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: `1px solid rgba(255,255,255,0.04)`, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ padding: '14px 16px', borderBottom: `1px solid rgba(255,255,255,0.04)`, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <Activity size={12} color={t.text.muted} style={{ opacity: 0.5 }} />
               <span style={{ fontSize: '9px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.5 }}>
                 Accounts
               </span>
-              <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35, marginLeft: '4px' }}>
-                {bucket ? `${tableAccounts.length} in segment` : mapBounds && hasGeoAccounts ? `${tableAccounts.length} in view` : `${tableAccounts.length} accounts`}
+              <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35 }}>
+                {bucket ? `${tableAccounts.length} in segment` : mapBounds && hasGeoAccounts ? `${tableAccounts.length} in map view` : `${tableAccounts.length} total`}
+              </span>
+              <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.22, marginLeft: 'auto' }}>
+                Click a column header to sort
               </span>
             </div>
             <div style={{ padding: '8px' }}>
