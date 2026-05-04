@@ -71,6 +71,17 @@ const RECENCY = [
 function msAgo(days: number) { return Date.now() - days * 86400000 }
 function isoAgo(days: number) { return new Date(msAgo(days)).toISOString() }
 
+// One visit per account per day per user — matches Visit Log dedup logic
+function dedupeVisits(visits: VisitRow[]): VisitRow[] {
+  const seen = new Set<string>()
+  return visits.filter(v => {
+    const key = `${v.visited_at.slice(0, 10)}|${v.user_id}|${v.account_id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function relAge(s: string | null | undefined): string {
   if (!s) return '—'
   const d = Math.floor((Date.now() - new Date(s).getTime()) / 86400000)
@@ -827,10 +838,10 @@ function CommandContent() {
     return acct ? inBounds(acct) : true
   }, [brandSlug, accountMap, inBounds])
 
-  const pOrders     = useMemo(() => orders.filter(filterOrder),  [orders, filterOrder])
-  const prOrders    = useMemo(() => orders.filter(filterPrior),  [orders, filterPrior])
-  const pVisits     = useMemo(() => visits.filter(filterVisit),  [visits, filterVisit])
-  const fPlacements = useMemo(() => placements.filter(filterPlac),[placements, filterPlac])
+  const pOrders     = useMemo(() => orders.filter(filterOrder),           [orders, filterOrder])
+  const prOrders    = useMemo(() => orders.filter(filterPrior),           [orders, filterPrior])
+  const pVisits     = useMemo(() => dedupeVisits(visits.filter(filterVisit)), [visits, filterVisit])
+  const fPlacements = useMemo(() => placements.filter(filterPlac),        [placements, filterPlac])
 
   const metrics = useMemo(() => {
     const revenue      = pOrders.reduce((s, o) => s + resolveTotal(o), 0)
