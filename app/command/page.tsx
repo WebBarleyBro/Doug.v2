@@ -985,18 +985,21 @@ function CommandContent() {
   // ── Map pins ──────────────────────────────────────────────────────────────
 
   const mapPins = useMemo((): MapPin[] => {
-    const latestOrder: Record<string, { date: string; rev: number }> = {}
+    // Pin color + last-order-date uses all-time orders so color doesn't flip on short periods
+    const latestOrder: Record<string, string> = {}
     for (const o of orders) {
       const d = o.sent_at || o.created_at
-      const prev = latestOrder[o.account_id]
-      if (!prev || d > prev.date) latestOrder[o.account_id] = { date: d, rev: (prev?.rev ?? 0) + resolveTotal(o) }
-      else latestOrder[o.account_id].rev += resolveTotal(o)
+      if (!latestOrder[o.account_id] || d > latestOrder[o.account_id]) latestOrder[o.account_id] = d
     }
+    // Revenue uses period-filtered orders — matches the table and panel exactly
+    const periodRev: Record<string, number> = {}
+    for (const o of pOrders) periodRev[o.account_id] = (periodRev[o.account_id] || 0) + resolveTotal(o)
+
     return territoryAccts
       .filter(a => a.lat != null && a.lng != null)
       .map(a => {
-        const ord = latestOrder[a.id]
-        const ageMs = ord ? Date.now() - new Date(ord.date).getTime() : null
+        const lastDate = latestOrder[a.id] ?? null
+        const ageMs = lastDate ? Date.now() - new Date(lastDate).getTime() : null
         const color = ageMs === null ? 'rgba(255,255,255,0.25)'
           : ageMs < 30 * 86400000  ? t.status.success
           : ageMs < 90 * 86400000  ? t.gold
@@ -1005,10 +1008,10 @@ function CommandContent() {
         return {
           id: a.id, name: a.name, accountType: a.account_type,
           lat: a.lat!, lng: a.lng!, color,
-          lastOrderDate: ord?.date ?? null, revenue: ord?.rev ?? 0,
+          lastOrderDate: lastDate, revenue: periodRev[a.id] ?? 0,
         }
       })
-  }, [territoryAccts, orders])
+  }, [territoryAccts, orders, pOrders])
 
   const ungeocodedCount = useMemo(
     () => territoryAccts.filter(a => !a.lat && a.address).length,

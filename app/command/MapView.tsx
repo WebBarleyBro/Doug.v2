@@ -204,7 +204,7 @@ export default function MapView({
             </div>
             {popup.rev > 0 && (
               <div>
-                <div style={{ fontSize: '8px', color: t.text.muted, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>All-time Revenue</div>
+                <div style={{ fontSize: '8px', color: t.text.muted, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>Revenue</div>
                 <div style={{ fontSize: '12px', fontWeight: '700', color: t.status.success, fontFamily: 'monospace' }}>${popup.rev.toLocaleString()}</div>
               </div>
             )}
