@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { t } from '../lib/theme'
+import { relativeTimeStr } from '../lib/formatters'
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -140,11 +141,7 @@ export default function MapView({
   }, [pins, ready])
 
   function relAge(s: string | null): string {
-    if (!s) return '—'
-    const d = Math.floor((Date.now() - new Date(s).getTime()) / 86400000)
-    if (d === 0) return 'Today'; if (d === 1) return 'Yesterday'
-    if (d < 30) return `${d}d ago`; if (d < 365) return `${Math.floor(d / 30)}mo ago`
-    return `${Math.floor(d / 365)}yr ago`
+    return relativeTimeStr(s) ?? '—'
   }
 
   return (

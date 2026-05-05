@@ -11,7 +11,7 @@ import LayoutShell from '../layout-shell'
 import { t } from '../lib/theme'
 import { getClients } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
-import { formatCurrency, resolveTotal } from '../lib/formatters'
+import { formatCurrency, resolveTotal, relativeTimeStr } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client } from '../lib/types'
 import type { MapPin } from './MapView'
@@ -83,11 +83,7 @@ function dedupeVisits(visits: VisitRow[]): VisitRow[] {
 }
 
 function relAge(s: string | null | undefined): string {
-  if (!s) return '—'
-  const d = Math.floor((Date.now() - new Date(s).getTime()) / 86400000)
-  if (d === 0) return 'Today'; if (d === 1) return 'Yesterday'
-  if (d < 30) return `${d}d ago`; if (d < 365) return `${Math.floor(d/30)}mo ago`
-  return `${Math.floor(d/365)}yr ago`
+  return relativeTimeStr(s) ?? '—'
 }
 
 function trendColor(p: number | null) {
@@ -164,9 +160,10 @@ function RecencyBar({ dist, active, onSelect }: {
 }) {
   const total = RECENCY.reduce((s, r) => s + (dist[r.key]?.length ?? 0), 0)
   if (total === 0) return null
+  const segments = RECENCY.map(r => ({ ...r, count: dist[r.key]?.length ?? 0 })).filter(r => r.count > 0)
   return (
     <div style={{ marginBottom: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
         <span style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', opacity: 0.45 }}>
           Account Order Recency  ·  {total} accounts
         </span>
@@ -176,33 +173,27 @@ function RecencyBar({ dist, active, onSelect }: {
           </button>
         )}
       </div>
-      <div style={{ display: 'flex', gap: '3px', height: '44px', borderRadius: '8px', overflow: 'hidden' }}>
-        {RECENCY.map(r => {
-          const count = dist[r.key]?.length ?? 0
-          if (count === 0) return null
-          const pct = (count / total) * 100
+      {/* Row of stat cards — equal width per segment, no tiny slivers */}
+      <div style={{ display: 'flex', gap: '6px' }}>
+        {segments.map(r => {
           const isActive = active === r.key
+          const pct = Math.round((r.count / total) * 100)
           return (
-            <button key={r.key} title={r.desc}
-              onClick={() => onSelect(active === r.key ? null : r.key)}
+            <button key={r.key} onClick={() => onSelect(active === r.key ? null : r.key)}
+              title={r.desc}
               style={{
-                flex: `0 0 ${pct}%`, height: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                position: 'relative', overflow: 'hidden',
-                transition: 'flex 200ms',
+                flex: 1, padding: '10px 12px', background: 'none', border: `1px solid ${r.color}${isActive ? '60' : '22'}`,
+                borderTop: `2px solid ${r.color}${isActive ? 'ff' : '55'}`,
+                borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+                backgroundColor: isActive ? r.color + '18' : r.color + '08',
+                boxShadow: isActive ? `0 0 16px ${r.color}25 inset` : 'none',
+                transition: 'all 150ms',
               }}>
-              <div style={{
-                height: '100%',
-                backgroundColor: r.color + (isActive ? '35' : '18'),
-                borderTop: `2px solid ${r.color}${isActive ? 'ff' : '80'}`,
-                borderRadius: '4px',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: '2px',
-                transition: 'background-color 150ms',
-                boxShadow: isActive ? `0 0 12px ${r.color}40 inset` : 'none',
-              }}>
-                <span style={{ fontSize: '14px', fontWeight: '900', color: r.color, fontFamily: 'monospace', lineHeight: 1, textShadow: isActive ? `0 0 10px ${r.color}80` : 'none' }}>{count}</span>
-                <span style={{ fontSize: '8px', color: r.color, opacity: 0.7, whiteSpace: 'nowrap', fontWeight: '700' }}>{r.label}</span>
+              <div style={{ fontSize: '22px', fontWeight: '900', color: r.color, fontFamily: 'monospace', lineHeight: 1, marginBottom: '4px', textShadow: isActive ? `0 0 12px ${r.color}80` : 'none' }}>
+                {r.count}
               </div>
+              <div style={{ fontSize: '10px', fontWeight: '700', color: r.color, opacity: 0.8, marginBottom: '2px' }}>{r.label}</div>
+              <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.45 }}>{pct}% of accounts</div>
             </button>
           )
         })}
