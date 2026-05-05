@@ -97,7 +97,7 @@ export default function ContactsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [deleteTarget, setDeleteTarget] = useState('')
-  const [form, setForm] = useState({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '', birthday: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', account_id: '', category: 'general', notes: '', birthday: '', is_decision_maker: false })
   const [saving, setSaving] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -125,13 +125,13 @@ export default function ContactsPage() {
 
   function openAdd() {
     setEditingContact(null)
-    setForm({ name: '', email: '', phone: '', account_id: '', role: '', category: 'general', notes: '', birthday: '' })
+    setForm({ name: '', email: '', phone: '', account_id: '', category: 'general', notes: '', birthday: '', is_decision_maker: false })
     setShowModal(true)
   }
 
   function openEdit(c: Contact) {
     setEditingContact(c)
-    setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', account_id: c.account_id || '', role: c.role || '', category: (c as any).category || 'general', notes: (c as any).notes || '', birthday: (c as any).birthday || '' })
+    setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', account_id: c.account_id || '', category: (c as any).category || 'general', notes: (c as any).notes || '', birthday: (c as any).birthday || '', is_decision_maker: c.is_decision_maker || false })
     setShowModal(true)
   }
 
@@ -139,7 +139,7 @@ export default function ContactsPage() {
     if (!form.name.trim()) return
     setSaving(true)
     try {
-      const payload: any = { name: form.name, email: form.email || undefined, phone: form.phone || undefined, account_id: form.account_id || undefined, role: form.role || undefined, category: form.category, notes: form.notes || undefined, birthday: form.birthday || undefined }
+      const payload: any = { name: form.name, email: form.email || undefined, phone: form.phone || undefined, account_id: form.account_id || undefined, category: form.category, is_decision_maker: form.is_decision_maker, notes: form.notes || undefined, birthday: form.birthday || undefined }
       if (editingContact) {
         await updateContact(editingContact.id, payload)
       } else {
@@ -212,10 +212,13 @@ export default function ContactsPage() {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{c.name}</span>
-                      {c.is_decision_maker && <Star size={12} fill={t.gold} color={t.gold} />}
                       <CategoryBadge category={(c as any).category} />
+                      {c.is_decision_maker && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '10px', color: t.gold, fontWeight: '600' }}>
+                          <Star size={10} fill={t.gold} color={t.gold} /> Decision maker
+                        </span>
+                      )}
                     </div>
-                    {c.role && <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '1px' }}>{c.role}</div>}
                     {(c as any).accounts?.name && (
                       <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '2px' }}>
                         {(c as any).accounts?.id
@@ -261,12 +264,15 @@ export default function ContactsPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Role / Title</label>
-                  <input type="text" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="General Manager, Buyer..." style={inputStyle} />
-                </div>
-                <div>
                   <label style={labelStyle}>Phone</label>
                   <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(720) 555-0000" style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '22px' }}>
+                  <input type="checkbox" id="dm-check" checked={form.is_decision_maker} onChange={e => setForm(f => ({ ...f, is_decision_maker: e.target.checked }))}
+                    style={{ width: '16px', height: '16px', accentColor: t.gold, cursor: 'pointer', flexShrink: 0 }} />
+                  <label htmlFor="dm-check" style={{ ...labelStyle, margin: 0, cursor: 'pointer', color: t.text.secondary, fontSize: '13px' }}>
+                    Decision Maker
+                  </label>
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={labelStyle}>Email</label>
