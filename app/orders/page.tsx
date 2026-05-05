@@ -296,6 +296,7 @@ export default function OrdersPage() {
   const [nextPONum, setNextPONum] = useState('PO-000039')
   const [nextOINum, setNextOINum] = useState('OI-000001')
   const [clientProducts, setClientProducts] = useState<Product[]>([])
+  const [clientProductsLoading, setClientProductsLoading] = useState(false)
   const [clientSettings, setClientSettings] = useState<Record<string, any>>({})
 
   const [form, setForm] = useState({
@@ -335,10 +336,15 @@ export default function OrdersPage() {
   useEffect(() => {
     if (form.client_slug) {
       getDistributorReps(form.client_slug).then(setDistributorReps).catch(() => {})
-      getProducts(form.client_slug).then(prods => setClientProducts(prods.filter(p => p.active !== false))).catch(() => {})
+      setClientProductsLoading(true)
+      getProducts(form.client_slug)
+        .then(prods => setClientProducts(prods.filter(p => p.active !== false)))
+        .catch(() => {})
+        .finally(() => setClientProductsLoading(false))
     } else {
       setDistributorReps([])
       setClientProducts([])
+      setClientProductsLoading(false)
     }
   }, [form.client_slug])
 
@@ -955,13 +961,13 @@ export default function OrdersPage() {
                 {/* Actions */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: 'auto', paddingTop: '8px' }}>
                   {o.status === 'sent' && (
-                    <button onClick={async () => { await updateOrder(o.id, { status: 'fulfilled' }); load() }}
+                    <button onClick={async () => { await updateOrder(o.id, { status: 'fulfilled' }); toast('Marked as fulfilled'); load() }}
                       style={{ ...btnPrimary, justifyContent: 'center', padding: '12px' }}>
                       Mark Fulfilled
                     </button>
                   )}
                   {o.status === 'draft' && (
-                    <button onClick={async () => { await updateOrder(o.id, { status: 'sent' }); load() }}
+                    <button onClick={async () => { await updateOrder(o.id, { status: 'sent' }); toast('Marked as sent'); load() }}
                       style={{ ...btnPrimary, justifyContent: 'center', padding: '12px' }}>
                       <Send size={15} /> Mark Sent
                     </button>
@@ -1226,8 +1232,15 @@ export default function OrdersPage() {
                           <input
                             type="text" value={li.product_name}
                             onChange={e => updateLineItem(i, 'product_name', e.target.value)}
-                            placeholder={!form.client_slug ? 'Select a brand above to load products' : 'Product name'}
-                            style={{ ...inputStyle, fontSize: '13px', flex: 1 }}
+                            placeholder={
+                              !form.client_slug
+                                ? 'Select a brand above to load products'
+                                : clientProductsLoading
+                                  ? 'Loading products…'
+                                  : 'Type product name (no catalog for this brand)'
+                            }
+                            disabled={clientProductsLoading}
+                            style={{ ...inputStyle, fontSize: '13px', flex: 1, opacity: clientProductsLoading ? 0.5 : 1 }}
                           />
                         )}
                         {form.line_items.length > 1 && (

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, QrCode, Download, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Play, Users } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import ConfirmModal from '../components/ConfirmModal'
 import { getEvents, getClients, createEvent, deleteEvent, getCampaigns } from '../lib/data'
@@ -41,9 +41,7 @@ export default function CalendarPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
   const [isMobile, setIsMobile] = useState(false)
-  const [qrEventId, setQrEventId] = useState<string | null>(null)
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
-  const [qrResponseCount, setQrResponseCount] = useState<number | null>(null)
+  const [tastingCounts, setTastingCounts] = useState<Record<string, number>>({})
   const [deleteEventTarget, setDeleteEventTarget] = useState<any>(null)
 
   // Filters
@@ -145,32 +143,27 @@ export default function CalendarPage() {
     ? `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`
     : null
   const selectedDayData = selectedDay ? getEventsForDay(selectedDay) : { evs: [], camps: [], milestones: [] }
+
+  useEffect(() => {
+    const tastingIds = selectedDayData.evs.filter((e: any) => e.event_type === 'tasting').map((e: any) => e.id)
+    const uncounted = tastingIds.filter((id: string) => !(id in tastingCounts))
+    if (uncounted.length) loadTastingCounts(uncounted)
+  }, [selectedDay])
   const allSelectedItems = [
     ...selectedDayData.evs,
     ...selectedDayData.camps.map(c => ({ ...c, _isCampaignEntry: true })),
     ...selectedDayData.milestones.map(m => ({ ...m, _isMilestoneEntry: true })),
   ]
 
-  async function generateQr(eventId: string) {
-    if (qrEventId === eventId) { setQrEventId(null); setQrDataUrl(null); setQrResponseCount(null); return }
-    setQrEventId(eventId)
-    setQrDataUrl(null)
-    setQrResponseCount(null)
-    const url = `${window.location.origin}/taste/${eventId}`
-    const QRCode = (await import('qrcode')).default
-    const dataUrl = await QRCode.toDataURL(url, { width: 240, margin: 2, color: { dark: '#d4a843', light: '#1a1916' } })
-    setQrDataUrl(dataUrl)
+  async function loadTastingCounts(eventIds: string[]) {
+    if (!eventIds.length) return
     const sb = getSupabase()
-    const { count } = await sb.from('tasting_consumers').select('id', { count: 'exact', head: true }).eq('event_id', eventId)
-    setQrResponseCount(count || 0)
-  }
-
-  function downloadQr(eventTitle: string) {
-    if (!qrDataUrl) return
-    const a = document.createElement('a')
-    a.href = qrDataUrl
-    a.download = `qr-${eventTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`
-    a.click()
+    const results = await Promise.all(
+      eventIds.map(id => sb.from('tasting_consumers').select('id', { count: 'exact', head: true }).eq('event_id', id))
+    )
+    const counts: Record<string, number> = {}
+    eventIds.forEach((id, i) => { counts[id] = results[i].count || 0 })
+    setTastingCounts(prev => ({ ...prev, ...counts }))
   }
 
   async function handleCreate() {
@@ -356,50 +349,29 @@ export default function CalendarPage() {
               const client = clients.find(c => c.slug === e.client_slug)
               const color = client?.color || EVENT_TYPE_COLORS[e.event_type] || t.gold
               const isTasting = e.event_type === 'tasting'
-              const isQrOpen = qrEventId === e.id
               return (
-                <div key={e.id} style={{ borderBottom: `1px solid ${t.border.subtle}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0' }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: '500', color: t.text.primary }}>{e.title}</div>
-                      <div style={{ fontSize: '11px', color: t.text.muted }}>
-                        {EVENT_TYPE_LABELS[e.event_type as keyof typeof EVENT_TYPE_LABELS]}
-                        {e.accounts?.name && ` · ${e.accounts.name}`}
-                        {client && ` · ${client.name}`}
-                      </div>
-                      {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', marginTop: '2px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔗 RSVP / Link</a>}
-                    </div>
-                    {isTasting && (
-                      <button onClick={() => generateQr(e.id)} title="Generate QR Code" style={{ background: isQrOpen ? t.goldDim : 'none', border: isQrOpen ? `1px solid ${t.border.gold}` : 'none', borderRadius: '6px', color: isQrOpen ? t.gold : t.text.muted, cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600' }}>
-                        <QrCode size={14} /> QR
-                      </button>
-                    )}
-                    <button onClick={() => setDeleteEventTarget(e)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px' }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                  {isTasting && isQrOpen && (
-                    <div style={{ paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                      {qrDataUrl ? (
-                        <>
-                          <img src={qrDataUrl} alt="QR Code" style={{ width: 120, height: 120, borderRadius: '8px', border: `1px solid ${t.border.default}` }} />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {qrResponseCount !== null && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: t.text.secondary }}>
-                                <Users size={13} /> <span><strong style={{ color: t.text.primary }}>{qrResponseCount}</strong> response{qrResponseCount !== 1 ? 's' : ''}</span>
-                              </div>
-                            )}
-                            <button onClick={() => downloadQr(e.title)} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
-                              <Download size={13} /> Download QR
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ fontSize: '12px', color: t.text.muted }}>Generating...</div>
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: t.text.primary }}>{e.title}</div>
+                    <div style={{ fontSize: '11px', color: t.text.muted, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>{EVENT_TYPE_LABELS[e.event_type as keyof typeof EVENT_TYPE_LABELS]}{e.accounts?.name && ` · ${e.accounts.name}`}{client && ` · ${client.name}`}</span>
+                      {isTasting && tastingCounts[e.id] !== undefined && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: t.text.secondary }}>
+                          <Users size={10} /> {tastingCounts[e.id]} response{tastingCounts[e.id] !== 1 ? 's' : ''}
+                        </span>
                       )}
                     </div>
+                    {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', marginTop: '2px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔗 RSVP / Link</a>}
+                  </div>
+                  {isTasting && (
+                    <a href={`/taste/${e.id}`} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} title="Open tasting kiosk" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '5px 10px', textDecoration: 'none', flexShrink: 0 }}>
+                      <Play size={12} fill={t.gold} /> Start
+                    </a>
                   )}
+                  <button onClick={() => setDeleteEventTarget(e)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
+                    <X size={14} />
+                  </button>
                 </div>
               )
             })}
@@ -451,7 +423,6 @@ export default function CalendarPage() {
           if (!deleteEventTarget) return
           await deleteEvent(deleteEventTarget.id)
           setDeleteEventTarget(null)
-          if (qrEventId === deleteEventTarget.id) { setQrEventId(null); setQrDataUrl(null) }
           load()
         }}
         title="Delete Event"

@@ -227,7 +227,7 @@ export default function PlacementsPage() {
                     </div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {p.status !== 'committed' && (
-                        <button onClick={() => revertPlacementStatus(p.id, p.status).then(load)} style={{
+                        <button onClick={() => revertPlacementStatus(p.id, p.status).then(() => { toast('Status reverted'); load() })} style={{
                           padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
                           border: `1px solid ${t.border.default}`, backgroundColor: 'transparent', color: t.text.muted,
                         }} title="Move back one step">
@@ -235,7 +235,7 @@ export default function PlacementsPage() {
                         </button>
                       )}
                       {p.status !== 'reordering' && (
-                        <button onClick={() => advancePlacementStatus(p.id, p.status).then(load)} style={{
+                        <button onClick={() => advancePlacementStatus(p.id, p.status).then(() => { toast('Status advanced'); load() })} style={{
                           padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
                           border: `1px solid ${t.border.hover}`, backgroundColor: 'transparent', color: t.text.secondary,
                         }}>
