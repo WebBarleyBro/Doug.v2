@@ -254,6 +254,7 @@ export async function logVisit(visit: {
   competitive_sightings?: { brand_name: string; product_name?: string; placement_type?: string }[]
   create_followup?: boolean
   followup_note?: string
+  followup_days?: number
 }): Promise<void> {
   const sb = getSupabase()
 
@@ -320,7 +321,7 @@ export async function logVisit(visit: {
   // Create follow-up task if requested
   if (visit.create_followup) {
     const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 3)
+    dueDate.setDate(dueDate.getDate() + (visit.followup_days ?? 3))
     await sb.from('tasks').insert({
       user_id: visit.user_id,
       title: visit.followup_note || 'Follow up on recent visit',

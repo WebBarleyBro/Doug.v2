@@ -179,7 +179,8 @@ export default function AddAccountModal({
           .map(c => createContact({
             account_id: account.id,
             name: c.name.trim(),
-            role: c.role || c.category || undefined,
+            role: c.role || undefined,
+            category: c.category || undefined,
             email: c.email || undefined,
             phone: c.phone || undefined,
             is_decision_maker: c.is_decision_maker,

@@ -227,6 +227,7 @@ export default function VisitLogModal({
         client_notes: Object.keys(clientNotesWithTasting).length > 0 ? clientNotesWithTasting : undefined,
         create_followup: !!(form.followup_days || form.create_checkin),
         followup_note: followupNote,
+        followup_days: form.followup_days ?? undefined,
       })
 
       // Save any placements added during the visit
