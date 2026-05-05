@@ -30,6 +30,7 @@ export default function MapView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const hasFitRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [popup, setPopup] = useState<{ name: string; type: string; rev: number; date: string | null; id: string } | null>(null)
   const pinsRef = useRef(pins)
@@ -129,8 +130,9 @@ export default function MapView({
     const src = map.getSource('accounts')
     if (src) src.setData(buildGeoJSON(pins))
 
-    // Fit bounds if we have pins
-    if (pins.length > 0) {
+    // Auto-fit only once on first non-empty load — never after user pans/zooms
+    if (!hasFitRef.current && pins.length > 0) {
+      hasFitRef.current = true
       const lngs = pins.map(p => p.lng)
       const lats = pins.map(p => p.lat)
       map.fitBounds(
@@ -202,7 +204,7 @@ export default function MapView({
             </div>
             {popup.rev > 0 && (
               <div>
-                <div style={{ fontSize: '8px', color: t.text.muted, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>Revenue</div>
+                <div style={{ fontSize: '8px', color: t.text.muted, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px' }}>All-time Revenue</div>
                 <div style={{ fontSize: '12px', fontWeight: '700', color: t.status.success, fontFamily: 'monospace' }}>${popup.rev.toLocaleString()}</div>
               </div>
             )}

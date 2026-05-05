@@ -578,17 +578,24 @@ function RepsPanel({ visits, profiles }: { visits: VisitRow[]; profiles: Profile
 // ─── AccountsTable ────────────────────────────────────────────────────────────
 
 type SortCol = 'name' | 'lastOrder' | 'lastVisit' | 'revenue'
+type TypeFilter = 'all' | 'on_premise' | 'off_premise'
 
 function AccountsTable({ accounts, orders, visits, clients }: {
   accounts: AcctRow[]; orders: OrderRow[]; visits: VisitRow[]; clients: Client[]
 }) {
   const nowMs = useMemo(() => Date.now(), [])
   const [sortCol, setSortCol] = useState<SortCol>('lastOrder')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   function handleSort(col: SortCol) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortCol(col); setSortDir('asc') }
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortCol(col)
+      // name defaults A→Z; everything else defaults highest/newest first
+      setSortDir(col === 'name' ? 'asc' : 'desc')
+    }
   }
 
   const orderMap = useMemo(() => {
@@ -612,8 +619,12 @@ function AccountsTable({ accounts, orders, visits, clients }: {
     return m
   }, [orders])
 
+  const filtered = useMemo(() =>
+    typeFilter === 'all' ? accounts : accounts.filter(a => a.account_type === typeFilter),
+  [accounts, typeFilter])
+
   const sorted = useMemo(() => {
-    const arr = [...accounts]
+    const arr = [...filtered]
     const dir = sortDir === 'asc' ? 1 : -1
     arr.sort((a, b) => {
       if (sortCol === 'name') return dir * a.name.localeCompare(b.name)
@@ -633,10 +644,29 @@ function AccountsTable({ accounts, orders, visits, clients }: {
       return 0
     })
     return arr
-  }, [accounts, sortCol, sortDir, orderMap, visitMap])
+  }, [filtered, sortCol, sortDir, orderMap, visitMap])
 
-  if (accounts.length === 0) return (
-    <div style={{ textAlign: 'center', padding: '32px', color: t.text.muted, fontSize: '12px', opacity: 0.4 }}>No accounts match the current filters.</div>
+  const TYPE_OPTIONS: { id: TypeFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'on_premise', label: 'On-Prem' },
+    { id: 'off_premise', label: 'Off-Prem' },
+  ]
+
+  if (sorted.length === 0) return (
+    <>
+      <div style={{ display: 'flex', gap: '4px', padding: '0 6px 10px' }}>
+        {TYPE_OPTIONS.map(o => (
+          <button key={o.id} onClick={() => setTypeFilter(o.id)} style={{
+            padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+            fontSize: '10px', fontWeight: '700',
+            background: typeFilter === o.id ? t.goldDim : 'rgba(255,255,255,0.04)',
+            color: typeFilter === o.id ? t.gold : t.text.muted,
+            transition: 'all 120ms',
+          }}>{o.label}</button>
+        ))}
+      </div>
+      <div style={{ textAlign: 'center', padding: '32px', color: t.text.muted, fontSize: '12px', opacity: 0.4 }}>No accounts match the current filters.</div>
+    </>
   )
 
   const colStyle = (col: SortCol): React.CSSProperties => ({
@@ -649,6 +679,22 @@ function AccountsTable({ accounts, orders, visits, clients }: {
 
   return (
     <div>
+      {/* Type filter pills */}
+      <div style={{ display: 'flex', gap: '4px', padding: '0 6px 10px' }}>
+        {TYPE_OPTIONS.map(o => (
+          <button key={o.id} onClick={() => setTypeFilter(o.id)} style={{
+            padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+            fontSize: '10px', fontWeight: '700',
+            background: typeFilter === o.id ? t.goldDim : 'rgba(255,255,255,0.04)',
+            color: typeFilter === o.id ? t.gold : t.text.muted,
+            transition: 'all 120ms',
+          }}>{o.label}</button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: '9px', color: t.text.muted, opacity: 0.3, alignSelf: 'center' }}>
+          {sorted.length} account{sorted.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
       {/* Header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 80px 90px 90px 80px 80px', gap: '12px', padding: '8px 14px', marginBottom: '2px' }}>
         <button onClick={() => handleSort('name')} style={colStyle('name')}>Account {sortCol === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button>
