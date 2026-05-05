@@ -321,7 +321,8 @@ function CT({ active, payload, label, currency }: any) {
 
 // ─── RevenuePanel ─────────────────────────────────────────────────────────────
 
-function RevenuePanel({ orders, clients, brandFilter }: { orders: OrderRow[]; clients: Client[]; brandFilter: string }) {
+function RevenuePanel({ orders, clients, brandFilter, accounts }: { orders: OrderRow[]; clients: Client[]; brandFilter: string; accounts: AcctRow[] }) {
+  const accountNameMap = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a.name])), [accounts])
   const rates = useMemo(() => Object.fromEntries(clients.map(c => [c.slug, c.commission_rate ?? 0])), [clients])
 
   const chartData = useMemo(() => {
@@ -391,6 +392,9 @@ function RevenuePanel({ orders, clients, brandFilter }: { orders: OrderRow[]; cl
             {topAccounts.map(([id, rev], i) => (
               <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35, width: '12px', textAlign: 'right', fontFamily: 'monospace' }}>{i + 1}</span>
+                <span style={{ fontSize: '10px', color: t.text.secondary, width: '110px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {accountNameMap[id] ?? '—'}
+                </span>
                 <div style={{ flex: 1, height: '2px', borderRadius: '1px', background: 'rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', inset: 0, width: `${(rev / (topAccounts[0][1] || 1)) * 100}%`, background: `linear-gradient(90deg, ${t.gold}60, ${t.gold})`, borderRadius: '1px', boxShadow: `0 0 6px ${t.gold}80` }} />
                 </div>
@@ -849,7 +853,7 @@ function CommandContent() {
     if (dateMs < periodStartMs) return false
     if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
     const acct = accountMap[o.account_id]
-    return acct ? inBounds(acct) : true
+    return acct ? inBounds(acct) : false
   }, [periodStartMs, brandSlug, accountMap, inBounds])
 
   const filterPrior = useCallback((o: OrderRow) => {
@@ -857,7 +861,7 @@ function CommandContent() {
     if (dateMs < priorStartMs || dateMs >= periodStartMs) return false
     if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
     const acct = accountMap[o.account_id]
-    return acct ? inBounds(acct) : true
+    return acct ? inBounds(acct) : false
   }, [priorStartMs, periodStartMs, brandSlug, accountMap, inBounds])
 
   const filterVisit = useCallback((v: VisitRow) => {
@@ -1173,7 +1177,7 @@ function CommandContent() {
                       {[1,2,3].map(i => <div key={i} style={{ height: '20px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }} />)}
                     </div>
                   : panel === 'revenue'
-                    ? <RevenuePanel orders={pOrders} clients={clients} brandFilter={brandSlug} />
+                    ? <RevenuePanel orders={pOrders} clients={clients} brandFilter={brandSlug} accounts={territoryAccts} />
                     : panel === 'visits'
                       ? <VisitsPanel visits={pVisits} period={period} coverage={metrics.coverage} />
                       : panel === 'placements'
