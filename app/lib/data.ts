@@ -993,6 +993,12 @@ export async function saveTastingConsumer(consumer: Partial<TastingConsumer>) {
   if (error) throw error
 }
 
+export async function deleteTastingConsumer(id: string) {
+  const sb = getSupabase()
+  const { error } = await sb.from('tasting_consumers').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ─── Depletion ────────────────────────────────────────────────────────────
 
 export async function getDepletionEntries(placementId?: string): Promise<DepletionEntry[]> {

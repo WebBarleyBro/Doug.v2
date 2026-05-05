@@ -422,7 +422,6 @@ export default function AccountDetailPage() {
           placements={placements}
           contacts={contacts}
           orders={orders}
-          onLogVisit={() => setVisitModal(true)}
         />
 
         {/* Tabs */}
@@ -1147,12 +1146,11 @@ const CONTACT_PRIORITY: Record<string, number> = {
   buyer: 1, bar_manager: 2, gm: 3, owner: 4, gm_owner: 3, chef: 5, distributor: 6, general: 7, other: 8,
 }
 
-function PreVisitStrip({ visits, placements, contacts, orders, onLogVisit }: {
+function PreVisitStrip({ visits, placements, contacts, orders }: {
   visits: any[]
   placements: any[]
   contacts: any[]
   orders: any[]
-  onLogVisit: () => void
 }) {
   if (visits.length === 0 && placements.length === 0 && contacts.length === 0) return null
 
@@ -1294,16 +1292,6 @@ function PreVisitStrip({ visits, placements, contacts, orders, onLogVisit }: {
         </div>
       ))}
 
-      {/* Log visit CTA */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={onLogVisit} style={{
-          fontSize: '12px', fontWeight: '700', padding: '6px 14px', borderRadius: '7px',
-          backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`,
-          color: t.gold, cursor: 'pointer',
-        }}>
-          + Log Visit
-        </button>
-      </div>
     </div>
   )
 }

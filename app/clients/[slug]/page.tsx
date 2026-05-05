@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Star, TrendingUp, MapPin, Package, ShoppingCart, Calendar, BarChart2, Shield, Settings, FileText, Users, BookOpen, Plus, X, Download, ExternalLink, Copy, Check, Pencil, Trash2, Folder, Upload, AlertCircle } from 'lucide-react'
 import LayoutShell, { useToast } from '../../layout-shell'
-import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, upsertStateRegistration, getTastingConsumersForClient, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone, getClientFiles, uploadClientFile, deleteClientFile } from '../../lib/data'
+import { getClients, getVisitsForClient, getPlacementsForClient, getOrdersForClient, getEventsForClient, getCampaigns, getStateRegistrations, upsertStateRegistration, getTastingConsumersForClient, deleteTastingConsumer, getContacts, getProducts, createProduct, updateProduct, deleteProduct, updateClient, getDistributorContacts, getCampaignExpenses, createCampaignExpense, deleteCampaignExpense, getCampaignAssets, createCampaignAsset, deleteCampaignAsset, createCampaign, createMilestone, toggleMilestone, getClientFiles, uploadClientFile, deleteClientFile } from '../../lib/data'
 import ConfirmModal from '../../components/ConfirmModal'
 import { getSupabase } from '../../lib/supabase'
 import { invalidate } from '../../lib/cache'
@@ -945,42 +945,95 @@ export default function ClientDetailPage() {
         )}
 
         {/* Tastings Tab */}
-        {tab === 'tastings' && !tabLoading && (
-          <div>
-            {tastings.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
-                {[
-                  { label: 'Responses', value: tastings.length },
-                  { label: 'Avg Rating', value: avgRating ? `${avgRating} / 5` : '—' },
-                  { label: 'Would Buy', value: wouldBuyPct !== null ? `${wouldBuyPct}%` : '—' },
-                ].map(s => (
-                  <div key={s.label} style={{ ...card, padding: '16px 18px' }}>
-                    <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>{s.label}</div>
-                    <div style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary }}>{s.value}</div>
+        {tab === 'tastings' && !tabLoading && (() => {
+          const optedIn = tastings.filter((tg: any) => tg.opted_in_marketing && tg.email)
+          return (
+            <div>
+              {tastings.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+                  {[
+                    { label: 'Responses', value: tastings.length },
+                    { label: 'Avg Rating', value: avgRating ? `${avgRating} / 5` : '—' },
+                    { label: 'Would Buy', value: wouldBuyPct !== null ? `${wouldBuyPct}%` : '—' },
+                    { label: 'Email Opt-ins', value: optedIn.length },
+                  ].map(s => (
+                    <div key={s.label} style={{ ...card, padding: '16px 18px' }}>
+                      <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>{s.label}</div>
+                      <div style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {optedIn.length > 0 && (
+                <div style={{ ...card, padding: '16px 18px', marginBottom: '16px', border: `1px solid ${client?.color || t.gold}40` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>Email List ({optedIn.length})</div>
+                    <button
+                      onClick={() => {
+                        const csv = 'Name,Email\n' + optedIn.map((tg: any) => `${tg.first_name || ''},${tg.email}`).join('\n')
+                        const a = document.createElement('a')
+                        a.href = 'data:text/csv,' + encodeURIComponent(csv)
+                        a.download = `${slug}-tasting-emails.csv`
+                        a.click()
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '5px 10px', cursor: 'pointer' }}
+                    >
+                      <Download size={12} /> Export CSV
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {optedIn.map((tg: any) => (
+                      <div key={tg.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', padding: '4px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
+                        {tg.first_name && <span style={{ color: t.text.secondary, minWidth: '80px' }}>{tg.first_name}</span>}
+                        <a href={`mailto:${tg.email}`} style={{ color: t.gold, textDecoration: 'none' }}>{tg.email}</a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {tastings.length === 0 ? (
+                  <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No tasting feedback yet — start a tasting event from the Calendar page</div>
+                ) : tastings.map((tg: any) => (
+                  <div key={tg.id} style={{ ...card, padding: '14px 18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            {[1,2,3,4,5].map(n => <Star key={n} size={12} fill={tg.rating >= n ? '#d4a843' : 'transparent'} color={tg.rating >= n ? '#d4a843' : '#3d3d38'} />)}
+                          </div>
+                          {tg.would_buy === true && <span style={{ ...badge, backgroundColor: '#3dba7820', color: '#3dba78', border: '1px solid #3dba7840' }}>Would buy</span>}
+                          {tg.opted_in_marketing && <span style={{ ...badge, backgroundColor: `${client?.color || t.gold}20`, color: client?.color || t.gold, border: `1px solid ${client?.color || t.gold}40` }}>Email opt-in</span>}
+                        </div>
+                        {tg.first_name && <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{tg.first_name}{tg.email ? ` · ${tg.email}` : ''}</div>}
+                        {tg.notes && <p style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{tg.notes}</p>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <div style={{ fontSize: '11px', color: t.text.muted }}>{relativeTimeStr(tg.captured_at)}</div>
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Delete this response?')) return
+                            try {
+                              await deleteTastingConsumer(tg.id)
+                              setTastings(prev => prev.filter((x: any) => x.id !== tg.id))
+                              invalidate(`tastings:${slug}`)
+                              toast('Response deleted')
+                            } catch { toast('Failed to delete') }
+                          }}
+                          style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '2px' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {tastings.length === 0 ? (
-                <div style={{ color: t.text.muted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No tasting feedback yet — share the event QR code to collect responses</div>
-              ) : tastings.map((tg: any) => (
-                <div key={tg.id} style={{ ...card, padding: '14px 18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ display: 'flex', gap: '2px', marginBottom: '4px' }}>
-                        {[1,2,3,4,5].map(n => <Star key={n} size={12} fill={tg.rating >= n ? '#d4a843' : 'transparent'} color={tg.rating >= n ? '#d4a843' : '#3d3d38'} />)}
-                      </div>
-                      {tg.first_name && <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary }}>{tg.first_name}</div>}
-                      {tg.notes && <p style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>{tg.notes}</p>}
-                    </div>
-                    <div style={{ fontSize: '11px', color: t.text.muted }}>{relativeTimeStr(tg.captured_at)}</div>
-                  </div>
-                </div>
-              ))}
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Contacts Tab */}
         {tab === 'contacts' && !tabLoading && (

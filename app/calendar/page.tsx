@@ -59,17 +59,20 @@ export default function CalendarPage() {
   const load = useCallback(async () => {
     const monthStart = new Date(viewYear, viewMonth, 1).toISOString()
     const monthEnd = new Date(viewYear, viewMonth + 1, 0, 23, 59, 59).toISOString()
-    const [evs, cls, camps] = await Promise.all([
-      getEvents({ since: monthStart, until: monthEnd }),
-      getClients(),
+    const [evs, camps] = await Promise.all([
+      getEvents({ since: monthStart, until: monthEnd }).catch(() => []),
       getCampaigns().catch(() => []),
     ])
     setEvents(evs)
-    setClients(cls)
     setCampaigns(camps)
   }, [viewMonth, viewYear])
 
   useEffect(() => { load() }, [load])
+
+  // Load clients independently so a failed events query can't wipe them out
+  useEffect(() => {
+    getClients().then(setClients).catch(() => {})
+  }, [])
 
   // Load users for filter
   useEffect(() => {
