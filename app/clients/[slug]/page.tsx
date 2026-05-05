@@ -316,6 +316,55 @@ export default function ClientDetailPage() {
               </div>
             )}
 
+            {/* Product velocity leaderboard */}
+            {(() => {
+              const productMap: Record<string, { name: string; orderCount: number; qty: number; revenue: number; lastOrderAt: string | null }> = {}
+              for (const o of orders) {
+                const items = o.po_line_items || []
+                for (const li of items) {
+                  if (!li.product_name) continue
+                  const key = li.product_name.trim().toLowerCase()
+                  if (!productMap[key]) productMap[key] = { name: li.product_name, orderCount: 0, qty: 0, revenue: 0, lastOrderAt: null }
+                  const e = productMap[key]
+                  e.orderCount += 1
+                  e.qty += Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
+                  e.revenue += Number(li.total || 0) || Number(li.unit_price || li.price || 0) * (Number(li.quantity || 0) || 1)
+                  if (!e.lastOrderAt || o.created_at > e.lastOrderAt) e.lastOrderAt = o.created_at
+                }
+              }
+              const ranked = Object.values(productMap).sort((a, b) => b.revenue - a.revenue)
+              if (ranked.length === 0) return null
+              return (
+                <div style={{ ...card, padding: '20px 24px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Package size={14} style={{ color: t.gold }} /> Product Velocity
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0px', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
+                    {ranked.slice(0, 8).map((p, i) => (
+                      <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '12px', alignItems: 'center', padding: '10px 14px', backgroundColor: i % 2 === 0 ? t.bg.card : t.bg.elevated }}>
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '500', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                          {p.lastOrderAt && <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '1px' }}>{relativeTimeStr(p.lastOrderAt) ?? formatShortDateMT(p.lastOrderAt)}</div>}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '10px', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Orders</div>
+                          <div className="mono" style={{ fontSize: '13px', fontWeight: '600', color: t.text.secondary }}>{p.orderCount}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '10px', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Qty</div>
+                          <div className="mono" style={{ fontSize: '13px', fontWeight: '600', color: t.text.secondary }}>{p.qty}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '10px', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Revenue</div>
+                          <div className="mono" style={{ fontSize: '13px', fontWeight: '700', color: t.gold }}>{formatCurrency(p.revenue)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Distributor info */}
             {(client.distributor_name || client.distributor_rep_id) && (() => {
               const rep = distributorContacts.find(c => c.id === client.distributor_rep_id)

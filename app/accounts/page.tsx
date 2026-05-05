@@ -41,6 +41,11 @@ function AccountCard({ account, clients }: { account: any; clients: Client[] }) 
               <span style={{ fontSize: '11px', color, fontWeight: '600' }}>
                 {days === null ? 'Never visited' : days === 0 ? 'Visited today' : `${days}d ago`}
               </span>
+              {account.last_visit_status && (
+                <span style={{ ...badge.visitStatus(account.last_visit_status), fontSize: '10px', padding: '1px 6px' }}>
+                  {account.last_visit_status}
+                </span>
+              )}
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 {accountClients.map(c => {
                   const logo = clientLogoUrl(c)

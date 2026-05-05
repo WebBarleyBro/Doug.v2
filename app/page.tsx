@@ -50,6 +50,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   const [showAllFollowUps, setShowAllFollowUps] = useState(false)
   const [plannerStops, setPlannerStops] = useState<PlannerStop[]>([])
   const [pendingInquiries, setPendingInquiries] = useState<any[]>([])
+  const [atRiskPlacements, setAtRiskPlacements] = useState<any[]>([])
 
   const isOwner = profile.role === 'owner'
 
@@ -71,6 +72,23 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
       getSupabase().from('placements').select('account_id').is('lost_at', null).then(({ data }) => {
         setActivePlacementAccountIds(new Set((data || []).map((p: any) => p.account_id).filter(Boolean)))
       }).catch(() => {})
+      // Fetch at-risk placements: committed >30d or on_shelf >60d
+      getSupabase()
+        .from('placements')
+        .select('id, product_name, status, client_slug, updated_at, created_at, accounts(id, name)')
+        .is('lost_at', null)
+        .in('status', ['committed', 'on_shelf'])
+        .then(({ data }) => {
+          const now = Date.now()
+          const flagged = (data || []).filter((p: any) => {
+            const age = Math.floor((now - new Date(p.updated_at || p.created_at).getTime()) / 86400_000)
+            return (p.status === 'committed' && age > 30) || (p.status === 'on_shelf' && age > 60)
+          }).map((p: any) => ({
+            ...p,
+            ageDays: Math.floor((now - new Date(p.updated_at || p.created_at).getTime()) / 86400_000),
+          })).sort((a: any, b: any) => b.ageDays - a.ageDays)
+          setAtRiskPlacements(flagged)
+        }).catch(() => {})
       // Visit streak
       getVisitStreak(profile.id).then(setStreak).catch(() => {})
       // Planner stops for today's progress
@@ -614,6 +632,53 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
           </div>
         </div>
       </div>
+
+      {/* At-Risk Placements */}
+      {atRiskPlacements.length > 0 && (
+        <div style={{ marginTop: '28px' }}>
+          <div style={{ backgroundColor: t.bg.card, border: `1px solid rgba(234,179,8,0.25)`, borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px 12px', borderBottom: `1px solid ${t.border.subtle}`, backgroundColor: t.bg.elevated, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={14} color={t.status.warning} />
+                <span style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Placements Need Attention</span>
+                <span style={{ fontSize: '10px', backgroundColor: 'rgba(234,179,8,0.15)', color: t.status.warning, borderRadius: '10px', padding: '2px 7px', fontWeight: '700' }}>{atRiskPlacements.length}</span>
+              </div>
+              <Link href="/placements" style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>View all <ChevronRight size={11} /></Link>
+            </div>
+            <div style={{ padding: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+              {atRiskPlacements.slice(0, 8).map((p: any) => {
+                const accountName = p.accounts?.name || '—'
+                const accountId = p.accounts?.id
+                const isCommitted = p.status === 'committed'
+                const label = isCommitted ? 'no order yet' : 'check reorder'
+                const color = isCommitted ? t.status.warning : t.status.danger
+                return (
+                  <Link
+                    key={p.id}
+                    href={accountId ? `/accounts/${accountId}` : '/placements'}
+                    style={{
+                      backgroundColor: t.bg.elevated, border: `1px solid ${t.border.subtle}`,
+                      borderLeft: `3px solid ${color}`, borderRadius: '8px', padding: '10px 14px',
+                      textDecoration: 'none', display: 'block',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <div style={{ overflow: 'hidden' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.product_name}</div>
+                        <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountName}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '10px', color, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                        <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '2px' }}>{p.ageDays}d</div>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tasks section */}
       {tasks.length > 0 && (

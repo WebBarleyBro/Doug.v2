@@ -276,6 +276,9 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [resendTo, setResendTo] = useState('')
   const [resendState, setResendState] = useState<'idle' | 'open' | 'sending' | 'sent'>('idle')
+  const [editingOrder, setEditingOrder] = useState(false)
+  const [editNotesDraft, setEditNotesDraft] = useState('')
+  const [editStatusDraft, setEditStatusDraft] = useState('')
   const [showEmailPreview, setShowEmailPreview] = useState(false)
   const [previewEmail, setPreviewEmail] = useState('')
   const [sendEmailError, setSendEmailError] = useState('')
@@ -350,7 +353,7 @@ export default function OrdersPage() {
     }))
   }, [orderType, nextPONum, nextOINum])
 
-  // Keep selected order in sync when orders reload
+  // Keep selected order in sync when orders reload; reset edit state on order change
   useEffect(() => {
     if (selectedOrder) {
       const updated = orders.find(o => o.id === selectedOrder.id)
@@ -358,6 +361,8 @@ export default function OrdersPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders])
+
+  useEffect(() => { setEditingOrder(false) }, [selectedOrder?.id])
 
   const monthStart = startOfMonthMT()
   const directOrders = orders.filter(o => !o.order_type || o.order_type === 'direct' || o.po_number?.startsWith('PO-'))
@@ -752,9 +757,19 @@ export default function OrdersPage() {
                     {client && <span style={{ fontSize: '12px', color: t.text.secondary }}>{client.name}</span>}
                   </div>
                 </div>
-                <button onClick={() => setSelectedOrder(null)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px' }}>
-                  <X size={20} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {!editingOrder && (
+                    <button
+                      onClick={() => { setEditNotesDraft(o.notes || ''); setEditStatusDraft(o.status || 'draft'); setEditingOrder(true) }}
+                      style={{ background: 'none', border: `1px solid ${t.border.default}`, color: t.text.muted, cursor: 'pointer', padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontFamily: 'inherit' }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  <button onClick={() => { setSelectedOrder(null); setEditingOrder(false) }} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px' }}>
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px', flex: 1 }}>
@@ -882,11 +897,59 @@ export default function OrdersPage() {
                   </div>
                 )}
 
-                {o.notes && (
-                  <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
-                    <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Notes</div>
-                    <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5 }}>{o.notes}</p>
+                {editingOrder ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px 16px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.hover}` }}>
+                    <div style={{ fontSize: '11px', color: t.gold, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Edit Order</div>
+                    <div>
+                      <div style={{ ...labelStyle, marginBottom: '4px' }}>Status</div>
+                      <select
+                        value={editStatusDraft}
+                        onChange={e => setEditStatusDraft(e.target.value)}
+                        style={{ ...selectStyle, width: '100%' }}
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="sent">Sent</option>
+                        <option value="fulfilled">Fulfilled</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{ ...labelStyle, marginBottom: '4px' }}>Notes</div>
+                      <textarea
+                        value={editNotesDraft}
+                        onChange={e => setEditNotesDraft(e.target.value)}
+                        placeholder="Add notes..."
+                        rows={4}
+                        style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.5 } as any}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => setEditingOrder(false)}
+                        style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '10px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await updateOrder(o.id, { notes: editNotesDraft, status: editStatusDraft as any })
+                          toast('Order updated')
+                          setEditingOrder(false)
+                          load()
+                        }}
+                        style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '10px' }}
+                      >
+                        Save
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  o.notes && (
+                    <div style={{ padding: '12px 14px', borderRadius: '8px', backgroundColor: t.bg.input, border: `1px solid ${t.border.subtle}` }}>
+                      <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Notes</div>
+                      <p style={{ fontSize: '13px', color: t.text.secondary, lineHeight: 1.5 }}>{o.notes}</p>
+                    </div>
+                  )
                 )}
 
                 {/* Actions */}

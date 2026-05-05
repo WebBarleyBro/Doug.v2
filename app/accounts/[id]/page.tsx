@@ -53,7 +53,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   other:       t.text.muted,
 }
 
-const TABS = ['activity', 'visits', 'placements', 'orders', 'contacts'] as const
+const TABS = ['activity', 'visits', 'placements', 'orders', 'products', 'contacts'] as const
 type Tab = typeof TABS[number]
 
 export default function AccountDetailPage() {
@@ -160,13 +160,7 @@ export default function AccountDetailPage() {
   const loadTab = useCallback(async (t: Tab) => {
     if (!id || loadedTabsRef.current.has(t)) return
     loadedTabsRef.current.add(t)
-    try {
-      if (t === 'contacts') {
-        const cs = await getContacts({ accountId: id })
-        setContacts(cs)
-      }
-
-    } catch (e) { console.error(e) }
+    // All tabs are loaded eagerly now — nothing to do here
   }, [id])
 
   const load = useCallback(async () => {
@@ -176,16 +170,17 @@ export default function AccountDetailPage() {
       setAccount(acc)
       accountNameRef.current = acc?.name || ''
       setClients(cls)
-      // Fetch all tab data together so orders get the correct account name
-      const [vs, ps, os] = await Promise.all([
+      const [vs, ps, os, cs] = await Promise.all([
         getVisits({ accountId: id, limit: 200 }),
         getPlacements({ accountId: id }),
         getOrders({ accountId: id, accountName: acc?.name || '' }),
+        getContacts({ accountId: id }),
       ])
       setVisits(vs)
       setPlacements(ps)
       setOrders(os)
-      loadedTabsRef.current = new Set(['activity', 'visits', 'placements', 'orders'])
+      setContacts(cs)
+      loadedTabsRef.current = new Set(['activity', 'visits', 'placements', 'orders', 'products', 'contacts'])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [id])
@@ -421,6 +416,15 @@ export default function AccountDetailPage() {
           )}
         </div>
 
+        {/* ── Pre-Visit Brief Strip ── */}
+        <PreVisitStrip
+          visits={dedupedVisits as any[]}
+          placements={placements}
+          contacts={contacts}
+          orders={orders}
+          onLogVisit={() => setVisitModal(true)}
+        />
+
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', overflowX: 'auto', paddingBottom: '2px' }}>
           {TABS.map(tb => (
@@ -476,8 +480,16 @@ export default function AccountDetailPage() {
                   const primary = rows[0]
                   return (
                     <VisitCard key={primary.id} visit={primary} allRows={rows} clients={clients}
-                      onDelete={() => deleteVisitGroup(rows.map(r => r.id), rows.map(r => r.client_slug)).then(reloadAll)}
-                      onSave={(updates) => updateVisitGroup(rows.map(r => r.id), updates as any).then(reloadAll)}
+                      onDelete={async () => {
+                        await deleteVisitGroup(rows.map(r => r.id), rows.map(r => r.client_slug))
+                        toast('Visit deleted')
+                        reloadAll()
+                      }}
+                      onSave={async (updates) => {
+                        await updateVisitGroup(rows.map(r => r.id), updates as any)
+                        toast('Visit updated')
+                        reloadAll()
+                      }}
                       isMobile={isMobile}
                     />
                   )
@@ -574,7 +586,7 @@ export default function AccountDetailPage() {
                     setAddPlacement(false)
                     setSavingPlacement(false)
                     toast('Placement added')
-                    reloadAll()
+                    await reloadAll()
                   }} style={btnPrimary} disabled={savingPlacement || !placementForm.client_slug || !placementForm.product_name}>
                     {savingPlacement ? 'Saving...' : 'Add Placement'}
                   </button>
@@ -613,6 +625,10 @@ export default function AccountDetailPage() {
               )
             })}
           </div>
+        )}
+
+        {tab === 'products' && (
+          <ProductsOrderedTab orders={orders} clients={clients} />
         )}
 
         {tab === 'contacts' && (
@@ -1121,6 +1137,249 @@ function ContactCard({ contact, onEdit, onDelete }: { contact: any; onEdit: () =
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Pre-Visit Brief Strip ────────────────────────────────────────────────
+
+const CONTACT_PRIORITY: Record<string, number> = {
+  buyer: 1, bar_manager: 2, gm: 3, owner: 4, gm_owner: 3, chef: 5, distributor: 6, general: 7, other: 8,
+}
+
+function PreVisitStrip({ visits, placements, contacts, orders, onLogVisit }: {
+  visits: any[]
+  placements: any[]
+  contacts: any[]
+  orders: any[]
+  onLogVisit: () => void
+}) {
+  if (visits.length === 0 && placements.length === 0 && contacts.length === 0) return null
+
+  const lastVisit = visits[0] ?? null
+  const now = Date.now()
+
+  // Primary contact: decision maker first, then by role priority
+  const primaryContact = contacts.length > 0
+    ? [...contacts].sort((a, b) => {
+        if (a.is_decision_maker && !b.is_decision_maker) return -1
+        if (!a.is_decision_maker && b.is_decision_maker) return 1
+        return (CONTACT_PRIORITY[a.category] ?? 9) - (CONTACT_PRIORITY[b.category] ?? 9)
+      })[0]
+    : null
+
+  // Placement status summary
+  const statusGroups: Record<string, number> = {}
+  for (const p of placements) {
+    statusGroups[p.status] = (statusGroups[p.status] || 0) + 1
+  }
+  const statusOrder = ['on_shelf', 'reordering', 'ordered', 'committed']
+
+  // At-risk placements
+  const atRisk: { name: string; days: number; reason: string }[] = []
+  for (const p of placements) {
+    const since = p.updated_at || p.created_at
+    const days = since ? Math.floor((now - new Date(since).getTime()) / 86400_000) : 0
+    if (p.status === 'committed' && days > 30) {
+      atRisk.push({ name: p.product_name, days, reason: `committed ${days} days — ask about the order` })
+    } else if (p.status === 'on_shelf' && days > 60) {
+      atRisk.push({ name: p.product_name, days, reason: `on shelf ${days} days — check reorder` })
+    }
+  }
+
+  const lastOrder = orders.length > 0 ? orders[0] : null
+
+  const PLACEMENT_STATUS_LABELS: Record<string, string> = {
+    committed: 'committed', ordered: 'ordered', on_shelf: 'on shelf', reordering: 'reordering',
+  }
+  const PLACEMENT_STATUS_COLORS: Record<string, string> = {
+    committed: t.status.info, ordered: t.status.warning, on_shelf: t.status.success, reordering: t.gold,
+  }
+
+  return (
+    <div style={{
+      backgroundColor: t.bg.card,
+      border: `1px solid ${t.border.default}`,
+      borderLeft: `3px solid ${t.gold}`,
+      borderRadius: '10px',
+      padding: '14px 18px',
+      marginBottom: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+    }}>
+      <div style={{ fontSize: '9px', fontWeight: '700', color: t.gold, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+        Pre-Visit Brief
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+        {/* Last visit */}
+        {lastVisit ? (
+          <div style={{ minWidth: '180px', flex: 1 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Last Visit</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={badge.visitStatus(lastVisit.status)}>{lastVisit.status}</span>
+              <span style={{ fontSize: '11px', color: t.text.muted }}>
+                {daysAgoMT(lastVisit.visited_at) === 0 ? 'today' : `${daysAgoMT(lastVisit.visited_at)}d ago`}
+              </span>
+            </div>
+            {lastVisit.notes && (
+              <div style={{ fontSize: '12px', color: t.text.secondary, marginTop: '4px', lineHeight: 1.4, fontStyle: 'italic', maxWidth: '300px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                "{lastVisit.notes}"
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ minWidth: '180px', flex: 1 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Last Visit</div>
+            <span style={{ fontSize: '12px', color: t.text.muted }}>Never visited</span>
+          </div>
+        )}
+
+        {/* Active placements */}
+        {placements.length > 0 && (
+          <div style={{ minWidth: '160px', flex: 1 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
+              Placements ({placements.length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {statusOrder.filter(s => statusGroups[s]).map(s => (
+                <span key={s} style={{
+                  fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px',
+                  backgroundColor: PLACEMENT_STATUS_COLORS[s] + '18',
+                  color: PLACEMENT_STATUS_COLORS[s],
+                  border: `1px solid ${PLACEMENT_STATUS_COLORS[s]}30`,
+                }}>
+                  {PLACEMENT_STATUS_LABELS[s]} ×{statusGroups[s]}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Primary contact */}
+        {primaryContact && (
+          <div style={{ minWidth: '160px', flex: 1 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Ask for</div>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{primaryContact.name}</div>
+            {primaryContact.role && <div style={{ fontSize: '11px', color: t.text.muted }}>{primaryContact.role}</div>}
+            {primaryContact.phone && (
+              <a href={`tel:${primaryContact.phone}`} style={{ fontSize: '12px', color: t.gold, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '3px' }}>
+                📞 {primaryContact.phone}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Last order */}
+        {lastOrder && (
+          <div style={{ minWidth: '120px', flex: 1 }}>
+            <div style={{ fontSize: '10px', color: t.text.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>Last Order</div>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, fontFamily: 'monospace' }}>{formatCurrency(resolveTotal(lastOrder))}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted }}>{formatShortDateMT(lastOrder.created_at)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* At-risk alerts */}
+      {atRisk.map((r, i) => (
+        <div key={i} style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          backgroundColor: 'rgba(233,153,40,0.08)', border: '1px solid rgba(233,153,40,0.22)',
+          borderRadius: '7px', padding: '8px 12px',
+        }}>
+          <span style={{ fontSize: '13px' }}>⚠</span>
+          <span style={{ fontSize: '12px', color: t.status.warning, fontWeight: '600' }}>{r.name}</span>
+          <span style={{ fontSize: '12px', color: t.text.muted }}>— {r.reason}</span>
+        </div>
+      ))}
+
+      {/* Log visit CTA */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={onLogVisit} style={{
+          fontSize: '12px', fontWeight: '700', padding: '6px 14px', borderRadius: '7px',
+          backgroundColor: t.goldDim, border: `1px solid ${t.goldBorder}`,
+          color: t.gold, cursor: 'pointer',
+        }}>
+          + Log Visit
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Products Ordered Tab ─────────────────────────────────────────────────
+
+function ProductsOrderedTab({ orders, clients }: { orders: any[]; clients: any[] }) {
+  // Extract and aggregate all line items across all orders for this account
+  type ProductRow = { product_name: string; client_slug: string; order_count: number; total_qty: number; total_value: number; last_ordered: string }
+  const map = new Map<string, ProductRow>()
+
+  for (const o of orders) {
+    const items: any[] = o.po_line_items || []
+    for (const li of items) {
+      const key = `${o.client_slug}::${li.product_name}`
+      const existing = map.get(key)
+      const qty = Number(li.cases || 0) + Number(li.bottles || 0) + Number(li.quantity || 0) || 1
+      const total = Number(li.total || 0) || qty * Number(li.unit_price || li.price || 0)
+      if (existing) {
+        existing.order_count++
+        existing.total_qty += qty
+        existing.total_value += total
+        if (o.created_at > existing.last_ordered) existing.last_ordered = o.created_at
+      } else {
+        map.set(key, {
+          product_name: li.product_name,
+          client_slug: o.client_slug || '',
+          order_count: 1,
+          total_qty: qty,
+          total_value: total,
+          last_ordered: o.created_at,
+        })
+      }
+    }
+  }
+
+  const rows = [...map.values()].sort((a, b) => b.total_value - a.total_value)
+
+  if (rows.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 24px', color: t.text.muted, fontSize: '13px' }}>
+        No product order history yet
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {/* Header */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 100px', gap: '8px', padding: '8px 16px', fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+        <span>Product</span>
+        <span style={{ textAlign: 'right' }}>Orders</span>
+        <span style={{ textAlign: 'right' }}>Qty</span>
+        <span style={{ textAlign: 'right' }}>Total</span>
+        <span style={{ textAlign: 'right' }}>Last Order</span>
+      </div>
+      {rows.map((row, i) => {
+        const client = clients.find(c => c.slug === row.client_slug)
+        return (
+          <div key={i} style={{
+            display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 100px', gap: '8px',
+            padding: '12px 16px', alignItems: 'center',
+            backgroundColor: i % 2 === 0 ? t.bg.card : t.bg.elevated,
+            borderRadius: '8px',
+          }}>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{row.product_name}</div>
+              {client && <div style={{ fontSize: '11px', color: client.color || t.text.muted, fontWeight: '500' }}>{client.name}</div>}
+            </div>
+            <div style={{ fontSize: '12px', color: t.text.muted, textAlign: 'right', fontFamily: 'monospace' }}>{row.order_count}</div>
+            <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right', fontFamily: 'monospace' }}>{row.total_qty}</div>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: t.status.success, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(row.total_value)}</div>
+            <div style={{ fontSize: '11px', color: t.text.muted, textAlign: 'right' }}>{formatShortDateMT(row.last_ordered)}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }

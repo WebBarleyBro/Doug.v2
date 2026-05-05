@@ -289,10 +289,10 @@ export async function logVisit(visit: {
     .select()
   if (error) throw error
 
-  // Update account last_visited
+  // Update account last_visited + last_visit_status for momentum indicator
   await sb
     .from('accounts')
-    .update({ last_visited: visit.visited_at })
+    .update({ last_visited: visit.visited_at, last_visit_status: visit.status })
     .eq('id', visit.account_id)
 
   // Invalidate stale caches
