@@ -242,7 +242,7 @@ export default function TastingKiosk() {
           <div style={{ marginBottom: 36 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', color: MUTED, textTransform: 'uppercase', marginBottom: 12, textAlign: 'center' }}>Would you buy this?</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[{ label: '👍   Yes, I'd buy it', v: true }, { label: '🤔   Maybe', v: null as null }, { label: '👎   Not for me', v: false }].map(opt => {
+              {[{ label: "👍   Yes, I'd buy it", v: true }, { label: '🤔   Maybe', v: null as null }, { label: "👎   Not for me", v: false }].map(opt => {
                 const isA = opt.v === true ? curR.would_buy === true : opt.v === false ? curR.would_buy === false : (curR.would_buy === null && ratings[curKey] !== undefined)
                 return (
                   <button key={String(opt.v)} type="button"
