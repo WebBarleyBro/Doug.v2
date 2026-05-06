@@ -176,6 +176,7 @@ export default function CalendarPage() {
     setCreateSaving(true)
     try {
       const payload: Record<string, any> = {
+        name: form.title,
         title: form.title,
         event_type: form.event_type,
         status: form.status,
@@ -448,6 +449,7 @@ export default function CalendarPage() {
                       setCreateSaving(true)
                       try {
                         const payload: Record<string, any> = {
+                          name: form.title,
                           title: form.title,
                           event_type: form.event_type,
                           status: form.status,
