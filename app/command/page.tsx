@@ -30,7 +30,7 @@ type OrderRow = {
   id: string; account_id: string; client_slug: string; status: string
   total_amount: number | null; sent_at: string | null; created_at: string
   commission_amount: number | null
-  po_line_items: { total?: number; unit_price?: number; cases?: number; bottles?: number; quantity?: number }[]
+  po_line_items: { product_name?: string; total?: number; unit_price?: number; cases?: number; bottles?: number; quantity?: number }[]
 }
 type VisitRow   = { id: string; account_id: string; user_id: string; client_slug: string; visited_at: string; status: string }
 type PlacRow    = { id: string; account_id: string; client_slug: string; status: string; created_at: string; lost_at: string | null }
@@ -321,7 +321,7 @@ function CT({ active, payload, label, currency }: any) {
 
 // ─── RevenuePanel ─────────────────────────────────────────────────────────────
 
-function RevenuePanel({ orders, clients, brandFilter, accounts }: { orders: OrderRow[]; clients: Client[]; brandFilter: string; accounts: AcctRow[] }) {
+function RevenuePanel({ orders, clients, brandFilter, accounts, productFilter }: { orders: OrderRow[]; clients: Client[]; brandFilter: string; accounts: AcctRow[]; productFilter: string }) {
   const accountNameMap = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a.name])), [accounts])
   const rates = useMemo(() => Object.fromEntries(clients.map(c => [c.slug, c.commission_rate ?? 0])), [clients])
 
@@ -350,6 +350,21 @@ function RevenuePanel({ orders, clients, brandFilter, accounts }: { orders: Orde
     const byAcct: Record<string, number> = {}
     for (const o of orders) byAcct[o.account_id] = (byAcct[o.account_id] || 0) + resolveTotal(o)
     return Object.entries(byAcct).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  }, [orders])
+
+  const topProducts = useMemo(() => {
+    const byProd: Record<string, { name: string; rev: number; orderCount: number }> = {}
+    for (const o of orders) {
+      for (const li of o.po_line_items) {
+        if (!li.product_name) continue
+        const key = li.product_name.trim().toLowerCase()
+        const itemRev = Number(li.total || 0) || Number(li.unit_price || 0) * (Number(li.quantity || 0) || 1)
+        if (!byProd[key]) byProd[key] = { name: li.product_name, rev: 0, orderCount: 0 }
+        byProd[key].rev += itemRev
+        byProd[key].orderCount += 1
+      }
+    }
+    return Object.values(byProd).sort((a, b) => b.rev - a.rev).slice(0, 8)
   }, [orders])
 
   const totalRev = orders.reduce((s, o) => s + resolveTotal(o), 0)
@@ -401,6 +416,31 @@ function RevenuePanel({ orders, clients, brandFilter, accounts }: { orders: Orde
                 <span style={{ fontSize: '10px', fontWeight: '700', color: t.gold, fontFamily: 'monospace', width: '56px', textAlign: 'right' }}>{formatCurrency(rev)}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {topProducts.length > 0 && (
+        <div>
+          <div style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.4, marginBottom: '8px' }}>Top Products</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {topProducts.map((p, i) => {
+              const isActive = productFilter !== 'all' && productFilter === p.name.trim().toLowerCase()
+              const c = isActive ? t.status.success : t.gold
+              return (
+                <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: productFilter !== 'all' && !isActive ? 0.4 : 1 }}>
+                  <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.35, width: '12px', textAlign: 'right', fontFamily: 'monospace' }}>{i + 1}</span>
+                  <span style={{ fontSize: '10px', color: isActive ? t.status.success : t.text.secondary, width: '110px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isActive ? '700' : '400' }}>
+                    {p.name}
+                  </span>
+                  <div style={{ flex: 1, height: '2px', borderRadius: '1px', background: 'rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, width: `${(p.rev / (topProducts[0].rev || 1)) * 100}%`, background: `linear-gradient(90deg, ${c}60, ${c})`, borderRadius: '1px', boxShadow: `0 0 6px ${c}80` }} />
+                  </div>
+                  <span style={{ fontSize: '9px', color: t.text.muted, opacity: 0.4, fontFamily: 'monospace', width: '20px', textAlign: 'right' }}>{p.orderCount}×</span>
+                  <span style={{ fontSize: '10px', fontWeight: '700', color: c, fontFamily: 'monospace', width: '56px', textAlign: 'right' }}>{p.rev > 0 ? formatCurrency(p.rev) : '—'}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -768,10 +808,11 @@ function AccountsTable({ accounts, orders, visits, clients }: {
 // ─── CommandContent ───────────────────────────────────────────────────────────
 
 function CommandContent() {
-  const [period, setPeriod]       = useState(30)
-  const [brandSlug, setBrandSlug] = useState('all')
-  const [repId, setRepId]         = useState('all')
-  const [panel, setPanel]         = useState<'revenue' | 'visits' | 'placements' | 'reps'>('revenue')
+  const [period, setPeriod]         = useState(30)
+  const [brandSlug, setBrandSlug]   = useState('all')
+  const [repId, setRepId]           = useState('all')
+  const [productFilter, setProductFilter] = useState('all')
+  const [panel, setPanel]           = useState<'revenue' | 'visits' | 'placements' | 'reps'>('revenue')
   const [bucket, setBucket]       = useState<string | null>(null)
   const [loading, setLoading]         = useState(true)
   const [geocoding, setGeocoding]     = useState(false)
@@ -785,6 +826,8 @@ function CommandContent() {
   const [placements, setPlacements] = useState<PlacRow[]>([])
   const [profiles,   setProfiles]   = useState<ProfileRow[]>([])
   const [profile,    setProfile]    = useState<any>(null)
+
+  useEffect(() => { setProductFilter('all') }, [brandSlug])
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
@@ -834,6 +877,18 @@ function CommandContent() {
   const accountMap  = useMemo(() => Object.fromEntries(accounts.map(a => [a.id, a])), [accounts])
   const clientRates = useMemo(() => Object.fromEntries(clients.map(c => [c.slug, c.commission_rate ?? 0])), [clients])
 
+  // All unique product names across loaded orders (for the product filter dropdown)
+  const availableProducts = useMemo(() => {
+    const names = new Set<string>()
+    for (const o of orders) {
+      if (brandSlug !== 'all' && o.client_slug !== brandSlug) continue
+      for (const li of o.po_line_items) {
+        if (li.product_name) names.add(li.product_name)
+      }
+    }
+    return [...names].sort()
+  }, [orders, brandSlug])
+
   const hasGeoAccounts = useMemo(() => accounts.some(a => a.lat != null && a.lng != null), [accounts])
 
   const inBounds = useCallback((acct: AcctRow) => {
@@ -852,9 +907,10 @@ function CommandContent() {
     const dateMs = new Date(o.sent_at || o.created_at).getTime()
     if (dateMs < periodStartMs) return false
     if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
+    if (productFilter !== 'all' && !o.po_line_items.some(li => li.product_name === productFilter)) return false
     const acct = accountMap[o.account_id]
     return acct ? inBounds(acct) : false
-  }, [periodStartMs, brandSlug, accountMap, inBounds])
+  }, [periodStartMs, brandSlug, productFilter, accountMap, inBounds])
 
   const filterPrior = useCallback((o: OrderRow) => {
     const dateMs = new Date(o.sent_at || o.created_at).getTime()
@@ -1092,6 +1148,18 @@ function CommandContent() {
             </select>
           )}
 
+          {/* Product filter */}
+          {availableProducts.length > 0 && (
+            <select value={productFilter} onChange={e => setProductFilter(e.target.value)} style={{
+              ...selectStyle,
+              borderColor: productFilter !== 'all' ? `${t.status.success}55` : undefined,
+              color: productFilter !== 'all' ? t.status.success : t.text.secondary,
+            }}>
+              <option value="all">All Products</option>
+              {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          )}
+
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: t.status.success, boxShadow: `0 0 8px ${t.status.success}, 0 0 16px ${t.status.success}40` }} />
             <span style={{ fontSize: '9px', fontWeight: '700', color: t.status.success, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.8 }}>Live</span>
@@ -1118,7 +1186,8 @@ function CommandContent() {
           {!loading && (
             <div style={{ fontSize: '9px', color: t.text.muted, opacity: 0.3, marginBottom: '16px', letterSpacing: '0.04em' }}>
               Showing {PERIODS.find(p => p.days === period)?.label} window · {metrics.totalAccounts} accounts · {clients.length} brand{clients.length !== 1 ? 's' : ''}
-              {brandSlug !== 'all' ? ` · filtered to ${clients.find(c => c.slug === brandSlug)?.name ?? brandSlug}` : ''}
+              {brandSlug !== 'all' ? ` · ${clients.find(c => c.slug === brandSlug)?.name ?? brandSlug}` : ''}
+              {productFilter !== 'all' ? ` · ${productFilter}` : ''}
             </div>
           )}
 
@@ -1177,7 +1246,7 @@ function CommandContent() {
                       {[1,2,3].map(i => <div key={i} style={{ height: '20px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }} />)}
                     </div>
                   : panel === 'revenue'
-                    ? <RevenuePanel orders={pOrders} clients={clients} brandFilter={brandSlug} accounts={territoryAccts} />
+                    ? <RevenuePanel orders={pOrders} clients={clients} brandFilter={brandSlug} accounts={territoryAccts} productFilter={productFilter} />
                     : panel === 'visits'
                       ? <VisitsPanel visits={pVisits} period={period} coverage={metrics.coverage} />
                       : panel === 'placements'
