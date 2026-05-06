@@ -66,11 +66,11 @@ function ProductSheet({ brand, selected, onToggle, onClose }: { brand: any; sele
             })}
           </div>
         </div>
-        {/* Done button */}
+        {/* Confirm / close button */}
         <div style={{ padding: '16px 20px 28px', borderTop: `1px solid ${BORDER}` }}>
           <button onClick={onClose}
-            style={{ width: '100%', padding: '16px', borderRadius: 14, fontSize: 16, fontWeight: 800, background: count > 0 ? ac : GOLD, color: '#0a0908', border: 'none', cursor: 'pointer', letterSpacing: '-0.01em', boxShadow: `0 4px 20px ${GOLD}40` }}>
-            {count > 0 ? `Confirm ${count} product${count > 1 ? 's' : ''}` : 'Done — rate this brand overall'}
+            style={{ width: '100%', padding: '16px', borderRadius: 14, fontSize: 16, fontWeight: 800, background: count > 0 ? ac : CARD, color: count > 0 ? '#0a0908' : SEC, border: `1.5px solid ${count > 0 ? ac : BORDER}`, cursor: 'pointer', letterSpacing: '-0.01em', boxShadow: count > 0 ? `0 4px 20px ${ac}40` : 'none' }}>
+            {count > 0 ? `Confirm ${count} product${count > 1 ? 's' : ''}` : 'Rate brand overall (no specific product)'}
           </button>
         </div>
       </div>
