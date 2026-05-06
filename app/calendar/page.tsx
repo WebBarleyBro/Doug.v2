@@ -39,7 +39,7 @@ export default function CalendarPage() {
   const [users, setUsers] = useState<any[]>([])
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
+  const [form, setForm] = useState({ title: '', event_type: 'tasting', client_slug: '', client_slugs: [] as string[], start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
   const [isMobile, setIsMobile] = useState(false)
   const [tastingCounts, setTastingCounts] = useState<Record<string, number>>({})
   const [deleteEventTarget, setDeleteEventTarget] = useState<any>(null)
@@ -182,13 +182,18 @@ export default function CalendarPage() {
         status: form.status,
         start_time: new Date(form.start_time).toISOString(),
       }
-      if (form.client_slug) payload.client_slug = form.client_slug
+      if (form.event_type === 'tasting' && form.client_slugs.length > 0) {
+        payload.client_slug = form.client_slugs[0]
+        payload.client_slugs = form.client_slugs
+      } else if (form.client_slug) {
+        payload.client_slug = form.client_slug
+      }
       if (form.end_time) payload.end_time = new Date(form.end_time).toISOString()
       if (form.notes) payload.notes = form.notes
       if (form.url) payload.url = form.url
       await createEvent(payload as any)
       setShowCreate(false)
-      setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
+      setForm({ title: '', event_type: 'tasting', client_slug: '', client_slugs: [], start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
       load()
     } catch (err: any) {
       setCreateErr(err.message || 'Failed to save event')
@@ -412,19 +417,42 @@ export default function CalendarPage() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div><label style={labelStyle}>Title</label><input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Event name..." style={inputStyle} /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                  <div><label style={labelStyle}>Type</label>
-                    <select value={form.event_type} onChange={e => setForm(f => ({ ...f, event_type: e.target.value }))} style={selectStyle}>
-                      {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </select>
+                <div>
+                  <label style={labelStyle}>Type</label>
+                  <select value={form.event_type} onChange={e => setForm(f => ({ ...f, event_type: e.target.value, client_slugs: [] }))} style={selectStyle}>
+                    {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                {form.event_type === 'tasting' ? (
+                  <div>
+                    <label style={labelStyle}>Brands being poured</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+                      {clients.map(c => {
+                        const active = form.client_slugs.includes(c.slug)
+                        return (
+                          <button key={c.slug} type="button"
+                            onClick={() => setForm(f => ({ ...f, client_slugs: active ? f.client_slugs.filter(s => s !== c.slug) : [...f.client_slugs, c.slug] }))}
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '10px', border: `2px solid ${active ? (c.color || t.gold) : t.border.default}`, backgroundColor: active ? (c.color || t.gold) + '18' : t.bg.card, cursor: 'pointer', transition: 'all 150ms ease', flexShrink: 0 }}>
+                            {c.logo_url
+                              ? <img src={c.logo_url} alt={c.name} style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }} />
+                              : <div style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: (c.color || t.gold) + '30', border: `1px solid ${c.color || t.gold}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: c.color || t.gold }}>{c.name.charAt(0)}</div>
+                            }
+                            <span style={{ fontSize: 13, fontWeight: 600, color: active ? (c.color || t.gold) : t.text.primary }}>{c.name}</span>
+                            {active && <div style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: c.color || t.gold, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3l2.5 2.5L8 1" stroke="#0f0f0d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {form.client_slugs.length === 0 && <p style={{ fontSize: 12, color: t.text.muted, marginTop: 6 }}>Select at least one brand</p>}
                   </div>
+                ) : (
                   <div><label style={labelStyle}>Brand</label>
                     <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
                       <option value="">No brand</option>
                       {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                     </select>
                   </div>
-                </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
                   <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
@@ -455,13 +483,18 @@ export default function CalendarPage() {
                           status: form.status,
                           start_time: new Date(form.start_time).toISOString(),
                         }
-                        if (form.client_slug) payload.client_slug = form.client_slug
+                        if (form.client_slugs.length > 0) {
+                          payload.client_slug = form.client_slugs[0]
+                          payload.client_slugs = form.client_slugs
+                        } else if (form.client_slug) {
+                          payload.client_slug = form.client_slug
+                        }
                         if (form.end_time) payload.end_time = new Date(form.end_time).toISOString()
                         if (form.notes) payload.notes = form.notes
                         if (form.url) payload.url = form.url
                         const created = await createEvent(payload as any)
                         setShowCreate(false)
-                        setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
+                        setForm({ title: '', event_type: 'tasting', client_slug: '', client_slugs: [], start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
                         load()
                         window.open(`/taste/${created.id}`, '_blank')
                       } catch (err: any) {

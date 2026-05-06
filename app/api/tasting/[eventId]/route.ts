@@ -15,20 +15,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     accountName = acct?.name ?? null
   }
 
-  let client = null
-  let products: any[] = []
-  if (event.client_slug) {
+  // Collect all brand slugs — prefer the array, fall back to single slug
+  const rawSlugs: string[] = Array.isArray(event.client_slugs) && event.client_slugs.length > 0
+    ? event.client_slugs
+    : event.client_slug ? [event.client_slug] : []
+
+  const brands: any[] = []
+  for (const slug of rawSlugs) {
     const [{ data: cl }, { data: prods }] = await Promise.all([
-      sb.from('clients').select('id, name, slug, color, logo_url').eq('slug', event.client_slug).single(),
-      sb.from('products').select('id, name, category').eq('client_slug', event.client_slug).eq('active', true).order('name'),
+      sb.from('clients').select('id, name, slug, color, logo_url').eq('slug', slug).single(),
+      sb.from('products').select('id, name, category').eq('client_slug', slug).eq('active', true).order('name'),
     ])
-    client = cl
-    products = prods || []
+    if (cl) brands.push({ ...cl, products: prods || [] })
   }
+
+  // Legacy single-client field for backwards compat
+  const client = brands[0] ?? null
 
   return NextResponse.json({
     event: { ...event, accounts: accountName ? { name: accountName } : null },
     client,
-    products,
+    brands,
   })
 }
