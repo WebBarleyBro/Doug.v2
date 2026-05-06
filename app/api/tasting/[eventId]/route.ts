@@ -4,8 +4,15 @@ import { getSupabaseAdmin } from '../../../lib/supabase-server'
 export async function GET(_req: Request, { params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params
   const sb = getSupabaseAdmin()
-  const { data: event } = await sb.from('events').select('*, accounts(name)').eq('id', eventId).single()
+  const { data: event, error: eventErr } = await sb.from('events').select('*').eq('id', eventId).single()
+  if (eventErr) console.error('tasting API: event fetch error', eventErr)
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  let accountName: string | null = null
+  if (event.account_id) {
+    const { data: acct } = await sb.from('accounts').select('name').eq('id', event.account_id).single()
+    accountName = acct?.name ?? null
+  }
 
   let client = null
   if (event.client_slug) {
@@ -13,5 +20,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ eventId
     client = cl
   }
 
-  return NextResponse.json({ event, client })
+  return NextResponse.json({ event: { ...event, accounts: accountName ? { name: accountName } : null }, client })
 }
