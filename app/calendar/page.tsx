@@ -43,6 +43,8 @@ export default function CalendarPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [tastingCounts, setTastingCounts] = useState<Record<string, number>>({})
   const [deleteEventTarget, setDeleteEventTarget] = useState<any>(null)
+  const [createErr, setCreateErr] = useState('')
+  const [createSaving, setCreateSaving] = useState(false)
 
   // Filters
   const [filterUser, setFilterUser] = useState('all')
@@ -170,10 +172,28 @@ export default function CalendarPage() {
   }
 
   async function handleCreate() {
-    await createEvent({ ...form, start_time: new Date(form.start_time).toISOString(), end_time: form.end_time ? new Date(form.end_time).toISOString() : undefined } as any)
-    setShowCreate(false)
-    setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
-    load()
+    setCreateErr('')
+    setCreateSaving(true)
+    try {
+      const payload: Record<string, any> = {
+        title: form.title,
+        event_type: form.event_type,
+        status: form.status,
+        start_time: new Date(form.start_time).toISOString(),
+      }
+      if (form.client_slug) payload.client_slug = form.client_slug
+      if (form.end_time) payload.end_time = new Date(form.end_time).toISOString()
+      if (form.notes) payload.notes = form.notes
+      if (form.url) payload.url = form.url
+      await createEvent(payload as any)
+      setShowCreate(false)
+      setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
+      load()
+    } catch (err: any) {
+      setCreateErr(err.message || 'Failed to save event')
+    } finally {
+      setCreateSaving(false)
+    }
   }
 
   const pillStyle = (active: boolean): React.CSSProperties => ({
@@ -368,8 +388,8 @@ export default function CalendarPage() {
                     {e.url && <a href={e.url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ fontSize: '11px', color: t.gold, textDecoration: 'none', marginTop: '2px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🔗 RSVP / Link</a>}
                   </div>
                   {isTasting && (
-                    <a href={`/taste/${e.id}`} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} title="Open tasting kiosk" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: t.gold, backgroundColor: t.goldDim, border: `1px solid ${t.border.gold}`, borderRadius: '6px', padding: '5px 10px', textDecoration: 'none', flexShrink: 0 }}>
-                      <Play size={12} fill={t.gold} /> Start
+                    <a href={`/taste/${e.id}`} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} title="Open tasting kiosk" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: '#0f0f0d', backgroundColor: t.gold, border: 'none', borderRadius: '8px', padding: '7px 14px', textDecoration: 'none', flexShrink: 0 }}>
+                      <Play size={13} fill="#0f0f0d" /> Start Tasting
                     </a>
                   )}
                   <button onClick={() => setDeleteEventTarget(e)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
@@ -411,9 +431,49 @@ export default function CalendarPage() {
                 <div><label style={labelStyle}>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'none' }} /></div>
                 <div><label style={labelStyle}>URL / RSVP Link (optional)</label><input type="url" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="https://..." style={inputStyle} /></div>
               </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button onClick={() => setShowCreate(false)} style={btnSecondary}>Cancel</button>
-                <button onClick={handleCreate} disabled={!form.title} style={{ ...btnPrimary, opacity: !form.title ? 0.6 : 1 }}>Save Event</button>
+              {createErr && (
+                <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: 'rgba(224,82,82,0.1)', border: '1px solid rgba(224,82,82,0.25)', borderRadius: '8px', fontSize: '13px', color: '#e05252' }}>
+                  {createErr}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button onClick={() => { setShowCreate(false); setCreateErr('') }} style={btnSecondary}>Cancel</button>
+                <button onClick={handleCreate} disabled={!form.title || createSaving} style={{ ...btnPrimary, opacity: (!form.title || createSaving) ? 0.6 : 1 }}>
+                  {createSaving ? 'Saving…' : 'Save Event'}
+                </button>
+                {form.event_type === 'tasting' && (
+                  <button
+                    onClick={async () => {
+                      setCreateErr('')
+                      setCreateSaving(true)
+                      try {
+                        const payload: Record<string, any> = {
+                          title: form.title,
+                          event_type: form.event_type,
+                          status: form.status,
+                          start_time: new Date(form.start_time).toISOString(),
+                        }
+                        if (form.client_slug) payload.client_slug = form.client_slug
+                        if (form.end_time) payload.end_time = new Date(form.end_time).toISOString()
+                        if (form.notes) payload.notes = form.notes
+                        if (form.url) payload.url = form.url
+                        const created = await createEvent(payload as any)
+                        setShowCreate(false)
+                        setForm({ title: '', event_type: 'tasting', client_slug: '', start_time: todayMT() + 'T10:00', end_time: '', notes: '', url: '', status: 'planned' })
+                        load()
+                        window.open(`/taste/${created.id}`, '_blank')
+                      } catch (err: any) {
+                        setCreateErr(err.message || 'Failed to save event')
+                      } finally {
+                        setCreateSaving(false)
+                      }
+                    }}
+                    disabled={!form.title || createSaving}
+                    style={{ ...btnPrimary, opacity: (!form.title || createSaving) ? 0.6 : 1, backgroundColor: t.gold, display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Play size={14} fill="#0f0f0d" /> Save & Start Tasting
+                  </button>
+                )}
               </div>
             </div>
           </div>

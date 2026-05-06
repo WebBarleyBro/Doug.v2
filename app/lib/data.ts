@@ -290,10 +290,15 @@ export async function logVisit(visit: {
   if (error) throw error
 
   // Update account last_visited + last_visit_status for momentum indicator
-  await sb
+  // last_visit_status requires migration 046 — fall back gracefully if column doesn't exist yet
+  const { error: acctErr } = await sb
     .from('accounts')
     .update({ last_visited: visit.visited_at, last_visit_status: visit.status })
     .eq('id', visit.account_id)
+  if (acctErr && !acctErr.message?.includes('last_visit_status')) {
+    // Only throw for real errors unrelated to the missing column
+    console.error('logVisit: accounts update failed', acctErr)
+  }
 
   // Invalidate stale caches
   invalidate('overdue-accounts')
