@@ -21,7 +21,7 @@ const itemKey = (i: Item) => `${i.brandSlug}::${i.productName ?? ''}`
 
 function Logo({ brand, size }: { brand: any; size: number }) {
   const c = brand.color || GOLD
-  if (brand.logo_url) return <img src={brand.logo_url} alt={brand.name} style={{ width: size, height: size, borderRadius: size * 0.2, objectFit: 'cover', display: 'block' }} />
+  if (brand.logo_url) return <img src={brand.logo_url} alt={brand.name} style={{ width: size, height: size, objectFit: 'contain', display: 'block' }} />
   return (
     <div style={{ width: size, height: size, borderRadius: size * 0.2, background: `radial-gradient(circle at 35% 35%, ${c}35, ${c}10)`, border: `1.5px solid ${c}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.42, fontWeight: 900, color: c }}>
       {brand.name.charAt(0)}
