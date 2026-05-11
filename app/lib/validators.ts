@@ -8,6 +8,7 @@ const VISIT_STATUSES: VisitStatus[] = [
   'Menu Feature Won',
   'New Placement',
   'General Check-In',
+  'Tasted',
 ]
 
 const PLACEMENT_STATUSES: PlacementStatus[] = [

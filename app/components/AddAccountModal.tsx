@@ -62,6 +62,8 @@ export default function AddAccountModal({
     website: '',
     instagram: '',
     notes: '',
+    lat: null as number | null,
+    lng: null as number | null,
   })
   const [clients, setClients] = useState<Client[]>([])
   const [contacts, setContacts] = useState<ContactDraft[]>([])
@@ -88,15 +90,19 @@ export default function AddAccountModal({
       acRef.current = new window.google.maps.places.Autocomplete(nameRef.current, {
         types: ['establishment'],
         componentRestrictions: { country: 'us' },
-        fields: ['name', 'formatted_address', 'formatted_phone_number'],
+        fields: ['name', 'formatted_address', 'formatted_phone_number', 'geometry'],
       })
       acRef.current.addListener('place_changed', () => {
         const place = acRef.current.getPlace()
+        const lat = place.geometry?.location?.lat() ?? null
+        const lng = place.geometry?.location?.lng() ?? null
         setForm(f => ({
           ...f,
           name: place.name || f.name,
           address: place.formatted_address || f.address,
           phone: place.formatted_phone_number || f.phone,
+          lat,
+          lng,
         }))
       })
     }
@@ -172,6 +178,8 @@ export default function AddAccountModal({
         instagram: form.instagram || undefined,
         best_days: form.best_days,
         best_time: form.best_time,
+        lat: form.lat,
+        lng: form.lng,
       })
       await Promise.all(
         contacts

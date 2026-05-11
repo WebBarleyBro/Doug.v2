@@ -210,6 +210,7 @@ export const badge = {
       'Menu Feature Won':{ color: t.status.success, bg: t.status.successBg, border: 'transparent' },
       'New Placement':   { color: t.gold,           bg: t.goldDim,          border: 'transparent' },
       'General Check-In':{ color: t.text.secondary, bg: t.status.neutralBg, border: 'transparent' },
+      'Tasted':          { color: t.gold,           bg: t.goldDim,          border: 'transparent' },
     }
     const s = map[status] || { color: t.text.secondary, bg: t.status.neutralBg, border: 'transparent' }
     return { ...badgeBase, backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}` }

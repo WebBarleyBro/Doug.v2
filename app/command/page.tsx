@@ -51,6 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
   'Needs Follow Up': t.status.info,    'Not Interested': t.status.danger,
   'Menu Feature Won': t.status.success,'New Placement': t.gold,
   'General Check-In': t.text.secondary,
+  'Tasted':           t.gold,
 }
 
 const PLAC_COLORS: Record<string, string> = {

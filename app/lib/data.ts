@@ -125,6 +125,8 @@ export async function createAccount(account: {
   best_days?: string[]
   best_time?: string
   priority?: string
+  lat?: number | null
+  lng?: number | null
 }): Promise<Account> {
   const sb = getSupabase()
   const { data, error } = await sb
@@ -140,6 +142,8 @@ export async function createAccount(account: {
       instagram: account.instagram || null,
       best_days: account.best_days?.length ? account.best_days : [],
       best_time: account.best_time || 'anytime',
+      lat: account.lat ?? null,
+      lng: account.lng ?? null,
     })
     .select()
     .single()

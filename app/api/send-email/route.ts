@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       await admin.from('tasks').insert({
         user_id: user.id,
         assigned_to: user.id,
-        title: 'Follow up on distributor inquiry',
+        title: 'Follow up on order inquiry',
         description: `Check on inquiry sent to ${toArray.join(', ')}`,
         due_date: due.toISOString().slice(0, 10),
         priority: 'medium',

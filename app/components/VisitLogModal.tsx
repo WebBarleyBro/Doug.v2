@@ -264,6 +264,7 @@ export default function VisitLogModal({
     { value: 'Needs Follow Up',  color: t.status.info },
     { value: 'Not Interested',   color: t.status.danger },
     { value: 'General Check-In', color: t.text.muted },
+    { value: 'Tasted',           color: t.gold },
   ]
 
   const content = (

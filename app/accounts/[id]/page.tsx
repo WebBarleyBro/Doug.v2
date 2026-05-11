@@ -87,6 +87,8 @@ export default function AccountDetailPage() {
     website: '',
     instagram: '',
     notes: '',
+    lat: null as number | null,
+    lng: null as number | null,
   })
   const [editSaving, setEditSaving] = useState(false)
   const [editErr, setEditErr] = useState('')
@@ -132,17 +134,20 @@ export default function AccountDetailPage() {
     function initAC() {
       if (!alive || !editAddressRef.current || editAcRef.current) return
       editAcRef.current = new window.google.maps.places.Autocomplete(editAddressRef.current, {
-        types: ['establishment'],
+        types: ['establishment', 'geocode'],
         componentRestrictions: { country: 'us' },
-        fields: ['name', 'formatted_address', 'formatted_phone_number'],
+        fields: ['name', 'formatted_address', 'formatted_phone_number', 'geometry'],
       })
       editAcRef.current.addListener('place_changed', () => {
         const place = editAcRef.current.getPlace()
+        const lat = place.geometry?.location?.lat() ?? null
+        const lng = place.geometry?.location?.lng() ?? null
         setEditForm(f => ({
           ...f,
-          name: place.name || f.name,
           address: place.formatted_address || f.address,
           phone: place.formatted_phone_number || f.phone,
+          lat,
+          lng,
         }))
       })
     }
@@ -216,6 +221,8 @@ export default function AccountDetailPage() {
       website: account.website || '',
       instagram: account.instagram || '',
       notes: account.notes || '',
+      lat: account.lat ?? null,
+      lng: account.lng ?? null,
     })
     setEditErr('')
     setShowEdit(true)
@@ -236,6 +243,8 @@ export default function AccountDetailPage() {
         website: editForm.website || undefined,
         instagram: editForm.instagram || undefined,
         notes: editForm.notes || undefined,
+        lat: editForm.lat,
+        lng: editForm.lng,
       })
       await updateAccountClients(id, editForm.client_slugs)
       setShowEdit(false)

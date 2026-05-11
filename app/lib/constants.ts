@@ -8,6 +8,7 @@ export const VISIT_STATUSES: VisitStatus[] = [
   'Needs Follow Up',
   'Not Interested',
   'General Check-In',
+  'Tasted',
 ]
 
 export const PLACEMENT_STATUSES: PlacementStatus[] = [

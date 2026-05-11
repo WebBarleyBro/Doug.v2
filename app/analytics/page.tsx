@@ -57,6 +57,7 @@ const VISIT_STATUS_COLORS: Record<string, string> = {
   'Menu Feature Won':  t.status.success,
   'New Placement':     t.gold,
   'General Check-In':  t.text.secondary,
+  'Tasted':            t.gold,
 }
 
 

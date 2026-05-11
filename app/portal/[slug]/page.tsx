@@ -2,1272 +2,1082 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
-import { getPortalData, submitClientSuggestion, getCampaignAssets, createCampaignAsset, getClientFiles, uploadClientFile, getCampaignExpenses } from '../../lib/data'
-import { t, card, badge, inputStyle, labelStyle, selectStyle } from '../../lib/theme'
-import { formatShortDateMT, startOfMonthMT, formatCurrency } from '../../lib/formatters'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { getPortalData, submitClientSuggestion, getClientFiles, uploadClientFile } from '../../lib/data'
+import { formatShortDateMT, startOfMonthMT } from '../../lib/formatters'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import {
-  MapPin, Package, LogOut, ChevronDown, ChevronUp, CheckCircle, Send,
-  Building2, User, ExternalLink, Upload, FileDown, Calendar,
-  AlertCircle, Folder, Download, Shield, TrendingUp, BarChart2,
+  MapPin, LogOut, ChevronRight, CheckCircle,
+  Upload, FileDown, Download, X, PanelRightOpen,
 } from 'lucide-react'
 import type { ClientFile, ClientFileType } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const SUGGESTION_REASONS = [
-  { value: 'inbound_request', label: 'They reached out asking for us' },
-  { value: 'competitor_gap', label: 'Gap/opportunity I noticed on-premise' },
-  { value: 'warm_referral', label: 'Referred by someone in the industry' },
-  { value: 'staff_fan', label: 'Staff or bartender expressed interest' },
-  { value: 'strategic_fit', label: 'High-volume account, strong fit for the brand' },
-  { value: 'other', label: 'Other reason' },
+  { value: 'inbound_request',  label: 'They reached out asking for us' },
+  { value: 'competitor_gap',   label: 'Gap / opportunity I noticed on-premise' },
+  { value: 'warm_referral',    label: 'Referred by someone in the industry' },
+  { value: 'staff_fan',        label: 'Staff or bartender expressed interest' },
+  { value: 'strategic_fit',    label: 'High-volume account, strong fit for the brand' },
+  { value: 'other',            label: 'Other reason' },
 ]
-
-const STATUS_ACCENT: Record<string, string> = {
-  'Will Order Soon': '#6aaee0',
-  'Just Ordered': '#3dbc76',
-  'Needs Follow Up': '#e99928',
-  'Not Interested': '#e85540',
-  'Menu Feature Won': '#3dbc76',
-  'New Placement': '#3dbc76',
-  'General Check-In': '#7a7060',
+const STATUS_COLOR: Record<string, string> = {
+  'Will Order Soon':  '#a08440',
+  'Just Ordered':     '#5a9ea0',
+  'Needs Follow Up':  '#bf7850',
+  'Not Interested':   'rgba(255,255,255,0.18)',
+  'Menu Feature Won': '#c4a46e',
+  'New Placement':    '#5a9ea0',
+  'General Check-In': 'rgba(255,255,255,0.28)',
+  'Tasted':           '#c4a46e',
 }
-
-const PLACEMENT_STATUS_LABELS: Record<string, string> = {
+const PLAC_COLORS: Record<string, string> = {
+  committed: '#a08440', ordered: 'rgba(255,255,255,0.45)', on_shelf: '#5a9ea0', reordering: '#c4a46e',
+}
+const PLAC_LABELS: Record<string, string> = {
   committed: 'Committed', ordered: 'Ordered', on_shelf: 'On Shelf', reordering: 'Reordering',
 }
-const PLACEMENT_STATUS_COLORS: Record<string, string> = {
-  committed: '#e99928', ordered: '#6aaee0', on_shelf: '#3dbc76', reordering: '#a78bfa',
+const WIN   = new Set(['Just Ordered', 'Menu Feature Won', 'New Placement'])
+const HOT   = new Set(['Will Order Soon', 'Needs Follow Up'])
+
+// Lower number = more significant; used to pick best visit when deduping by account+day
+const STATUS_RANK: Record<string, number> = {
+  'New Placement': 0, 'Menu Feature Won': 0, 'Just Ordered': 0,
+  'Will Order Soon': 1, 'Needs Follow Up': 1, 'Tasted': 2,
+  'General Check-In': 3, 'Not Interested': 4,
 }
-const REG_STATUS_COLORS: Record<string, string> = {
-  active: '#3dbc76', pending: '#e99928', expired: '#e85540', not_registered: '#4a4a45',
-}
-const REG_STATUS_LABELS: Record<string, string> = {
-  active: 'Active', pending: 'Pending', expired: 'Expired', not_registered: 'Not Registered',
+function dedupeByAccountDay(vs: any[]): any[] {
+  const seen = new Map<string, any>()
+  for (const v of vs) {
+    const key = `${v.account_id}__${String(v.visited_at).slice(0, 10)}`
+    const ex = seen.get(key)
+    if (!ex || (STATUS_RANK[v.status] ?? 5) < (STATUS_RANK[ex.status] ?? 5)) seen.set(key, v)
+  }
+  return [...seen.values()].sort((a, b) => String(b.visited_at).localeCompare(String(a.visited_at)))
 }
 
-const WIN_STATUSES = ['Just Ordered', 'Menu Feature Won', 'New Placement']
-const ACTION_STATUSES = ['Will Order Soon', 'Needs Follow Up']
+// Client-facing order status — hides internal "sent" label
+const CLIENT_ORDER_STATUS: Record<string, string | null> = {
+  sent: null, fulfilled: 'Delivered', cancelled: 'Cancelled',
+}
 
+// ── Animated counter ──────────────────────────────────────────────────────────
+function Counter({ to, duration = 850 }: { to: number; duration?: number }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (to === 0) { setN(0); return }
+    const t0 = Date.now()
+    const tick = () => {
+      const p = Math.min((Date.now() - t0) / duration, 1)
+      setN(Math.round((1 - Math.pow(1 - p, 3)) * to))
+      if (p < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [to, duration])
+  return <>{n}</>
+}
+
+// ── Glass panel ───────────────────────────────────────────────────────────────
+function Glass({ style, children, className }: { style?: React.CSSProperties; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={className} style={{
+      background: 'rgba(10,8,5,0.90)',
+      backdropFilter: 'blur(22px)',
+      WebkitBackdropFilter: 'blur(22px)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.60), inset 0 1px 0 rgba(255,255,255,0.05)',
+      ...style,
+    }}>{children}</div>
+  )
+}
+
+// ── Right-side drawer ─────────────────────────────────────────────────────────
+function Drawer({ title, count, onClose, accent, children }: {
+  title: string; count?: number; onClose: () => void; accent: string; children: React.ReactNode
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
+      <div style={{
+        position: 'absolute', top: 0, right: 0, bottom: 0, width: 480,
+        background: 'rgba(10,8,5,0.98)', backdropFilter: 'blur(24px)',
+        borderLeft: `1px solid rgba(255,255,255,0.08)`,
+        boxShadow: '-8px 0 48px rgba(0,0,0,0.7)',
+        display: 'flex', flexDirection: 'column',
+        animation: 'slideInRight 0.22s cubic-bezier(0.16,1,0.3,1)',
+      }}>
+        {/* Drawer header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 4, display: 'flex', alignItems: 'center' }}>
+            <X size={14} />
+          </button>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#f0f0f0', letterSpacing: '-0.01em' }}>{title}</span>
+          {count != null && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: accent, background: accent + '18', padding: '2px 8px', borderRadius: 20, border: `1px solid ${accent}28`, marginLeft: 2 }}>{count}</span>
+          )}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main portal ───────────────────────────────────────────────────────────────
 export default function ClientPortalPage() {
   const { slug } = useParams() as { slug: string }
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [isMobile, setIsMobile] = useState(false)
+
+  const [data,      setData]      = useState<any>(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
   const [isPreview, setIsPreview] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('90d')
+  const [dateRange, setDateRange] = useState<'7d'|'30d'|'90d'|'all'>('90d')
+  const [visitFilter, setVisitFilter] = useState<'all'|'wins'|'action'>('all')
+  const [feedLimit,   setFeedLimit]   = useState(20)
+  const [drawer, setDrawer] = useState<string|null>(null)
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [winsExpanded,  setWinsExpanded]  = useState(false)
+  const [ordersExpanded, setOrdersExpanded] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') { setDrawer(null); setAnalyticsOpen(false) } }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
-  const [visitFilter, setVisitFilter] = useState<'all' | 'action' | 'wins' | 'general'>('all')
-  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
-  const [campaignAssets, setCampaignAssets] = useState<Record<string, any[]>>({})
-  const [campaignExpenses, setCampaignExpenses] = useState<Record<string, any[]>>({})
-  const [_uploadingAsset, setUploadingAsset] = useState(false)
-  const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
-  const [orderLineItems, setOrderLineItems] = useState<Record<string, any[]>>({})
-  const [clientFiles, setClientFiles] = useState<ClientFile[]>([])
-  const [filesLoading, setFilesLoading] = useState(false)
-  const [fileUploading, setFileUploading] = useState(false)
-  const [fileUploadErr, setFileUploadErr] = useState('')
+
+  // Map
+  const mapRef        = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<any>(null)
+  const [mapReady,    setMapReady]    = useState(false)
+  const [mapAccounts, setMapAccounts] = useState<any[]>([])
+
+  // Files
+  const [clientFiles,    setClientFiles]    = useState<ClientFile[]>([])
+  const [filesLoading,   setFilesLoading]   = useState(false)
+  const [fileUploading,  setFileUploading]  = useState(false)
   const [showFileUpload, setShowFileUpload] = useState(false)
-  const [fileUploadMode, setFileUploadMode] = useState<'asset' | 'compliance'>('asset')
   const [fileUploadType, setFileUploadType] = useState<ClientFileType>('other')
   const [fileUploadDesc, setFileUploadDesc] = useState('')
   const [fileUploadExpiry, setFileUploadExpiry] = useState('')
-  const portalFileInputRef = useRef<HTMLInputElement>(null)
-  const [showSuggest, setShowSuggest] = useState(false)
-  const [suggestType, setSuggestType] = useState<'account' | 'contact'>('account')
-  const [suggestForm, setSuggestForm] = useState({ name: '', address: '', contact_person: '', contact_category: 'general', contact_phone: '', contact_email: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
+  const [fileUploadErr,  setFileUploadErr]  = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Suggest
+  const [suggestType,  setSuggestType]  = useState<'account'|'contact'>('account')
+  const [suggestForm,  setSuggestForm]  = useState({ name:'', address:'', contact_email:'', reason:'', notes:'', submitted_by_name:'', submitted_by_email:'' })
   const suggestNameRef = useRef<HTMLInputElement>(null)
-  const suggestAcRef = useRef<any>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [suggestErr, setSuggestErr] = useState('')
+  const suggestAcRef   = useRef<any>(null)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [submitted,    setSubmitted]    = useState(false)
+  const [suggestErr,   setSuggestErr]   = useState('')
 
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check(); window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-
+  // ── Auth + load ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const sb = getSupabase()
     sb.auth.getSession().then(async ({ data: { session } }) => {
       const user = session?.user ?? null
       if (!user) { window.location.replace(`/login?redirect=/portal/${slug}`); return }
       const { data: profile } = await sb.from('user_profiles').select('role, client_slug').eq('id', user.id).single()
-      const isStaff = ['owner', 'admin', 'rep', 'intern'].includes(profile?.role)
+      const isStaff  = ['owner','admin','rep','intern'].includes(profile?.role)
       const isPortal = profile?.role === 'portal'
-      if (!isStaff && !isPortal) { setError(`Access denied`); setLoading(false); return }
+      if (!isStaff && !isPortal) { setError('Access denied'); setLoading(false); return }
       if (isPortal && profile?.client_slug && profile.client_slug !== slug) {
         setError(`Access denied — this portal is for ${profile.client_slug}.`); setLoading(false); return
       }
       if (isStaff) setIsPreview(true)
       try {
         const d = await getPortalData(slug)
+        if (!d) { setError('Brand not found'); setLoading(false); return }
         setData(d)
-        sb.from('events')
-          .select('id, title, event_type, start_time, accounts(name, address)')
-          .eq('client_slug', slug)
-          .gt('start_time', new Date().toISOString())
-          .order('start_time').limit(6)
+        sb.from('events').select('id,title,event_type,start_time,accounts(name)')
+          .eq('client_slug', slug).gt('start_time', new Date().toISOString())
+          .order('start_time').limit(5)
           .then(({ data: ev }) => setUpcomingEvents(ev || []))
         setFilesLoading(true)
         getClientFiles(slug).then(f => { setClientFiles(f); setFilesLoading(false) }).catch(() => setFilesLoading(false))
+        const clientAccountIds = new Set([
+          ...(d.visits    || []).map((v: any) => v.account_id),
+          ...(d.placements || []).map((p: any) => p.account_id),
+        ])
+        sb.from('accounts').select('id,name,account_type,lat,lng').not('lat','is',null)
+          .then(({ data: accs }) => {
+            setMapAccounts((accs || []).filter((a: any) => clientAccountIds.has(a.id)))
+          })
       } catch { setError('Failed to load data') }
       finally { setLoading(false) }
     })
   }, [slug])
 
-  // Google Places autocomplete on account name field
+  // ── Mapbox ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (suggestType !== 'account') {
-      if (suggestAcRef.current && window.google?.maps?.event) {
-        window.google.maps.event.clearInstanceListeners(suggestAcRef.current)
-      }
-      suggestAcRef.current = null
-      return
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+    if (!token || !mapRef.current || mapInstanceRef.current) return
+    import('mapbox-gl').then(({ default: mb }) => {
+      mb.accessToken = token
+      const map = new mb.Map({
+        container: mapRef.current!,
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: [-104.9903, 39.7392],
+        zoom: 8,
+        attributionControl: false,
+      })
+      map.addControl(new mb.NavigationControl({ showCompass: false }), 'top-left')
+      mapInstanceRef.current = map
+      map.on('load', () => setMapReady(true))
+    }).catch(() => {})
+    return () => { mapInstanceRef.current?.remove(); mapInstanceRef.current = null }
+  }, [data])
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !mapAccounts.length || !data) return
+    const accent  = data.client?.color || '#c4a46e'
+    const placed  = new Set((data.placements || []).map((p: any) => p.account_id))
+    const coords: [number, number][] = []
+    document.querySelectorAll('.portal-pin').forEach(el => el.remove())
+    mapAccounts.forEach((acc: any) => {
+      if (!acc.lat || !acc.lng) return
+      coords.push([acc.lng, acc.lat])
+      const isPlaced = placed.has(acc.id)
+      const el = document.createElement('div')
+      el.className = 'portal-pin'
+      el.style.cssText = `
+        width:${isPlaced?'14px':'9px'};height:${isPlaced?'14px':'9px'};
+        border-radius:50%;cursor:pointer;
+        background:${isPlaced ? accent : 'rgba(255,255,255,0.5)'};
+        box-shadow:${isPlaced ? `0 0 18px ${accent}90,0 0 6px ${accent}` : 'none'};
+        border:2px solid ${isPlaced ? accent+'cc' : 'rgba(255,255,255,0.3)'};
+        transition:transform 150ms;
+      `
+      el.onmouseenter = () => { el.style.transform = 'scale(1.5)' }
+      el.onmouseleave = () => { el.style.transform = 'scale(1)' }
+      import('mapbox-gl').then(({ default: mb }) => {
+        new mb.Marker({ element: el }).setLngLat([acc.lng, acc.lat])
+          .setPopup(new mb.Popup({ offset: 14, closeButton: false })
+            .setHTML(`<div style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:700;color:#fff">${acc.name}</div><div style="font-size:10px;color:#888;margin-top:3px">${isPlaced ? '● Active placement' : acc.account_type === 'on_premise' ? 'On-premise' : 'Off-premise'}</div>`))
+          .addTo(mapInstanceRef.current)
+      })
+    })
+    if (coords.length > 1) {
+      import('mapbox-gl').then(({ default: mb }) => {
+        const bounds = coords.reduce((b, c) => b.extend(c), new mb.LngLatBounds(coords[0], coords[0]))
+        mapInstanceRef.current.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 1000 })
+      })
+    }
+  }, [mapReady, mapAccounts, data])
+
+  // ── Google Places ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (drawer !== 'suggest' || suggestType !== 'account') {
+      if (suggestAcRef.current && (window as any).google?.maps?.event)
+        (window as any).google.maps.event.clearInstanceListeners(suggestAcRef.current)
+      suggestAcRef.current = null; return
     }
     let alive = true
-    function initAC() {
+    const init = () => {
       if (!alive || !suggestNameRef.current || suggestAcRef.current) return
-      suggestAcRef.current = new window.google.maps.places.Autocomplete(suggestNameRef.current, {
-        types: ['establishment'],
-        componentRestrictions: { country: 'us' },
-        fields: ['name', 'formatted_address'],
+      suggestAcRef.current = new (window as any).google.maps.places.Autocomplete(suggestNameRef.current, {
+        types: ['establishment'], componentRestrictions: { country: 'us' }, fields: ['name','formatted_address'],
       })
       suggestAcRef.current.addListener('place_changed', () => {
-        const place = suggestAcRef.current.getPlace()
-        setSuggestForm(f => ({
-          ...f,
-          name: place.name || f.name,
-          address: place.formatted_address || f.address,
-        }))
+        const p = suggestAcRef.current.getPlace()
+        setSuggestForm(f => ({ ...f, name: p.name||f.name, address: p.formatted_address||f.address }))
       })
     }
-    if (!document.getElementById('gm-places-script')) {
-      const script = document.createElement('script')
-      script.id = 'gm-places-script'
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`
-      script.async = true
-      document.head.appendChild(script)
+    if (!document.getElementById('gm-script')) {
+      const s = document.createElement('script'); s.id = 'gm-script'
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`
+      s.async = true; document.head.appendChild(s)
     }
-    const interval = setInterval(() => {
-      if (window.google?.maps?.places) { clearInterval(interval); initAC() }
-    }, 100)
+    const iv = setInterval(() => { if ((window as any).google?.maps?.places) { clearInterval(iv); init() } }, 100)
     return () => {
-      alive = false
-      clearInterval(interval)
-      if (suggestAcRef.current && window.google?.maps?.event) {
-        window.google.maps.event.clearInstanceListeners(suggestAcRef.current)
-      }
+      alive = false; clearInterval(iv)
+      if (suggestAcRef.current && (window as any).google?.maps?.event)
+        (window as any).google.maps.event.clearInstanceListeners(suggestAcRef.current)
       suggestAcRef.current = null
     }
-  }, [suggestType])
+  }, [drawer, suggestType])
 
+  // ── Handlers ─────────────────────────────────────────────────────────────────
   async function handleSuggest() {
-    if (!suggestForm.name.trim() || !suggestForm.reason) { setSuggestErr('Name and reason are required'); return }
+    if (!suggestForm.name.trim() || !suggestForm.reason) { setSuggestErr('Name and reason required'); return }
     setSubmitting(true); setSuggestErr('')
     try {
       await submitClientSuggestion({
         client_slug: slug, suggestion_type: suggestType, name: suggestForm.name,
-        address: suggestForm.address || undefined,
-        contact_person: suggestForm.contact_person || undefined,
-        contact_category: suggestForm.contact_category || 'general',
-        contact_phone: suggestForm.contact_phone || undefined,
+        address: (suggestForm as any).address || undefined,
         contact_email: suggestForm.contact_email || undefined,
-        notes: suggestForm.notes || undefined,
-        reason: suggestForm.reason, reason_detail: suggestForm.reason_detail || undefined,
+        reason: suggestForm.reason, notes: suggestForm.notes || undefined,
         submitted_by_name: suggestForm.submitted_by_name || undefined,
         submitted_by_email: suggestForm.submitted_by_email || undefined,
+        contact_category: 'general',
       })
       setSubmitted(true)
-      setSuggestForm({ name: '', address: '', contact_person: '', contact_category: 'general', contact_phone: '', contact_email: '', reason: '', reason_detail: '', notes: '', submitted_by_name: '', submitted_by_email: '' })
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
   }
 
-  function handlePrintReport() {
-    if (!data) return
-    const { client: cl, visits: vs, placements: pls, orders: ords } = data
-    const mStart = startOfMonthMT()
-    const mVisits = vs.filter((v: any) => v.visited_at >= mStart).length
-    const actPlacements = pls.filter((p: any) => !p.lost_at)
-    const nonDraftOrders = ords.filter((o: any) => o.status !== 'draft')
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    const clName = (cl?.name || slug).replace(/</g, '&lt;')
-    const isDistClient = cl?.order_type === 'distributor'
-    const html = `<!DOCTYPE html><html><head><title>${clName} — Field Report</title>
-    <style>body{font-family:sans-serif;color:#111;max-width:800px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}h2{font-size:16px;margin-top:32px;border-bottom:2px solid #eee;padding-bottom:8px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #eee}th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666}.meta{color:#666;font-size:13px;margin-bottom:24px}</style>
-    </head><body>
-    <h1>${clName}</h1>
-    <div class="meta">Field Report — Generated by Barley Bros · ${dateStr}</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
-      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">Visits This Month</div><div style="font-size:28px;font-weight:700">${mVisits}</div></div>
-      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">Active Placements</div><div style="font-size:28px;font-weight:700">${actPlacements.length}</div></div>
-      <div style="background:#f9f9f9;border-radius:8px;padding:16px"><div style="font-size:11px;color:#666;text-transform:uppercase">${isDistClient ? 'Distributor Inquiries' : 'Orders'}</div><div style="font-size:28px;font-weight:700">${nonDraftOrders.length}</div></div>
-    </div>
-    ${vs.length > 0 ? `<h2>Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${vs.slice(0,20).map((v: any) => `<tr><td>${v.accounts?.name||''}</td><td>${v.status}</td><td>${formatShortDateMT(v.visited_at)}</td><td>${v.notes||''}</td></tr>`).join('')}</tbody></table>` : ''}
-    ${actPlacements.length > 0 ? `<h2>Active Placements (${actPlacements.length})</h2><table><thead><tr><th>Account</th><th>Product</th><th>Status</th></tr></thead><tbody>${actPlacements.map((p: any) => `<tr><td>${p.accounts?.name||''}</td><td>${p.product_name}</td><td>${p.status}</td></tr>`).join('')}</tbody></table>` : ''}
-    </body></html>`
-    const w = window.open('', '_blank')
-    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400) }
+  async function handleFileUpload(file: File) {
+    setFileUploading(true); setFileUploadErr('')
+    try {
+      const uploaded = await uploadClientFile(slug, file, {
+        file_type: fileUploadType, description: fileUploadDesc||undefined,
+        expiry_date: fileUploadExpiry||undefined, uploaded_by_portal: true,
+      })
+      setClientFiles(prev => [uploaded, ...prev])
+      setShowFileUpload(false); setFileUploadDesc(''); setFileUploadExpiry('')
+    } catch (e: any) { setFileUploadErr(e.message || 'Upload failed') }
+    finally { setFileUploading(false) }
   }
 
+  function handlePrint() {
+    if (!data) return
+    const { client: cl, visits: vs, placements: pls, orders: ords } = data
+    const mStart   = startOfMonthMT()
+    const mVisits  = vs.filter((v: any) => v.visited_at >= mStart).length
+    const actPlac  = pls.filter((p: any) => !p.lost_at)
+    const nonDraft = ords.filter((o: any) => o.status !== 'draft')
+    const dateStr  = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const name     = (cl?.name || slug).replace(/</g, '&lt;')
+    const html = `<!DOCTYPE html><html><head><title>${name} — Field Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{font-family:'Space Grotesk',sans-serif;color:#111;max-width:860px;margin:0 auto;padding:40px;background:#fff}
+.brand{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:800;letter-spacing:-0.04em;margin:0 0 4px}
+.meta{color:#888;font-size:13px;margin-bottom:28px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.kpi{border:1px solid #eee;border-radius:8px;padding:14px 16px}
+.kpi-n{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:800;color:#111;letter-spacing:-0.04em;line-height:1}
+.kpi-l{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;border-bottom:1px solid #eee;padding-bottom:8px;margin:28px 0 12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#aaa}
+.chip{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em}
+</style>
+</head><body>
+<div class="brand">${name}</div>
+<div class="meta">Field Report — Barley Bros · ${dateStr}</div>
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-l">Visits This Month</div><div class="kpi-n">${mVisits}</div></div>
+  <div class="kpi"><div class="kpi-l">Active Placements</div><div class="kpi-n">${actPlac.length}</div></div>
+  <div class="kpi"><div class="kpi-l">${cl?.order_type === 'distributor' ? 'Inquiries' : 'Orders'}</div><div class="kpi-n">${nonDraft.length}</div></div>
+  <div class="kpi"><div class="kpi-l">Wins (90d)</div><div class="kpi-n">${vs.filter((v: any) => WIN.has(v.status)).length}</div></div>
+</div>
+${vs.length > 0 ? `<h2>Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${vs.slice(0,30).map((v: any) => `<tr><td>${v.accounts?.name||''}</td><td>${v.status}</td><td>${formatShortDateMT(v.visited_at)}</td><td>${v.notes||''}</td></tr>`).join('')}</tbody></table>` : ''}
+${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account</th><th>Product</th><th>Status</th></tr></thead><tbody>${actPlac.map((p: any) => `<tr><td>${p.accounts?.name||''}</td><td>${p.product_name}</td><td>${p.status}</td></tr>`).join('')}</tbody></table>` : ''}
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
+  }
+
+  // ── Loading / error ───────────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100vh', background: '#070502', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Space Grotesk, sans-serif' }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 48, height: 48, borderRadius: '12px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: '800', color: '#0f0f0d', margin: '0 auto 12px' }}>D</div>
-        <div style={{ color: t.text.muted, fontSize: '13px' }}>Loading your brand report...</div>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.06)', borderTopColor: '#c4a46e', animation: 'spin .7s linear infinite', margin: '0 auto 14px' }} />
+        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Loading brand data…</div>
       </div>
     </div>
   )
 
   if (error) return (
-    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100vh', background: '#070502', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Space Grotesk, sans-serif' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '14px', color: t.status.danger, marginBottom: '8px' }}>{error}</div>
-        <button onClick={() => { getSupabase().auth.signOut(); window.location.href = '/login' }} style={{ fontSize: '12px', color: t.text.muted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Sign in again</button>
+        <div style={{ fontSize: 14, color: '#e85540', marginBottom: 12 }}>{error}</div>
+        <button onClick={() => { getSupabase().auth.signOut(); window.location.href = '/login' }} style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Sign in again</button>
       </div>
     </div>
   )
 
-  const { client, visits, placements, orders, campaigns, registrations } = data
-  const accent = client?.color || t.gold
-  const logoUrl = client ? clientLogoUrl(client) : null
-  const isDistributorClient = client?.order_type === 'distributor'
-  const monthStart = startOfMonthMT()
-  const _monthVisits = visits.filter((v: any) => v.visited_at >= monthStart).length
-  const activePlacements = placements.filter((p: any) => !p.lost_at)
-  const nonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
-  const actionVisits = visits.filter((v: any) => ACTION_STATUSES.includes(v.status))
-  const winVisits = visits.filter((v: any) => WIN_STATUSES.includes(v.status))
-  const generalVisits = visits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))
-  const _filteredVisits = visitFilter === 'action' ? actionVisits : visitFilter === 'wins' ? winVisits : visitFilter === 'general' ? generalVisits : visits
-  const _warmAccountCount = new Set(actionVisits.map((v: any) => v.account_id).filter(Boolean)).size
-  const _warmAccounts = Object.values(
-    actionVisits.reduce((acc: any, v: any) => {
-      if (!v.account_id || acc[v.account_id]) return acc
-      acc[v.account_id] = v; return acc
-    }, {})
-  ) as any[]
+  // ── Derived ───────────────────────────────────────────────────────────────────
+  const { client, visits: rawVisits, placements, orders, campaigns, registrations } = data
+  const accent    = client?.color || '#c4a46e'
+  const logoUrl   = client ? clientLogoUrl(client) : null
+  const isDistClient = client?.order_type === 'distributor'
 
-  // Date range filtering
-  const drDays = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : null
-  const drStart = drDays ? new Date(Date.now() - drDays * 86400000).toISOString().slice(0, 10) : null
-  const drVisits = drStart ? visits.filter((v: any) => String(v.visited_at).slice(0, 10) >= drStart) : visits
-  const drOrders = drStart ? orders.filter((o: any) => String(o.created_at || '').slice(0, 10) >= drStart) : orders
-  const drNonDraftOrders = drOrders.filter((o: any) => o.status !== 'draft')
-  const drActionVisits = drVisits.filter((v: any) => ACTION_STATUSES.includes(v.status))
-  const drWinVisits = drVisits.filter((v: any) => WIN_STATUSES.includes(v.status))
-  const drInProgressCount = new Set(drActionVisits.map((v: any) => v.account_id).filter(Boolean)).size
-  const drInProgress = Object.values(
-    drActionVisits.reduce((acc: any, v: any) => {
-      if (!v.account_id || acc[v.account_id]) return acc
-      acc[v.account_id] = v; return acc
-    }, {})
-  ) as any[]
-  const outcomeData = Object.entries(
-    drVisits.reduce((acc: any, v: any) => { acc[v.status] = (acc[v.status] || 0) + 1; return acc }, {} as Record<string, number>)
-  ).sort(([, a], [, b]) => (b as number) - (a as number))
-    .map(([status, count]) => ({ status, count: count as number, fill: STATUS_ACCENT[status] || '#4a4a45' }))
-  // Dynamic visit trend based on dateRange
-  const dynamicVisitTrend = (() => {
-    const now = new Date()
-    if (dateRange === '7d') {
-      return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(now); d.setDate(d.getDate() - (6 - i))
-        const dateStr = d.toISOString().slice(0, 10)
-        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const count = visits.filter((v: any) => String(v.visited_at).slice(0, 10) === dateStr).length
-        return { week: label, visits: count, weekEnd: label }
-      })
-    } else if (dateRange === '30d') {
-      return Array.from({ length: 4 }, (_, i) => {
-        const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() - (3 - i) * 7)
-        const weekStart = new Date(weekEnd); weekStart.setDate(weekStart.getDate() - 6)
-        const startStr = weekStart.toISOString().slice(0, 10)
-        const endStr = weekEnd.toISOString().slice(0, 10)
-        const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const endLabel = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const count = visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= startStr && d <= endStr }).length
-        return { week: label, visits: count, weekEnd: endLabel }
-      })
-    } else if (dateRange === '90d') {
-      return Array.from({ length: 12 }, (_, i) => {
-        const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() - (11 - i) * 7)
-        const weekStart = new Date(weekEnd); weekStart.setDate(weekStart.getDate() - 6)
-        const startStr = weekStart.toISOString().slice(0, 10)
-        const endStr = weekEnd.toISOString().slice(0, 10)
-        const label = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const endLabel = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const count = visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= startStr && d <= endStr }).length
-        return { week: label, visits: count, weekEnd: endLabel }
-      })
-    } else {
-      return Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(now); d.setMonth(d.getMonth() - (11 - i))
-        const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-        const count = visits.filter((v: any) => String(v.visited_at).slice(0, 7) === prefix).length
-        return { week: label, visits: count, weekEnd: label }
-      })
+  // Deduplicate visits by account+day, keeping the most significant status
+  const visits = dedupeByAccountDay(rawVisits)
+
+  const drDays   = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : null
+  const drStart  = drDays ? new Date(Date.now() - drDays * 86400000).toISOString().slice(0, 10) : null
+  const drVisits = drStart ? visits.filter((v: any) => String(v.visited_at).slice(0,10) >= drStart) : visits
+  const drOrders = (drStart ? orders.filter((o: any) => String(o.created_at||'').slice(0,10) >= drStart) : orders).filter((o: any) => o.status !== 'draft')
+
+  const activePlac     = placements.filter((p: any) => !p.lost_at)
+  const onShelf        = activePlac.filter((p: any) => p.status === 'on_shelf' || p.status === 'reordering')
+  const drWins         = drVisits.filter((v: any) => WIN.has(v.status))
+  const drHot          = drVisits.filter((v: any) => HOT.has(v.status))
+  const drInProgress   = new Set(drHot.map((v: any) => v.account_id).filter(Boolean)).size
+
+  const filteredVisits = visitFilter === 'wins' ? drWins : visitFilter === 'action' ? drHot : drVisits
+  const feedVisits     = filteredVisits.slice(0, feedLimit)
+
+  const placBreakdown  = ['on_shelf','reordering','ordered','committed']
+    .map(s => ({ s, l: PLAC_LABELS[s], c: PLAC_COLORS[s], n: activePlac.filter((p: any) => p.status === s).length }))
+    .filter(g => g.n > 0)
+
+  // 12-week chart
+  const chartData = Array.from({ length: 12 }, (_, i) => {
+    const wEnd = new Date(); wEnd.setDate(wEnd.getDate() - (11 - i) * 7)
+    const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6)
+    const s = wStart.toISOString().slice(0,10), e = wEnd.toISOString().slice(0,10)
+    return {
+      label: wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      count: visits.filter((v: any) => { const d = String(v.visited_at).slice(0,10); return d >= s && d <= e }).length,
     }
-  })()
+  })
 
-  const placementBreakdown = ['committed', 'ordered', 'on_shelf', 'reordering'].map(status => ({
-    status, label: PLACEMENT_STATUS_LABELS[status], color: PLACEMENT_STATUS_COLORS[status],
-    count: activePlacements.filter((p: any) => p.status === status).length,
-  })).filter(g => g.count > 0)
   const expiringRegs = registrations.filter((r: any) => {
     if (!r.expiry_date || r.status === 'expired') return false
     return (new Date(r.expiry_date).getTime() - Date.now()) < 60 * 86400000
   })
-  const expiredRegs = registrations.filter((r: any) => r.status === 'expired')
 
-  const TABS = [
-    { key: 'overview', label: 'Overview', icon: <BarChart2 size={13} /> },
-    { key: 'activity', label: 'Field Activity', icon: <MapPin size={13} />, count: visits.length },
-    { key: 'placements', label: 'Placements', icon: <Package size={13} />, count: activePlacements.length },
-    { key: 'orders', label: isDistributorClient ? 'Inquiries' : 'Orders', icon: <Send size={13} />, count: nonDraftOrders.length },
-    { key: 'campaigns', label: 'Campaigns', icon: <TrendingUp size={13} />, count: campaigns?.length || undefined },
-    { key: 'compliance', label: 'Compliance', icon: <Shield size={13} />, count: (expiringRegs.length + expiredRegs.length) || undefined, countDanger: expiringRegs.length > 0 || expiredRegs.length > 0 },
-    { key: 'files', label: 'Files', icon: <Folder size={13} />, count: clientFiles.length || undefined },
+  const hasMap = !!process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+
+  // ── Data hub derivations ──────────────────────────────────────────────────────
+  const outcomeCounts = Object.entries(
+    drVisits.reduce((acc: Record<string, number>, v: any) => {
+      if (v.status) acc[v.status] = (acc[v.status] || 0) + 1
+      return acc
+    }, {})
+  )
+    .map(([s, n]) => ({ s, n: n as number, c: STATUS_COLOR[s] || 'rgba(255,255,255,0.25)' }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 7)
+
+  const maxOutcome = Math.max(1, ...outcomeCounts.map(o => o.n))
+
+  const recentWins = drVisits.filter((v: any) => WIN.has(v.status)).slice(0, 12)
+
+  // 12-week wins trend (for expanded chart)
+  const winChartData = Array.from({ length: 12 }, (_, i) => {
+    const wEnd = new Date(); wEnd.setDate(wEnd.getDate() - (11 - i) * 7)
+    const wStart = new Date(wEnd); wStart.setDate(wStart.getDate() - 6)
+    const s = wStart.toISOString().slice(0, 10), e = wEnd.toISOString().slice(0, 10)
+    return {
+      label: wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      visits: visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= s && d <= e }).length,
+      wins:   visits.filter((v: any) => { const d = String(v.visited_at).slice(0, 10); return d >= s && d <= e && WIN.has(v.status) }).length,
+    }
+  })
+
+  // ── KPI data ─────────────────────────────────────────────────────────────────
+  const kpis = [
+    { label: 'Visits',                              value: drVisits.length,   color: accent },
+    { label: 'Active Placements',                   value: activePlac.length, color: '#5a9ea0' },
+    { label: 'On Shelf',                            value: onShelf.length,    color: '#c4a46e' },
+    { label: 'In Progress',                         value: drInProgress,      color: '#a08440' },
+    { label: isDistClient ? 'Inquiries' : 'Orders', value: drOrders.length,   color: 'rgba(255,255,255,0.70)' },
+    { label: 'Wins',                                value: drWins.length,     color: '#5a9ea0' },
   ]
 
-  const pad = isMobile ? '16px' : '28px 40px'
+  const F    = '"Space Grotesk",-apple-system,sans-serif'
+  const MONO = '"JetBrains Mono",ui-monospace,monospace'
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: t.bg.page, color: t.text.primary, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+    <div style={{ height: '100vh', overflow: 'hidden', background: '#070502', color: '#f0f0f0', fontFamily: F, position: 'relative' }}>
 
-      {/* Preview banner */}
+      {/* Global styles */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
+        @keyframes spin       { to { transform: rotate(360deg) } }
+        @keyframes slideInRight { from { transform: translateX(48px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
+        @keyframes fadeInLeft { from { opacity: 0; transform: translateX(-12px) } to { opacity: 1; transform: translateX(0) } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.96) translateY(8px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+        .hub-fade { animation: popIn 0.22s cubic-bezier(0.16,1,0.3,1) both; }
+        @keyframes countUp    { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+        .kpi-hover { transition: transform 180ms, box-shadow 180ms !important; }
+        .kpi-hover:hover { transform: translateY(-2px) !important; }
+        .vrow:hover { background: rgba(255,255,255,0.03) !important; }
+        .quick-link:hover { background: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.12) !important; }
+        .mapboxgl-popup-content { background: rgba(10,8,5,0.97) !important; backdrop-filter: blur(12px) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; padding: 10px 14px !important; color: #fff !important; box-shadow: 0 4px 24px rgba(0,0,0,0.7) !important; }
+        .mapboxgl-popup-tip { border-top-color: rgba(10,8,5,0.97) !important; }
+        .portal-pin { transition: transform 150ms; }
+        ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+      `}</style>
+
+      {/* MAP — full screen background */}
+      {hasMap && <div ref={mapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />}
+
+      {/* Dark overlay when no map */}
+      {!hasMap && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #070502, #060c18)', zIndex: 0 }} />}
+
+      {/* Gradient overlay over map for readability */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', background: `radial-gradient(ellipse 60% 80% at 30% 50%, transparent 20%, rgba(4,8,18,0.55) 100%), linear-gradient(180deg, rgba(4,8,18,0.7) 0%, rgba(4,8,18,0.2) 15%, rgba(4,8,18,0.2) 80%, rgba(4,8,18,0.7) 100%)` }} />
+
+      {/* ── STAFF PREVIEW BANNER ─────────────────────────────────────────── */}
       {isPreview && (
-        <div style={{ backgroundColor: '#7c3aed', color: '#fff', fontSize: '12px', fontWeight: '600', padding: '8px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <span>Previewing client portal — this is exactly what {client?.name || slug} sees.</span>
-          <a href={`/clients/${slug}`} style={{ color: '#fff', fontSize: '11px', opacity: 0.85, textDecoration: 'underline', whiteSpace: 'nowrap' }}>← Back to CRM</a>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, background: 'rgba(4,8,18,0.96)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${accent}30`, color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 500, padding: '5px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', letterSpacing: '0.02em' }}>
+          <span>Staff preview — this is exactly what {client?.name} sees</span>
+          <a href={`/v3/brands/${slug}`} style={{ color: accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>← Back to CRM</a>
         </div>
       )}
 
-      {/* Sticky header */}
-      <header style={{ backgroundColor: t.bg.sidebar, borderBottom: `1px solid ${accent}33`, padding: `0 ${isMobile ? '16px' : '32px'}`, height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {/* ── HEADER ──────────────────────────────────────────────────────────── */}
+      <Glass style={{
+        position: 'absolute', top: isPreview ? 26 : 0, left: 0, right: 0, zIndex: 10,
+        height: 54, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 24px', borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+        borderRadius: 0, borderBottom: `1px solid rgba(255,255,255,0.06)`,
+      }}>
+        {/* Brand identity */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={client?.name} style={{ height: '32px', width: 'auto', maxWidth: '100px', objectFit: 'contain' }} />
+            <img src={logoUrl} alt={client?.name} style={{ height: 28, width: 'auto', maxWidth: 72, objectFit: 'contain' }} />
           ) : (
-            <div style={{ width: 32, height: 32, borderRadius: '7px', background: `linear-gradient(135deg, ${accent} 0%, ${accent}99 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>
-              {client?.name?.[0] || 'P'}
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: accent+'22', border: `1px solid ${accent}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, color: accent }}>
+              {client?.name?.[0]||'B'}
             </div>
           )}
           <div>
-            <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, lineHeight: 1.2 }}>{client?.name}</div>
-            <div style={{ fontSize: '10px', color: t.text.muted, lineHeight: 1.2 }}>Barley Bros — Brand Report</div>
+            <div style={{ fontFamily: F, fontSize: 17, fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-0.03em' }}>{client?.name}</div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.14em', marginTop: 1, textTransform: 'uppercase' }}>Barley Bros · Brand Report</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}>
-            <FileDown size={12} /> {!isMobile && 'Download PDF'}
+
+        {/* Period + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Period selector */}
+          <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '2px', border: `1px solid rgba(255,255,255,0.06)` }}>
+            {([['7d','7D'],['30d','30D'],['90d','90D'],['all','All']] as const).map(([k,lbl]) => (
+              <button key={k} onClick={() => { setDateRange(k); setFeedLimit(20) }} style={{
+                padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: dateRange===k?700:400,
+                border: 'none', cursor: 'pointer', transition: 'all 130ms', fontFamily: F,
+                background: dateRange===k ? accent : 'transparent',
+                color: dateRange===k ? '#000' : 'rgba(255,255,255,0.4)',
+              }}>{lbl}</button>
+            ))}
+          </div>
+          <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 11, fontFamily: F }}>
+            <FileDown size={11} /> Report
           </button>
-          <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '6px 10px', color: t.text.muted, cursor: 'pointer', fontSize: '12px' }}>
-            <LogOut size={12} /> {!isMobile && 'Sign out'}
+          <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ background: 'none', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: '5px 8px', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <LogOut size={11} />
           </button>
         </div>
-      </header>
+      </Glass>
+
+      {/* ── LEFT PANEL: KPIs ────────────────────────────────────────────────── */}
+      <div style={{ position: 'absolute', top: (isPreview ? 26 : 0) + 64, left: 16, zIndex: 10, width: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+        {/* KPI cards */}
+        {kpis.map(({ label, value, color }) => (
+          <Glass key={label} className="kpi-hover" style={{ padding: '12px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: F }}>{label}</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color, letterSpacing: '-0.04em', fontFamily: MONO }}>
+              <Counter to={value} />
+            </div>
+          </Glass>
+        ))}
+
+        {/* Pipeline mini */}
+        {placBreakdown.length > 0 && (
+          <Glass style={{ padding: '12px 16px', borderRadius: 10, marginTop: 4 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 10 }}>Pipeline</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {placBreakdown.map(({ s, l, c, n }) => {
+                const pct = Math.round(n / activePlac.length * 100)
+                return (
+                  <div key={s}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: 500 }}>{l}</span>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: c, fontFamily: MONO }}>{n}</span>
+                    </div>
+                    <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: c, borderRadius: 2, boxShadow: `0 0 6px ${c}66`, transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <button onClick={() => setDrawer('placements')} className="quick-link" style={{ marginTop: 12, width: '100%', background: 'none', border: `1px solid rgba(255,255,255,0.07)`, borderRadius: 6, padding: '6px 0', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: 10, fontFamily: F, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, transition: 'all 120ms' }}>
+              See all placements <ChevronRight size={10} />
+            </button>
+          </Glass>
+        )}
+      </div>
+
+      {/* ── RIGHT PANEL: Activity feed (floating) ────────────────────────────── */}
+      <Glass style={{
+        position: 'absolute',
+        top: (isPreview ? 26 : 0) + 68,
+        right: 14,
+        bottom: 14,
+        zIndex: 10,
+        width: 340,
+        borderRadius: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}>
 
 
-      {/* Tab navigation */}
-      <div style={{ backgroundColor: t.bg.elevated, borderBottom: `1px solid ${t.border.default}`, position: 'sticky', top: '60px', zIndex: 15, overflowX: 'auto' }}>
-        <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'flex', padding: `0 ${isMobile ? '12px' : '32px'}`, gap: '2px', whiteSpace: 'nowrap' }}>
-          {TABS.map(tab => (
+        {/* Chart + analytics button header */}
+        <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>Visit Trend · 12 Weeks</div>
             <button
-              key={tab.key}
-              onClick={() => { setActiveTab(tab.key); if (tab.key === 'activity') setVisitFilter('all') }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer',
-                fontSize: '12px', fontWeight: activeTab === tab.key ? '700' : '500',
-                color: activeTab === tab.key ? accent : t.text.secondary,
-                borderBottom: `2px solid ${activeTab === tab.key ? accent : 'transparent'}`,
-                transition: 'color 150ms',
-                position: 'relative',
-              }}
+              onClick={() => { setAnalyticsOpen(true); setWinsExpanded(false); setOrdersExpanded(false) }}
+              style={{ background: accent + '16', border: `1px solid ${accent}35`, borderRadius: 5, padding: '4px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, color: accent, transition: 'all 130ms', fontSize: 10, fontFamily: F, fontWeight: 700 }}
             >
-              {tab.icon}
-              {tab.label}
-              {tab.count != null && tab.count > 0 && (
-                <span style={{
-                  fontSize: '10px', fontWeight: '700', lineHeight: 1,
-                  backgroundColor: tab.countDanger ? `${t.status.danger}22` : `${accent}22`,
-                  color: tab.countDanger ? t.status.danger : accent,
-                  padding: '2px 5px', borderRadius: '8px',
-                }}>
-                  {tab.count}
-                </span>
-              )}
+              <PanelRightOpen size={11} /> Analytics
+            </button>
+          </div>
+          <ResponsiveContainer width="100%" height={52}>
+            <BarChart data={chartData} barSize={10} margin={{ top: 0, right: 0, left: -28, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 8, fontFamily: F }} axisLine={false} tickLine={false} interval={2} />
+              <Tooltip contentStyle={{ background: 'rgba(10,8,5,0.97)', border: `1px solid ${accent}30`, borderRadius: 7, padding: '6px 10px', fontFamily: F }} labelStyle={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }} itemStyle={{ color: accent, fontFamily: MONO, fontWeight: 700 }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+              <Bar dataKey="count" fill={accent} opacity={0.65} radius={[2,2,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Activity header + filters */}
+        <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>Field Activity</div>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', fontFamily: MONO }}>{filteredVisits.length}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {([['all','All'],['wins','Wins'],['action','In Progress']] as const).map(([k,lbl]) => (
+              <button key={k} onClick={() => { setVisitFilter(k); setFeedLimit(20) }} style={{
+                padding: '4px 10px', borderRadius: 5, fontSize: 10, fontWeight: 600,
+                border: `1px solid ${visitFilter===k ? accent+'45' : 'rgba(255,255,255,0.07)'}`,
+                background: visitFilter===k ? accent+'14' : 'transparent',
+                color: visitFilter===k ? accent : 'rgba(255,255,255,0.38)',
+                cursor: 'pointer', transition: 'all 110ms', fontFamily: F,
+              }}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Visit rows — scrollable */}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {filteredVisits.length === 0 ? (
+            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.22)', fontSize: 12 }}>No visits in this period.</div>
+          ) : (
+            feedVisits.map((v: any) => {
+              const c = STATUS_COLOR[v.status] || 'rgba(255,255,255,0.25)'
+              const isWin = WIN.has(v.status)
+              return (
+                <div key={v.id} className="vrow" style={{ display: 'grid', gridTemplateColumns: '3px 1fr', gap: 10, padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 110ms' }}>
+                  <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: c, opacity: isWin ? 1 : 0.55 }} />
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f0f0f0' }}>{v.accounts?.name || 'Unknown'}</span>
+                      {isWin && <span style={{ fontSize: 7, fontWeight: 800, color: '#5a9ea0', background: 'rgba(90,158,160,0.12)', padding: '1px 5px', borderRadius: 3, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Win</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 3, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: c }}>{v.status}</span>
+                      <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.26)' }}>
+                        {new Date(v.visited_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}
+                      </span>
+                    </div>
+                    {v.notes && <div style={{ marginTop: 3, fontSize: 11, color: 'rgba(255,255,255,0.38)', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as any}>{v.notes}</div>}
+                  </div>
+                </div>
+              )
+            })
+          )}
+          {feedLimit < filteredVisits.length && (
+            <button
+              onClick={() => setFeedLimit(n => n + 20)}
+              className="quick-link"
+              style={{ width: '100%', padding: '10px 14px', background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', fontSize: 11, color: 'rgba(255,255,255,0.35)', fontFamily: F, textAlign: 'center', display: 'block', transition: 'color 110ms' }}
+            >
+              Show {Math.min(20, filteredVisits.length - feedLimit)} more · {filteredVisits.length - feedLimit} remaining
+            </button>
+          )}
+        </div>
+
+        {/* Quick links for drawers */}
+        <div style={{ padding: '8px 12px 10px', borderTop: '1px solid rgba(255,255,255,0.05)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {[
+            drOrders.length > 0 && { key: 'orders',     label: isDistClient ? 'Order Inquiries' : 'Orders',  count: drOrders.length },
+            campaigns?.length > 0 && { key: 'campaigns', label: 'Campaigns',        count: campaigns.length },
+            registrations?.length > 0 && { key: 'compliance', label: 'State Compliance', count: registrations.length, alert: expiringRegs.length },
+            { key: 'files',   label: 'Files & Assets',  count: clientFiles.length || undefined },
+            { key: 'suggest', label: 'Suggest an Account', count: undefined },
+          ].filter(Boolean).map((item: any) => (
+            <button key={item.key} onClick={() => setDrawer(item.key)} className="quick-link" style={{ background: 'none', border: `1px solid rgba(255,255,255,0.07)`, borderRadius: 6, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontFamily: F, transition: 'all 120ms' }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.50)', fontWeight: 500 }}>{item.label}</span>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                {item.alert > 0 && <span style={{ fontSize: 8, fontWeight: 700, color: '#e85540', background: 'rgba(232,85,64,0.12)', padding: '1px 5px', borderRadius: 4 }}>⚠ {item.alert}</span>}
+                {item.count != null && item.count > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: accent }}>{item.count}</span>}
+                <ChevronRight size={10} color="rgba(255,255,255,0.22)" />
+              </div>
             </button>
           ))}
         </div>
-      </div>
+      </Glass>
 
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: pad }}>
+      {/* ── ANALYTICS OVERLAY (centered modal, no-scroll) ───────────────────── */}
+      {analyticsOpen && (() => {
+        const winRate = drVisits.length > 0 ? Math.round((drWins.length / drVisits.length) * 100) : 0
+        const CARD: React.CSSProperties = { background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px' }
+        const SEC_LABEL: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase' as const, letterSpacing: '0.18em', marginBottom: 10, display: 'block' }
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 40px', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+            <div onClick={() => setAnalyticsOpen(false)} style={{ position: 'absolute', inset: 0 }} />
+            <div className="hub-fade" style={{
+              position: 'relative', zIndex: 1,
+              width: 'min(1080px, calc(100vw - 64px))',
+              height: 'min(680px, calc(100vh - 64px))',
+              background: 'rgba(9,7,4,0.98)',
+              backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 32px 80px rgba(0,0,0,0.85), 0 0 60px ${accent}12`,
+              borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            }}>
 
-        {/* ══ OVERVIEW TAB ══ */}
-        {activeTab === 'overview' && (
-          <div>
-            {/* Date range + KPI row */}
-            <div style={{ marginBottom: '20px' }}>
-              {/* Date range selector */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Overview</div>
-                <div style={{ display: 'flex', gap: '4px', backgroundColor: t.bg.elevated, borderRadius: '8px', padding: '3px' }}>
-                  {([['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['all', 'All time']] as const).map(([key, label]) => (
-                    <button key={key} onClick={() => setDateRange(key)} style={{
-                      padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: dateRange === key ? '700' : '500',
-                      border: 'none', cursor: 'pointer',
-                      backgroundColor: dateRange === key ? accent : 'transparent',
-                      color: dateRange === key ? '#0c0c0a' : t.text.muted,
-                      transition: 'all 150ms',
-                    }}>{label}</button>
+              {/* ── Header ── */}
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 24, background: 'rgba(255,255,255,0.015)' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#f8f6f2', letterSpacing: '-0.03em', fontFamily: F, lineHeight: 1 }}>Analytics</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.14em' }}>{client?.name} · {dateRange === 'all' ? 'All time' : `Last ${dateRange}`}</div>
+                </div>
+                {/* KPI strip */}
+                <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 4, border: '1px solid rgba(255,255,255,0.05)' }}>
+                  {[
+                    { label: 'Visits',   value: drVisits.length, color: accent },
+                    { label: 'Wins',     value: drWins.length,   color: '#5a9ea0' },
+                    { label: 'Shelf',    value: onShelf.length,  color: '#c4a46e' },
+                    { label: 'Progress', value: drInProgress,    color: '#a08440' },
+                    { label: 'Win Rate', value: `${winRate}%`,   color: drWins.length > 0 ? '#5a9ea0' : 'rgba(255,255,255,0.25)' },
+                  ].map((k, ki) => (
+                    <div key={k.label} style={{ textAlign: 'center', padding: '6px 16px', borderRight: ki < 4 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 3 }}>{k.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: k.color as string, letterSpacing: '-0.04em', fontFamily: MONO, lineHeight: 1 }}>{k.value}</div>
+                    </div>
                   ))}
                 </div>
-              </div>
-
-              {/* KPI grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '10px' }}>
-                <button onClick={() => setActiveTab('activity')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${accent}44` }}>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Visits</div>
-                  <div style={{ fontSize: '26px', fontWeight: '800', color: accent, letterSpacing: '-0.03em', lineHeight: 1 }}>{drVisits.length}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{dateRange === 'all' ? 'all time' : dateRange === '7d' ? 'last 7 days' : dateRange === '30d' ? 'last 30 days' : 'last 90 days'}</div>
-                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: accent, marginTop: '10px', opacity: 0.6 }} />
-                </button>
-                <button onClick={() => setActiveTab('placements')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${t.status.success}44` }}>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Placements</div>
-                  <div style={{ fontSize: '26px', fontWeight: '800', color: t.status.success, letterSpacing: '-0.03em', lineHeight: 1 }}>{activePlacements.length}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>active on shelf / menu</div>
-                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: t.status.success, marginTop: '10px', opacity: 0.6 }} />
-                </button>
-                <button onClick={() => setActiveTab('orders')} style={{ ...card, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', border: `1px solid ${t.status.info}44` }}>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>{isDistributorClient ? 'Inquiries' : 'Orders'}</div>
-                  <div style={{ fontSize: '26px', fontWeight: '800', color: t.status.info, letterSpacing: '-0.03em', lineHeight: 1 }}>{drNonDraftOrders.length}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>{isDistributorClient ? 'sent to distributor' : 'purchase orders'}</div>
-                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: t.status.info, marginTop: '10px', opacity: 0.6 }} />
-                </button>
-                <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ ...card, padding: '14px 16px', cursor: 'pointer', border: `1px solid ${'#6aaee0' + '66'}`, backgroundColor: `${'#6aaee0'}0d`, textAlign: 'left' }}>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>In Progress</div>
-                  <div style={{ fontSize: '26px', fontWeight: '800', color: '#6aaee0', letterSpacing: '-0.03em', lineHeight: 1 }}>{drInProgressCount}</div>
-                  <div style={{ fontSize: '10px', color: t.text.muted, marginTop: '4px' }}>accounts being followed up</div>
-                  <div style={{ height: '2px', borderRadius: '1px', backgroundColor: '#6aaee0', marginTop: '10px', opacity: 0.6 }} />
+                <button onClick={() => setAnalyticsOpen(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '7px 9px', cursor: 'pointer', color: 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <X size={14} />
                 </button>
               </div>
-            </div>
 
-            {/* Charts row */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: '16px', marginBottom: '20px' }}>
-              {/* Visit trend chart */}
-              {dynamicVisitTrend.some((w: any) => w.visits > 0) && (
-                <div style={{ ...card, padding: isMobile ? '14px' : '18px 22px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>
-                        Visit Trend — {dateRange === '7d' ? 'Last 7 Days' : dateRange === '30d' ? 'Last 4 Weeks' : dateRange === '90d' ? 'Last 12 Weeks' : 'Last 12 Months'}
-                      </div>
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts visited {dateRange === '7d' || dateRange === '30d' ? 'by day' : dateRange === '90d' ? 'per week' : 'per month'} by our team</div>
+              {/* ── Body: chart row + 3-col data ── */}
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 20px', gap: 14 }}>
+
+                {/* Chart (full width) */}
+                <div style={{ ...CARD, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <span style={SEC_LABEL}>Visit &amp; Win Trend · 12 Weeks</span>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: accent, opacity: 0.5, flexShrink: 0 }} />Visits</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#5a9ea0', flexShrink: 0 }} />Wins</span>
                     </div>
-                    <button onClick={() => setActiveTab('activity')} style={{ fontSize: '11px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600', flexShrink: 0 }}>See all →</button>
                   </div>
-                  <ResponsiveContainer width="100%" height={isMobile ? 100 : 130}>
-                    <BarChart data={dynamicVisitTrend} barCategoryGap="40%">
-                      <CartesianGrid strokeDasharray="3 3" stroke={t.border.subtle} vertical={false} />
-                      <XAxis dataKey="week" tick={{ fill: t.text.muted, fontSize: isMobile ? 8 : 9 }} axisLine={false} tickLine={false} interval={isMobile ? 3 : 1} />
-                      <YAxis tick={{ fill: t.text.muted, fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} width={18} />
-                      <Tooltip contentStyle={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '8px', fontSize: '12px' }} labelStyle={{ color: t.text.muted }} itemStyle={{ color: accent }} cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(v: any) => [v, 'visits']} labelFormatter={(lbl: any, pl: any) => { const wE = pl?.[0]?.payload?.weekEnd; return wE ? `${lbl} – ${wE}` : lbl }} />
-                      <Bar dataKey="visits" fill={accent} radius={[3, 3, 0, 0]} />
+                  <ResponsiveContainer width="100%" height={72}>
+                    <BarChart data={winChartData} barSize={12} barGap={2} margin={{ top: 0, right: 0, left: -28, bottom: 0 }}>
+                      <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.22)', fontSize: 8, fontFamily: F }} axisLine={false} tickLine={false} interval={1} />
+                      <Tooltip contentStyle={{ background: 'rgba(9,7,4,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontFamily: F }} labelStyle={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                      <Bar dataKey="visits" fill={accent} opacity={0.35} radius={[2,2,0,0]} name="Visits" />
+                      <Bar dataKey="wins"   fill="#5a9ea0" opacity={0.90} radius={[2,2,0,0]} name="Wins" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              )}
-              {/* Visit outcome breakdown */}
-              {outcomeData.length > 0 && (
-                <div style={{ ...card, padding: isMobile ? '14px' : '18px 22px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary, marginBottom: '4px' }}>Visit Outcomes</div>
-                  <div style={{ fontSize: '11px', color: t.text.muted, marginBottom: '14px' }}>
-                    {dateRange === 'all' ? 'All time' : dateRange === '7d' ? 'Last 7 days' : dateRange === '30d' ? 'Last 30 days' : 'Last 90 days'}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {outcomeData.slice(0, 6).map(({ status, count, fill }) => {
-                      const pct = drVisits.length > 0 ? Math.round((count / drVisits.length) * 100) : 0
-                      return (
-                        <div key={status}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '11px', color: t.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>{status}</span>
-                            <span style={{ fontSize: '11px', fontWeight: '700', color: fill, flexShrink: 0, marginLeft: '6px' }}>{count}</span>
+
+                {/* 3-column data row */}
+                <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+
+                  {/* ── Col 1: Visit outcomes ── */}
+                  <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <span style={SEC_LABEL}>Visit Outcomes</span>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+                      {outcomeCounts.slice(0, 6).map(({ s, n, c }) => (
+                        <div key={s}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{s}</span>
+                            <span style={{ fontSize: 13, fontWeight: 900, color: c, fontFamily: MONO, flexShrink: 0 }}>{n}</span>
                           </div>
-                          <div style={{ height: '5px', borderRadius: '3px', backgroundColor: t.border.subtle, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, backgroundColor: fill, borderRadius: '3px', transition: 'width 400ms ease' }} />
+                          <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
+                            <div style={{ height: '100%', width: `${Math.round((n / maxOutcome) * 100)}%`, background: c, borderRadius: 2, opacity: 0.8, boxShadow: `0 0 6px ${c}44`, transition: 'width 500ms cubic-bezier(0,0,0.2,1)' }} />
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2-col: recent wins + in progress */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-              {/* Recent wins */}
-              <div style={{ ...card, padding: '18px 20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>Recent Wins</div>
-                  {drWinVisits.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('wins') }} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
-                </div>
-                {drWinVisits.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No wins in this period.</div>
-                ) : drWinVisits.slice(0, 5).map((v: any) => (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: t.status.success, flexShrink: 0, marginTop: '5px', boxShadow: `0 0 4px ${t.status.success}88` }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || 'Unknown'}</div>
-                      <div style={{ fontSize: '11px', color: t.status.success, marginTop: '1px' }}>{v.status}</div>
+                      ))}
                     </div>
-                    <div style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</div>
                   </div>
-                ))}
-              </div>
 
-              {/* In Progress */}
-              <div style={{ ...card, padding: '18px 20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div>
-                    <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>In Progress</div>
-                    <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Accounts our team is actively following up with</div>
-                  </div>
-                  {drInProgress.length > 5 && <button onClick={() => { setActiveTab('activity'); setVisitFilter('action') }} style={{ fontSize: '11px', color: '#6aaee0', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>See all →</button>}
-                </div>
-                {drInProgress.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: t.text.muted, padding: '12px 0' }}>No active follow-ups in this period.</div>
-                ) : drInProgress.slice(0, 5).map((v: any) => (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: `1px solid ${t.border.subtle}` }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: STATUS_ACCENT[v.status] || '#6aaee0', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || 'Unknown'}</div>
-                    </div>
-                    <span style={{ fontSize: '10px', fontWeight: '700', color: STATUS_ACCENT[v.status] || '#6aaee0', backgroundColor: `${STATUS_ACCENT[v.status] || '#6aaee0'}18`, padding: '2px 6px', borderRadius: '6px', flexShrink: 0 }}>{v.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Upcoming events */}
-            {upcomingEvents.length > 0 && (
-              <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary, marginBottom: '12px' }}>Upcoming Events & Tastings</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {upcomingEvents.slice(0, 3).map((e: any) => (
-                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', backgroundColor: `${t.status.success}0d`, border: `1px solid ${t.status.success}22`, borderRadius: '8px' }}>
-                      <Calendar size={14} color={t.status.success} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{e.title}</div>
-                        {e.accounts?.name && <div style={{ fontSize: '11px', color: t.text.muted }}>{e.accounts.name}</div>}
+                  {/* ── Col 2: Placement pipeline ── */}
+                  <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <span style={SEC_LABEL}>Placement Pipeline · {activePlac.length} active</span>
+                    {placBreakdown.length > 0 ? (
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+                        {placBreakdown.map(({ s, l, c, n }) => {
+                          const pct = Math.round(n / activePlac.length * 100)
+                          return (
+                            <div key={s}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', fontWeight: 500 }}>{l}</span>
+                                <span style={{ fontSize: 14, fontWeight: 900, color: c, fontFamily: MONO }}>{n}<span style={{ fontSize: 9, fontWeight: 400, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>{pct}%</span></span>
+                              </div>
+                              <div style={{ height: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 3 }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${c}aa, ${c})`, borderRadius: 3, boxShadow: `0 0 8px ${c}55`, transition: 'width 600ms cubic-bezier(0,0,0.2,1)' }} />
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div style={{ fontSize: '11px', color: t.status.success, fontWeight: '600', flexShrink: 0 }}>
-                        {new Date(e.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    ) : (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.18)' }}>No active placements</span>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Placements breakdown summary */}
-            {activePlacements.length > 0 && (
-              <div style={{ ...card, padding: '18px 20px', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: t.text.primary }}>{activePlacements.length} Active Placements</div>
-                  <button onClick={() => setActiveTab('placements')} style={{ fontSize: '11px', color: t.status.success, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>View all →</button>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {placementBreakdown.map(g => (
-                    <div key={g.status} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: `${g.color}14`, border: `1px solid ${g.color}33`, borderRadius: '8px', padding: '8px 14px' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: g.color, boxShadow: `0 0 5px ${g.color}88` }} />
-                      <div>
-                        <div style={{ fontSize: '18px', fontWeight: '800', color: g.color, lineHeight: 1 }}>{g.count}</div>
-                        <div style={{ fontSize: '10px', color: t.text.muted }}>{g.label}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Stacked bar */}
-                {activePlacements.length > 0 && (
-                  <div style={{ marginTop: '12px', height: '6px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden', display: 'flex' }}>
-                    {placementBreakdown.map(g => (
-                      <div key={g.status} style={{ width: `${(g.count / activePlacements.length) * 100}%`, backgroundColor: g.color, transition: 'width 400ms ease' }} />
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            )}
 
-            {/* Compliance alerts in overview */}
-            {(expiringRegs.length > 0 || expiredRegs.length > 0) && (
-              <div style={{ ...card, padding: '16px 20px', marginBottom: '20px', border: `1px solid ${t.status.danger}33`, backgroundColor: `${t.status.danger}07` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertCircle size={16} color={t.status.danger} />
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: t.status.danger }}>
-                        {expiredRegs.length > 0 ? `${expiredRegs.length} expired registration${expiredRegs.length > 1 ? 's' : ''}` : ''}{expiredRegs.length > 0 && expiringRegs.length > 0 ? ' · ' : ''}{expiringRegs.length > 0 ? `${expiringRegs.length} expiring within 60 days` : ''}
-                      </div>
-                      <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>Action required — see Compliance tab</div>
-                    </div>
-                  </div>
-                  <button onClick={() => setActiveTab('compliance')} style={{ fontSize: '11px', color: t.status.danger, background: 'none', border: `1px solid ${t.status.danger}44`, borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', fontWeight: '600' }}>View →</button>
-                </div>
-              </div>
-            )}
+                  {/* ── Col 3: Recent wins + orders (expandable) ── */}
+                  <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-            {/* Suggest section */}
-            <div style={{ ...card, padding: isMobile ? '16px' : '22px 28px' }}>
-              <button onClick={() => setShowSuggest(!showSuggest)} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 0 }}>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary }}>Suggest an Account or Contact</div>
-                  <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '3px' }}>Know a bar, restaurant, or rep we should be talking to?</div>
-                </div>
-                {showSuggest ? <ChevronUp size={16} color={t.text.muted} /> : <ChevronDown size={16} color={t.text.muted} />}
-              </button>
-              {showSuggest && (
-                <div style={{ marginTop: '20px' }}>
-                  {submitted ? (
-                    <div style={{ padding: '16px', backgroundColor: `${t.status.success}14`, border: `1px solid ${t.status.success}44`, borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <CheckCircle size={18} color={t.status.success} />
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: t.status.success }}>Submitted — thank you!</div>
-                        <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>Our team will review and follow up.</div>
-                      </div>
-                      <button onClick={() => setSubmitted(false)} style={{ marginLeft: 'auto', fontSize: '12px', color: accent, background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>Add another</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {(['account', 'contact'] as const).map(type => (
-                          <button key={type} onClick={() => { setSuggestType(type); setSuggestForm(f => ({ ...f, address: '', contact_person: '', contact_phone: '', contact_email: '' })) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: suggestType === type ? accent + '22' : 'transparent', color: suggestType === type ? accent : t.text.secondary, border: `1px solid ${suggestType === type ? accent + '66' : t.border.default}` }}>
-                            {type === 'account' ? <Building2 size={14} /> : <User size={14} />}
-                            {type === 'account' ? 'An Account' : 'A Contact'}
+                    {/* Recent wins */}
+                    <div style={{ ...CARD, flex: recentWins.length > 0 ? 1 : 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0 }}>
+                        <span style={SEC_LABEL}>Recent Wins</span>
+                        {recentWins.length > 3 && (
+                          <button onClick={() => setWinsExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: accent, fontWeight: 600, fontFamily: F, padding: 0 }}>
+                            {winsExpanded ? 'Show less' : `+${recentWins.length - 3} more`}
                           </button>
-                        ))}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                        <div>
-                          <label style={labelStyle}>{suggestType === 'account' ? 'Account name *' : 'Contact name *'}</label>
-                          <input ref={suggestType === 'account' ? suggestNameRef : undefined} value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={suggestType === 'account' ? 'e.g. The Blind Pig' : 'e.g. Jamie, Bar Manager'} style={inputStyle} />
-                        </div>
-                        {suggestType === 'account' ? (
-                          <div>
-                            <label style={labelStyle}>Address (optional)</label>
-                            <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="City or full address" style={inputStyle} />
-                          </div>
-                        ) : (
-                          <div>
-                            <label style={labelStyle}>Where they work (optional)</label>
-                            <input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="e.g. Molly's Bar, Fort Collins" style={inputStyle} />
-                          </div>
-                        )}
-                        {suggestType === 'contact' && (
-                          <>
-                            <div>
-                              <label style={labelStyle}>Phone (optional)</label>
-                              <input type="tel" value={suggestForm.contact_phone} onChange={e => setSuggestForm(f => ({ ...f, contact_phone: e.target.value }))} placeholder="e.g. (720) 555-1234" style={inputStyle} />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>Email (optional)</label>
-                              <input type="email" value={suggestForm.contact_email} onChange={e => setSuggestForm(f => ({ ...f, contact_email: e.target.value }))} placeholder="e.g. jamie@thebar.com" style={inputStyle} />
-                            </div>
-                          </>
                         )}
                       </div>
-                      {suggestType === 'account' && (
-                        <div>
-                          <label style={labelStyle}>Contact there (optional)</label>
-                          <input value={suggestForm.contact_person} onChange={e => setSuggestForm(f => ({ ...f, contact_person: e.target.value }))} placeholder="e.g. Joe, the bar manager" style={inputStyle} />
-                        </div>
-                      )}
-                      {suggestType === 'contact' && (
-                        <button
-                          type="button"
-                          onClick={() => setSuggestForm(f => ({ ...f, contact_category: f.contact_category === 'distributor' ? 'general' : 'distributor' }))}
-                          style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', border: `1px solid ${suggestForm.contact_category === 'distributor' ? accent + '66' : t.border.default}`, backgroundColor: suggestForm.contact_category === 'distributor' ? accent + '18' : 'transparent', textAlign: 'left', width: '100%' }}
-                        >
-                          <div style={{ width: '18px', height: '18px', borderRadius: '4px', border: `2px solid ${suggestForm.contact_category === 'distributor' ? accent : t.border.default}`, backgroundColor: suggestForm.contact_category === 'distributor' ? accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
-                            {suggestForm.contact_category === 'distributor' && <span style={{ color: '#0c0c0a', fontSize: '12px', fontWeight: '900', lineHeight: 1 }}>✓</span>}
-                          </div>
-                          <div style={{ fontSize: '13px', fontWeight: '600', color: suggestForm.contact_category === 'distributor' ? accent : t.text.secondary }}>This person is a distributor rep</div>
-                        </button>
-                      )}
-                      <div>
-                        <label style={labelStyle}>Reason *</label>
-                        <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={selectStyle}>
-                          <option value="">Select a reason</option>
-                          {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Notes (optional)</label>
-                        <input value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any context that would help our team..." style={inputStyle} />
-                      </div>
-                      {suggestErr && <div style={{ fontSize: '12px', color: t.status.danger }}>{suggestErr}</div>}
-                      <button onClick={handleSuggest} disabled={submitting || !suggestForm.name.trim() || !suggestForm.reason} style={{ padding: '11px 20px', backgroundColor: accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', opacity: submitting || !suggestForm.name.trim() || !suggestForm.reason ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                        <Send size={14} /> {submitting ? 'Sending...' : 'Submit to Barley Bros'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ══ ACTIVITY TAB ══ */}
-        {activeTab === 'activity' && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {([
-                  { key: 'all', label: `All (${drVisits.length})` },
-                  { key: 'wins', label: `Wins (${drWinVisits.length})`, color: t.status.success },
-                  { key: 'action', label: `In Progress (${drActionVisits.length})`, color: '#6aaee0' },
-                  { key: 'general', label: `General (${drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status)).length})` },
-                ] as { key: string; label: string; color?: string }[]).map(f => (
-                  <button key={f.key} onClick={() => setVisitFilter(f.key as any)} style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer', fontWeight: visitFilter === f.key ? '700' : '500', border: `1px solid ${visitFilter === f.key ? (f.color || accent) : t.border.default}`, backgroundColor: visitFilter === f.key ? `${(f.color || accent)}22` : 'transparent', color: visitFilter === f.key ? (f.color || accent) : t.text.muted }}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-              {/* Date range mini selector in activity tab */}
-              <div style={{ display: 'flex', gap: '3px', backgroundColor: t.bg.elevated, borderRadius: '7px', padding: '2px' }}>
-                {(['7d', '30d', '90d', 'all'] as const).map(k => (
-                  <button key={k} onClick={() => setDateRange(k)} style={{ padding: '4px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: dateRange === k ? '700' : '500', border: 'none', cursor: 'pointer', backgroundColor: dateRange === k ? accent : 'transparent', color: dateRange === k ? '#0c0c0a' : t.text.muted }}>
-                    {k === 'all' ? 'All' : k}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {(visitFilter === 'all' ? drVisits : visitFilter === 'wins' ? drWinVisits : visitFilter === 'action' ? drActionVisits : drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))).length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '40px 0', textAlign: 'center' }}>No visits in this category.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {(visitFilter === 'all' ? drVisits : visitFilter === 'wins' ? drWinVisits : visitFilter === 'action' ? drActionVisits : drVisits.filter((v: any) => !ACTION_STATUSES.includes(v.status) && !WIN_STATUSES.includes(v.status))).map((v: any) => {
-                  const ac = STATUS_ACCENT[v.status] || t.text.muted
-                  return (
-                    <div key={v.id} style={{ ...card, padding: '12px 14px 12px 16px', boxShadow: `inset 3px 0 0 ${ac}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: v.notes ? '8px' : '0' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
-                          <span style={badge.visitStatus(v.status)}>{v.status}</span>
-                          <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{v.accounts?.name || 'Unknown account'}</span>
-                          {v.accounts?.address && !isMobile && <span style={{ fontSize: '11px', color: t.text.muted }}>{v.accounts.address}</span>}
-                        </div>
-                        <span style={{ fontSize: '11px', color: t.text.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>{formatShortDateMT(v.visited_at)}</span>
-                      </div>
-                      {v.notes && <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.6, borderLeft: `2px solid ${t.border.default}`, paddingLeft: '10px' }}>{v.notes}</div>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══ PLACEMENTS TAB ══ */}
-        {activeTab === 'placements' && (
-          <div>
-            {activePlacements.length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No active placements tracked yet.</div>
-            ) : (
-              <>
-                {/* Status breakdown */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                  {placementBreakdown.map(g => (
-                    <div key={g.status} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: `${g.color}14`, border: `1px solid ${g.color}33`, borderRadius: '8px', padding: '10px 16px' }}>
-                      <div style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: g.color, boxShadow: `0 0 5px ${g.color}88` }} />
-                      <div>
-                        <div style={{ fontSize: '22px', fontWeight: '800', color: g.color, lineHeight: 1 }}>{g.count}</div>
-                        <div style={{ fontSize: '10px', color: t.text.muted }}>{g.label}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Progress bar */}
-                <div style={{ height: '6px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden', display: 'flex', marginBottom: '20px' }}>
-                  {placementBreakdown.map(g => <div key={g.status} style={{ width: `${(g.count / activePlacements.length) * 100}%`, backgroundColor: g.color }} />)}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
-                  {activePlacements.map((p: any) => {
-                    const sc = PLACEMENT_STATUS_COLORS[p.status] || t.text.muted
-                    return (
-                      <div key={p.id} style={{ ...card, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: sc, flexShrink: 0, boxShadow: `0 0 4px ${sc}88` }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.accounts?.name}</div>
-                          <div style={{ fontSize: '11px', color: t.text.muted }}>{p.product_name}{p.placement_type ? ` · ${p.placement_type.replace('_', ' ')}` : ''}{p.price_point ? ` · $${p.price_point}` : ''}</div>
-                        </div>
-                        <span style={{ fontSize: '10px', fontWeight: '700', color: sc, backgroundColor: `${sc}18`, padding: '2px 7px', borderRadius: '6px', flexShrink: 0 }}>{PLACEMENT_STATUS_LABELS[p.status]}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ══ ORDERS TAB ══ */}
-        {activeTab === 'orders' && (
-          <div>
-            {/* Distributor explanation */}
-            {isDistributorClient && (
-              <div style={{ ...card, padding: '16px 20px', marginBottom: '20px', border: `1px solid ${t.border.gold}`, backgroundColor: t.goldDim }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: t.gold, marginBottom: '6px' }}>About Distributor Inquiries</div>
-                <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.6 }}>
-                  When our team generates demand for your brand at an account, we submit a formal inquiry to your distributor rep to fulfill it. Each entry below represents market demand we've created for your brand and documented with your distribution partner.
-                </div>
-              </div>
-            )}
-            {nonDraftOrders.length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No {isDistributorClient ? 'inquiries' : 'orders'} on record yet.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {nonDraftOrders.map((o: any) => {
-                  const isExpanded = expandedOrder === o.id
-                  const lineItems = orderLineItems[o.id]
-                  const STATUS_COLORS: Record<string, string> = { sent: t.status.info, fulfilled: t.status.success, cancelled: t.status.danger }
-                  const statusColor = STATUS_COLORS[o.status] || t.text.muted
-                  return (
-                    <div key={o.id} style={{ ...card, overflow: 'hidden' }}>
-                      <button onClick={async () => {
-                        if (isExpanded) { setExpandedOrder(null) } else {
-                          setExpandedOrder(o.id)
-                          if (orderLineItems[o.id] === undefined) {
-                            const { data: li } = await getSupabase().from('po_line_items').select('product_name, quantity, price, total').eq('po_id', o.id).order('id')
-                            setOrderLineItems(prev => ({ ...prev, [o.id]: li || [] }))
-                          }
-                        }
-                      }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name}</span>
-                            <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{o.status}</span>
-                            {isDistributorClient && o.distributor_status && o.distributor_status !== 'not_contacted' && (() => {
-                              const DS_COLOR: Record<string, string> = { contacted: t.status.info, confirmed: t.status.success, ordered: t.status.success }
-                              const DS_LABEL: Record<string, string> = { contacted: 'Inquiry Sent', confirmed: 'Confirmed', ordered: 'Ordered' }
-                              const dc = DS_COLOR[o.distributor_status] || t.text.muted
-                              return (
-                                <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: dc + '22', color: dc, fontWeight: '700', flexShrink: 0, border: `1px solid ${dc}44` }}>
-                                  {DS_LABEL[o.distributor_status] || o.distributor_status}
-                                </span>
-                              )
-                            })()}
-                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '8px', backgroundColor: t.bg.elevated, color: t.text.muted, fontWeight: '600', border: `1px solid ${t.border.subtle}`, flexShrink: 0 }}>
-                              {isDistributorClient ? 'Distributor Inquiry' : 'Purchase Order'}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '11px', color: t.text.muted }}>{o.po_number} · {formatShortDateMT(o.created_at)}{o.distributor_rep_name ? ` · Rep: ${o.distributor_rep_name}` : ''}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                          {o.total_amount > 0 && <span style={{ fontSize: '14px', fontWeight: '700', color: accent }}>{formatCurrency(o.total_amount)}</span>}
-                          <span style={{ color: t.text.muted, fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
-                        </div>
-                      </button>
-                      {isExpanded && (
-                        <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '14px 16px' }}>
-                          {lineItems === undefined ? (
-                            <div style={{ fontSize: '12px', color: t.text.muted, fontStyle: 'italic' }}>Loading details...</div>
-                          ) : lineItems.length === 0 ? (
-                            <div style={{ fontSize: '12px', color: t.text.muted }}>No line items on file.</div>
-                          ) : (
-                            <div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '4px 16px', paddingBottom: '8px', marginBottom: '4px', borderBottom: `1px solid ${t.border.subtle}` }}>
-                                {['Product', 'Qty', 'Total'].map(h => (
-                                  <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Product' ? 'left' : 'right' }}>{h}</div>
-                                ))}
-                              </div>
-                              {lineItems.map((li: any, i: number) => (
-                                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '4px 16px', padding: '5px 0' }}>
-                                  <div style={{ fontSize: '12px', color: t.text.primary }}>{li.product_name}</div>
-                                  <div style={{ fontSize: '12px', color: t.text.secondary, textAlign: 'right' }}>{li.quantity}</div>
-                                  <div style={{ fontSize: '12px', color: t.text.primary, fontWeight: '600', textAlign: 'right' }}>{formatCurrency(li.total || (li.price * li.quantity))}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══ CAMPAIGNS TAB ══ */}
-        {activeTab === 'campaigns' && (
-          <div>
-            {!campaigns || campaigns.length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No active campaigns at the moment.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {campaigns.map((camp: any) => {
-                  const isExpanded = expandedCampaign === camp.id
-                  const milestones: any[] = camp.campaign_milestones || []
-                  const completedMs = milestones.filter((m: any) => m.completed).length
-                  const msPct = milestones.length > 0 ? Math.round((completedMs / milestones.length) * 100) : 0
-                  const assets: any[] = campaignAssets[camp.id] || []
-                  const statusColors: Record<string, string> = { active: t.status.success, completed: t.status.info, paused: t.status.warning, draft: t.text.muted }
-                  const statusColor = statusColors[camp.status] || t.text.muted
-                  return (
-                    <div key={camp.id} style={{ ...card, overflow: 'hidden' }}>
-                      <button onClick={async () => {
-                        if (isExpanded) { setExpandedCampaign(null) } else {
-                          setExpandedCampaign(camp.id)
-                          if (!campaignAssets[camp.id]) {
-                            const [asts, exps] = await Promise.all([
-                              getCampaignAssets(camp.id).catch(() => []),
-                              getCampaignExpenses(camp.id).catch(() => []),
-                            ])
-                            setCampaignAssets(prev => ({ ...prev, [camp.id]: asts }))
-                            setCampaignExpenses(prev => ({ ...prev, [camp.id]: exps }))
-                          }
-                        }
-                      }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '16px 20px', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                              <span style={{ fontSize: '14px', fontWeight: '700', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{camp.title || camp.name}</span>
-                              <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '8px', backgroundColor: statusColor + '22', color: statusColor, fontWeight: '700', textTransform: 'uppercase', flexShrink: 0 }}>{camp.status}</span>
-                            </div>
-                            <div style={{ fontSize: '11px', color: t.text.muted }}>
-                              {camp.campaign_type && <span style={{ marginRight: '10px' }}>{camp.campaign_type}</span>}
-                              {camp.start_date && <span>{camp.start_date}{camp.end_date ? ` → ${camp.end_date}` : ''}</span>}
-                            </div>
-
-                          </div>
-                          <span style={{ color: t.text.muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
-                        </div>
-                        {milestones.length > 0 && (
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                              <div style={{ fontSize: '11px', color: t.text.muted }}>{completedMs} of {milestones.length} milestones complete</div>
-                              <div style={{ fontSize: '11px', fontWeight: '700', color: msPct === 100 ? t.status.success : accent }}>{msPct}%</div>
-                            </div>
-                            <div style={{ height: '5px', backgroundColor: t.border.subtle, borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${msPct}%`, backgroundColor: msPct === 100 ? t.status.success : accent, borderRadius: '3px', transition: 'width 400ms ease' }} />
-                            </div>
-                          </div>
-                        )}
-                      </button>
-                      {isExpanded && (
-                        <div style={{ borderTop: `1px solid ${t.border.subtle}`, padding: '16px 20px' }}>
-                          {camp.description && <p style={{ fontSize: '13px', color: t.text.secondary, marginBottom: '16px', lineHeight: 1.6 }}>{camp.description}</p>}
-                          {milestones.length > 0 && (
-                            <div style={{ marginBottom: '16px' }}>
-                              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Milestones</div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {milestones.map((m: any) => (
-                                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', backgroundColor: m.completed ? `${t.status.success}0d` : t.bg.elevated, borderRadius: '6px', border: `1px solid ${m.completed ? t.status.success + '22' : t.border.subtle}` }}>
-                                    <div style={{ width: 16, height: 16, borderRadius: '4px', border: `1.5px solid ${m.completed ? t.status.success : t.border.hover}`, backgroundColor: m.completed ? t.status.success : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                      {m.completed && <span style={{ fontSize: '9px', color: '#0c0c0a', fontWeight: '900' }}>✓</span>}
-                                    </div>
-                                    <span style={{ fontSize: '12px', color: m.completed ? t.text.muted : t.text.primary, textDecoration: m.completed ? 'line-through' : 'none', flex: 1 }}>{m.title}</span>
-                                    {m.due_date && <span style={{ fontSize: '10px', color: t.text.muted, flexShrink: 0 }}>{formatShortDateMT(m.due_date)}</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Expenses */}
-                          {(() => {
-                            const exps: any[] = campaignExpenses[camp.id] || []
-                            const totalExp = exps.reduce((s, e) => s + Number(e.amount || 0), 0)
-                            if (exps.length === 0) return null
+                      {recentWins.length === 0 ? (
+                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.18)', textAlign: 'center', paddingTop: 8 }}>No wins yet in this period</div>
+                      ) : (
+                        <div style={{ overflowY: winsExpanded ? 'auto' : 'hidden', flex: 1, minHeight: 0 }}>
+                          {(winsExpanded ? recentWins : recentWins.slice(0, 3)).map((v: any, i: number, arr: any[]) => {
+                            const c = STATUS_COLOR[v.status] || '#5a9ea0'
                             return (
-                              <div style={{ marginBottom: '16px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>Campaign Spend</span>
-                                  <span className="mono" style={{ color: accent }}>{formatCurrency(totalExp)}</span>
+                              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                                <div style={{ width: 3, alignSelf: 'stretch', minHeight: 28, borderRadius: 2, flexShrink: 0, background: `linear-gradient(180deg, ${c}, ${c}77)` }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || '—'}</div>
+                                  <div style={{ fontSize: 10, color: c, fontWeight: 600, marginTop: 1 }}>{v.status}</div>
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  {exps.map((exp: any) => (
-                                    <div key={exp.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}` }}>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <span style={{ fontSize: '12px', color: t.text.primary }}>{exp.description}</span>
-                                        <span style={{ fontSize: '10px', color: t.text.muted, marginLeft: '6px' }}>{exp.category}{exp.vendor ? ` · ${exp.vendor}` : ''}{exp.expense_date ? ` · ${formatShortDateMT(exp.expense_date)}` : ''}</span>
-                                      </div>
-                                      <span className="mono" style={{ fontSize: '12px', fontWeight: '700', color: accent, flexShrink: 0 }}>{formatCurrency(Number(exp.amount))}</span>
-                                    </div>
-                                  ))}
+                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', flexShrink: 0 }}>{new Date(v.visited_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Orders / inquiries */}
+                    {drOrders.length > 0 && (
+                      <div style={{ ...CARD, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0 }}>
+                          <span style={SEC_LABEL}>{isDistClient ? 'Order Inquiries' : 'Orders'}</span>
+                          {drOrders.length > 3 && (
+                            <button onClick={() => setOrdersExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: accent, fontWeight: 600, fontFamily: F, padding: 0 }}>
+                              {ordersExpanded ? 'Show less' : `+${drOrders.length - 3} more`}
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ overflowY: ordersExpanded ? 'auto' : 'hidden', flex: 1, minHeight: 0 }}>
+                          {(ordersExpanded ? drOrders : drOrders.slice(0, 3)).map((o: any, i: number, arr: any[]) => {
+                            const statusLabel = CLIENT_ORDER_STATUS[o.status]
+                            return (
+                              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                                <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.80)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name || 'Order'}</div>
+                                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>{new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Denver' })}</div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  {o.total_amount > 0 && <div style={{ fontSize: 13, fontWeight: 900, color: accent, fontFamily: MONO, lineHeight: 1 }}>${Number(o.total_amount).toLocaleString()}</div>}
+                                  {statusLabel && <div style={{ fontSize: 8, fontWeight: 700, color: statusLabel === 'Delivered' ? '#5a9ea0' : 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginTop: 2 }}>{statusLabel}</div>}
                                 </div>
                               </div>
                             )
-                          })()}
-                          {/* Assets */}
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                              <div style={{ fontSize: '11px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Shared Assets</div>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: accent, fontWeight: '600', cursor: 'pointer' }}>
-                                <Upload size={11} /> Share a file
-                                <input type="file" style={{ display: 'none' }} onChange={async e => {
-                                  const file = e.target.files?.[0]; if (!file) return
-                                  setUploadingAsset(true)
-                                  try {
-                                    const sb = getSupabase()
-                                    const path = `${slug}/${camp.id}/${Date.now()}-${file.name}`
-                                    const { error: upErr } = await sb.storage.from('campaign-assets').upload(path, file, { upsert: false })
-                                    if (upErr) throw upErr
-                                    const { data: urlData } = sb.storage.from('campaign-assets').getPublicUrl(path)
-                                    const created = await createCampaignAsset({ campaign_id: camp.id, client_slug: slug, name: file.name, file_url: urlData.publicUrl, file_type: file.type, file_size: file.size, uploaded_by: 'client' })
-                                    setCampaignAssets(prev => ({ ...prev, [camp.id]: [created, ...(prev[camp.id] || [])] }))
-                                  } catch (err) { console.error('Upload failed:', err) }
-                                  setUploadingAsset(false); e.target.value = ''
-                                }} />
-                              </label>
-                            </div>
-                            {assets.length === 0 ? (
-                              <div style={{ fontSize: '12px', color: t.text.muted }}>No assets shared yet.</div>
-                            ) : assets.map((asset: any) => (
-                              <div key={asset.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: t.bg.elevated, borderRadius: '6px', border: `1px solid ${t.border.subtle}`, marginBottom: '4px' }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '12px', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</div>
-                                  <div style={{ fontSize: '10px', color: t.text.muted }}>{asset.uploaded_by === 'client' ? 'Your upload' : 'From Barley Bros'}</div>
-                                </div>
-                                <a href={asset.file_url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: accent, textDecoration: 'none' }}>
-                                  <ExternalLink size={12} /> View
-                                </a>
-                              </div>
-                            ))}
-                          </div>
+                          })}
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══ COMPLIANCE TAB ══ */}
-        {activeTab === 'compliance' && (
-          <div>
-            {/* Expiry alerts */}
-            {(expiredRegs.length > 0 || expiringRegs.length > 0) && (
-              <div style={{ ...card, padding: '14px 18px', marginBottom: '16px', border: `1px solid ${t.status.danger}33`, backgroundColor: `${t.status.danger}07` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <AlertCircle size={15} color={t.status.danger} />
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: t.status.danger }}>Compliance Alerts</span>
-                </div>
-                {expiredRegs.map((r: any) => (
-                  <div key={r.id} style={{ fontSize: '12px', color: t.status.danger, marginBottom: '3px' }}>⚠ {r.state} — Expired {formatShortDateMT(r.expiry_date)}</div>
-                ))}
-                {expiringRegs.filter((r: any) => r.status !== 'expired').map((r: any) => (
-                  <div key={r.id} style={{ fontSize: '12px', color: t.status.warning, marginBottom: '3px' }}>⚠ {r.state} — Expires {formatShortDateMT(r.expiry_date)}</div>
-                ))}
-              </div>
-            )}
-            {registrations.length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>No state registrations on file yet.</div>
-            ) : (
-              <>
-                {/* Summary counts */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                  {Object.entries(REG_STATUS_LABELS).map(([status, label]) => {
-                    const count = registrations.filter((r: any) => r.status === status).length
-                    if (count === 0) return null
-                    const color = REG_STATUS_COLORS[status]
-                    return (
-                      <div key={status} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: `${color}14`, border: `1px solid ${color}33`, borderRadius: '8px', padding: '8px 14px' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color }} />
-                        <span style={{ fontSize: '16px', fontWeight: '800', color }}>{count}</span>
-                        <span style={{ fontSize: '11px', color: t.text.muted }}>{label}</span>
                       </div>
-                    )
-                  })}
-                </div>
-                {/* Registration table */}
-                <div style={{ ...card, overflow: 'hidden' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '80px 1fr auto auto', gap: '1px', backgroundColor: t.border.subtle }}>
-                    {/* Header */}
-                    {!isMobile && ['State', 'Details', 'Expiry', 'Status'].map(h => (
-                      <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '10px 14px', backgroundColor: t.bg.elevated }}>{h}</div>
-                    ))}
-                    {isMobile && ['State', 'Status'].map(h => (
-                      <div key={h} style={{ fontSize: '10px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '10px 14px', backgroundColor: t.bg.elevated }}>{h}</div>
-                    ))}
-                    {/* Rows */}
-                    {registrations.map((r: any) => {
-                      const color = REG_STATUS_COLORS[r.status] || t.text.muted
-                      const isExpired = r.status === 'expired'
-                      const isExpiringSoon = r.expiry_date && !isExpired && (new Date(r.expiry_date).getTime() - Date.now()) < 60 * 86400000
-                      if (isMobile) return (
-                        <>
-                          <div key={`${r.id}-state`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
-                            {r.ttb_number && <span style={{ fontSize: '10px', color: t.text.muted }}>TTB: {r.ttb_number}</span>}
-                          </div>
-                          <div key={`${r.id}-status`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                            {(isExpired || isExpiringSoon) && <AlertCircle size={12} color={isExpired ? t.status.danger : t.status.warning} />}
-                            <span style={{ fontSize: '10px', fontWeight: '700', color, backgroundColor: `${color}22`, padding: '2px 7px', borderRadius: '6px' }}>{REG_STATUS_LABELS[r.status] || r.status}</span>
-                          </div>
-                        </>
-                      )
-                      return (
-                        <>
-                          <div key={`${r.id}-state`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '700', color: t.text.primary }}>{r.state}</span>
-                          </div>
-                          <div key={`${r.id}-detail`} style={{ padding: '10px 14px', backgroundColor: t.bg.card }}>
-                            {r.ttb_number && <div style={{ fontSize: '12px', color: t.text.secondary }}>TTB: {r.ttb_number}</div>}
-                            {r.notes && <div style={{ fontSize: '11px', color: t.text.muted }}>{r.notes}</div>}
-                          </div>
-                          <div key={`${r.id}-expiry`} style={{ padding: '10px 14px', backgroundColor: t.bg.card }}>
-                            {r.expiry_date ? (
-                              <span style={{ fontSize: '12px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>
-                                {isExpired ? '⚠ ' : isExpiringSoon ? '⚠ ' : ''}{formatShortDateMT(r.expiry_date)}
-                              </span>
-                            ) : <span style={{ fontSize: '12px', color: t.text.muted }}>—</span>}
-                          </div>
-                          <div key={`${r.id}-status`} style={{ padding: '10px 14px', backgroundColor: t.bg.card, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: '10px', fontWeight: '700', color, backgroundColor: `${color}22`, padding: '2px 7px', borderRadius: '6px' }}>{REG_STATUS_LABELS[r.status] || r.status}</span>
-                          </div>
-                        </>
-                      )
-                    })}
+                    )}
                   </div>
                 </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ══ FILES TAB ══ */}
-        {activeTab === 'files' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ fontSize: '13px', color: t.text.muted }}>Logos, photos, brand assets, and compliance documents shared between your team and Barley Bros.</div>
-              <button onClick={() => { setFileUploadMode('asset'); setFileUploadType('logo'); setFileUploadExpiry(''); setShowFileUpload(true); setFileUploadErr('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}66`, borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}>
-                <Upload size={13} /> Share Asset
-              </button>
+              </div>
             </div>
-            {showFileUpload && (
-              <div style={{ ...card, padding: '18px', marginBottom: '16px', border: `1px solid ${fileUploadMode === 'compliance' ? t.status.warning + '55' : accent + '44'}` }}>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, marginBottom: '12px' }}>
-                  {fileUploadMode === 'compliance' ? 'Upload a Compliance Document' : 'Share a Brand Asset'}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                  {fileUploadMode === 'asset' ? (
-                    <div>
-                      <label style={labelStyle}>Asset Type</label>
-                      <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={selectStyle}>
-                        <option value="logo">Logo</option>
-                        <option value="photo">Photo</option>
-                        <option value="brand_asset">Brand Asset</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div>
-                      <label style={labelStyle}>Expiry Date <span style={{ color: t.status.warning, fontWeight: '600' }}>(important)</span></label>
-                      <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={inputStyle} />
-                    </div>
-                  )}
-                  {fileUploadMode === 'asset' && (
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                      <div style={{ fontSize: '11px', color: t.text.muted, paddingBottom: '10px' }}>Logos, photos, and brand materials</div>
-                    </div>
-                  )}
-                </div>
-                <div style={{ marginBottom: '10px' }}>
-                  <label style={labelStyle}>Description <span style={{ color: t.text.muted, fontWeight: '400' }}>(optional)</span></label>
-                  <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder={fileUploadMode === 'compliance' ? 'e.g. CO TTB Certificate, State Registration…' : 'e.g. Primary logo — white on dark, Summer campaign photo…'} style={inputStyle} />
-                </div>
-                <div style={{ marginBottom: '10px' }}>
-                  <label style={labelStyle}>File</label>
-                  <input ref={portalFileInputRef} type="file" style={{ display: 'block', fontSize: '13px', color: t.text.secondary }} accept={fileUploadMode === 'compliance' ? '.pdf,.doc,.docx,.xls,.xlsx,.csv' : 'image/*,.pdf,.doc,.docx,.zip'} />
-                </div>
-                {fileUploadErr && <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '12px', color: t.status.danger, marginBottom: '10px' }}><AlertCircle size={13} /> {fileUploadErr}</div>}
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => { setShowFileUpload(false); setFileUploadErr('') }} style={{ padding: '8px 14px', background: 'none', border: `1px solid ${t.border.default}`, borderRadius: '8px', fontSize: '12px', fontWeight: '600', color: t.text.secondary, cursor: 'pointer' }}>Cancel</button>
-                  <button disabled={fileUploading} onClick={async () => {
-                    const file = portalFileInputRef.current?.files?.[0]
-                    if (!file) { setFileUploadErr('Please select a file'); return }
-                    setFileUploading(true); setFileUploadErr('')
-                    try {
-                      const sb = getSupabase()
-                      const { data: { user } } = await sb.auth.getUser()
-                      const newFile = await uploadClientFile(slug, file, { file_type: fileUploadType, description: fileUploadDesc || undefined, expiry_date: fileUploadExpiry || undefined, uploaded_by: user?.id, uploaded_by_portal: true })
-                      setClientFiles(prev => [newFile, ...prev])
-                      setShowFileUpload(false); setFileUploadType('other'); setFileUploadDesc(''); setFileUploadExpiry('')
-                      if (portalFileInputRef.current) portalFileInputRef.current.value = ''
-                    } catch (err: any) { setFileUploadErr(err.message || 'Upload failed') }
-                    finally { setFileUploading(false) }
-                  }} style={{ padding: '8px 16px', backgroundColor: fileUploadMode === 'compliance' ? t.status.warning : accent, color: '#0c0c0a', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', opacity: fileUploading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Upload size={13} /> {fileUploading ? 'Uploading…' : 'Upload'}
-                  </button>
-                </div>
-              </div>
-            )}
-            {filesLoading ? (
-              <div style={{ fontSize: '13px', color: t.text.muted }}>Loading files…</div>
-            ) : clientFiles.length === 0 ? (
-              <div style={{ fontSize: '13px', color: t.text.muted, padding: '60px 0', textAlign: 'center' }}>
-                <Folder size={28} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.3 }} />
-                No files yet — use the button above to share files with your team
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {clientFiles.map(f => {
-                  const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.name)
-                  const isExpired = f.expiry_date ? new Date(f.expiry_date) < new Date() : false
-                  const isExpiringSoon = f.expiry_date && !isExpired && (new Date(f.expiry_date).getTime() - Date.now()) < 30 * 86400000
-                  const ftLabels: Record<string, string> = { logo: 'Logo', compliance: 'Compliance', photo: 'Photo', brand_asset: 'Brand Asset', other: 'File' }
-                  return (
-                    <div key={f.id} style={{ ...card, display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px' }}>
-                      {isImage && (
-                        <div style={{ width: '40px', height: '40px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', backgroundColor: t.bg.elevated }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={f.file_url} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '6px', backgroundColor: accent + '22', color: accent, fontWeight: '700', flexShrink: 0 }}>{ftLabels[f.file_type] || 'File'}</span>
-                        </div>
-                        {f.description && <div style={{ fontSize: '11px', color: t.text.muted, marginTop: '2px' }}>{f.description}</div>}
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
-                          {f.expiry_date && <span style={{ fontSize: '11px', color: isExpired ? t.status.danger : isExpiringSoon ? t.status.warning : t.text.muted }}>{isExpired ? '⚠ Expired' : isExpiringSoon ? '⚠ Expires soon' : 'Expires'} {formatShortDateMT(f.expiry_date)}</span>}
-                          <span style={{ fontSize: '11px', color: t.text.muted }}>{f.uploaded_by_portal ? 'Your upload' : 'From Barley Bros'} · {formatShortDateMT(f.created_at)}</span>
-                        </div>
-                      </div>
-                      <a href={f.file_url} target="_blank" rel="noreferrer" download style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', backgroundColor: accent + '22', color: accent, border: `1px solid ${accent}44`, borderRadius: '7px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', flexShrink: 0 }}>
-                        <Download size={13} /> View
-                      </a>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
           </div>
-        )}
+        )
+      })()}
 
+      {/* ── MAP LEGEND (bottom center) ───────────────────────────────────────── */}
+      {hasMap && mapAccounts.length > 0 && (
+        <Glass style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 10, padding: '7px 14px', borderRadius: 20, display: 'flex', gap: 16, alignItems: 'center', fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: accent, boxShadow: `0 0 8px ${accent}99`, display: 'inline-block' }} />Active placement</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(255,255,255,0.4)', display: 'inline-block' }} />Visited account</span>
+          <span style={{ color: 'rgba(255,255,255,0.25)' }}>{mapAccounts.length} accounts</span>
+        </Glass>
+      )}
 
-      </main>
+      {/* ── DRAWERS ──────────────────────────────────────────────────────────── */}
 
-      {/* Footer */}
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: `20px ${isMobile ? '16px' : '40px'}`, borderTop: `1px solid ${t.border.subtle}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-        <div style={{ width: 20, height: 20, borderRadius: '4px', background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', color: '#0f0f0d', flexShrink: 0 }}>D</div>
-        <div style={{ fontSize: '11px', color: t.text.muted }}>Powered by <strong style={{ color: t.text.secondary }}>Barley Bros</strong> · Fort Collins, CO</div>
-      </div>
+      {/* Placements */}
+      {drawer === 'placements' && (
+        <Drawer title="Active Placements" count={activePlac.length} onClose={() => setDrawer(null)} accent={accent}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {activePlac.map((p: any, i: number) => {
+              const c = PLAC_COLORS[p.status] || accent
+              return (
+                <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '3px 1fr auto', gap: 12, padding: '11px 0', borderBottom: i < activePlac.length-1 ? '1px solid rgba(255,255,255,0.05)' : 'none', alignItems: 'center' }}>
+                  <div style={{ width: 3, height: '100%', borderRadius: 2, background: c }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f0f0f0' }}>{p.product_name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{p.accounts?.name||'—'}{p.placement_type ? ` · ${p.placement_type}` : ''}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c, background: c+'14', padding: '3px 7px', borderRadius: 4, border: `1px solid ${c}28`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{PLAC_LABELS[p.status]}</span>
+                </div>
+              )
+            })}
+          </div>
+        </Drawer>
+      )}
 
+      {/* Orders */}
+      {drawer === 'orders' && (
+        <Drawer title={isDistClient ? 'Order Inquiries' : 'Orders'} count={drOrders.length} onClose={() => setDrawer(null)} accent={accent}>
+          {drOrders.map((o: any, i: number) => (
+            <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '11px 0', borderBottom: i < drOrders.length-1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f0f0f0' }}>{o.deliver_to_name || 'Order'}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+                  {o.po_number && `PO #${o.po_number} · `}
+                  {new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Denver' })}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {o.total_amount > 0 && <div style={{ fontSize: 14, fontWeight: 900, color: accent, fontFamily: MONO }}>${Number(o.total_amount).toLocaleString()}</div>}
+                {CLIENT_ORDER_STATUS[o.status] && <div style={{ fontSize: 9, fontWeight: 700, color: CLIENT_ORDER_STATUS[o.status] === 'Delivered' ? '#5a9ea0' : 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginTop: 2 }}>{CLIENT_ORDER_STATUS[o.status]}</div>}
+              </div>
+            </div>
+          ))}
+        </Drawer>
+      )}
+
+      {/* Campaigns */}
+      {drawer === 'campaigns' && (
+        <Drawer title="Campaigns" count={campaigns?.length} onClose={() => setDrawer(null)} accent={accent}>
+          {(campaigns||[]).map((c: any, i: number) => {
+            const sc = c.status === 'active' ? '#5a9ea0' : c.status === 'paused' ? '#a08440' : 'rgba(255,255,255,0.3)'
+            return (
+              <div key={c.id} style={{ padding: '11px 0', borderBottom: i < (campaigns||[]).length-1 ? '1px solid rgba(255,255,255,0.05)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#f0f0f0' }}>{c.title}</div>
+                  {c.start_date && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{formatShortDateMT(c.start_date)}{c.end_date ? ` – ${formatShortDateMT(c.end_date)}` : ''}</div>}
+                </div>
+                <span style={{ fontSize: 9, fontWeight: 700, color: sc, background: sc+'14', padding: '3px 7px', borderRadius: 4, textTransform: 'capitalize', border: `1px solid ${sc}28` }}>{c.status}</span>
+              </div>
+            )
+          })}
+        </Drawer>
+      )}
+
+      {/* Compliance */}
+      {drawer === 'compliance' && (
+        <Drawer title="State Compliance" count={registrations?.length} onClose={() => setDrawer(null)} accent={accent}>
+          {expiringRegs.length > 0 && (
+            <div style={{ background: 'rgba(232,85,64,0.08)', border: '1px solid rgba(232,85,64,0.2)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: 12, color: '#e85540' }}>
+              ⚠ {expiringRegs.length} registration{expiringRegs.length>1?'s':''} expiring within 60 days
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {(registrations||[]).map((r: any) => {
+              const sc: Record<string,string> = { active:'#5a9ea0', pending:'#a08440', expired:'#bf7850', not_registered:'rgba(255,255,255,0.2)' }
+              const sl: Record<string,string> = { active:'Active', pending:'Pending', expired:'Expired', not_registered:'N/A' }
+              const col = sc[r.status] || accent
+              return (
+                <div key={r.id} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${col}18`, borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#f0f0f0' }}>{r.state}</span>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: col, background: col+'14', padding: '2px 5px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{sl[r.status]||r.status}</span>
+                  </div>
+                  {r.expiry_date && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>Exp: {formatShortDateMT(r.expiry_date)}</div>}
+                </div>
+              )
+            })}
+          </div>
+        </Drawer>
+      )}
+
+      {/* Files */}
+      {drawer === 'files' && (
+        <Drawer title="Files & Assets" count={clientFiles.length||undefined} onClose={() => setDrawer(null)} accent={accent}>
+          {!showFileUpload ? (
+            <button onClick={() => setShowFileUpload(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: accent+'12', border: `1px solid ${accent}28`, borderRadius: 7, padding: '7px 14px', color: accent, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: F, marginBottom: 14 }}>
+              <Upload size={11} /> Upload File
+            </button>
+          ) : (
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <select value={fileUploadType} onChange={e => setFileUploadType(e.target.value as ClientFileType)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#f0f0f0', fontSize: 12, padding: '7px 10px', fontFamily: F }}>
+                  {(['logo','compliance','photo','brand_asset','other'] as const).map(t => <option key={t} value={t}>{t.replace('_',' ')}</option>)}
+                </select>
+                <input type="date" value={fileUploadExpiry} onChange={e => setFileUploadExpiry(e.target.value)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#f0f0f0', fontSize: 12, padding: '7px 10px', fontFamily: F }} />
+              </div>
+              <input type="text" value={fileUploadDesc} onChange={e => setFileUploadDesc(e.target.value)} placeholder="Description (optional)" style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#f0f0f0', fontSize: 12, padding: '7px 10px', fontFamily: F, boxSizing: 'border-box', marginBottom: 8 }} />
+              <div style={{ display: 'flex', gap: 7 }}>
+                <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (f) await handleFileUpload(f) }} />
+                <button onClick={() => fileInputRef.current?.click()} disabled={fileUploading} style={{ background: accent, color: '#000', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: F }}>
+                  {fileUploading ? 'Uploading…' : 'Choose File'}
+                </button>
+                <button onClick={() => { setShowFileUpload(false); setFileUploadErr('') }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: 'rgba(255,255,255,0.45)', cursor: 'pointer', fontFamily: F }}>Cancel</button>
+              </div>
+              {fileUploadErr && <div style={{ color: '#e85540', fontSize: 11, marginTop: 6 }}>{fileUploadErr}</div>}
+            </div>
+          )}
+          {filesLoading ? (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Loading…</div>
+          ) : clientFiles.length === 0 ? (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>No files yet.</div>
+          ) : clientFiles.map(f => (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#f0f0f0' }}>{f.description || f.name}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{f.file_type}{f.expiry_date ? ` · exp ${formatShortDateMT(f.expiry_date)}` : ''}</div>
+              </div>
+              <a href={f.file_url} target="_blank" rel="noopener noreferrer" style={{ color: accent, display: 'flex', alignItems: 'center' }}>
+                <Download size={13} />
+              </a>
+            </div>
+          ))}
+        </Drawer>
+      )}
+
+      {/* Suggest */}
+      {drawer === 'suggest' && (
+        <Drawer title="Suggest an Account" onClose={() => setDrawer(null)} accent={accent}>
+          {submitted ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#5a9ea0', fontSize: 13, padding: '20px 0' }}>
+              <CheckCircle size={16} /> Submitted — our team will review this.
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 5, marginBottom: 16 }}>
+                {(['account','contact'] as const).map(t => (
+                  <button key={t} onClick={() => setSuggestType(t)} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: `1px solid ${suggestType===t ? accent+'45' : 'rgba(255,255,255,0.1)'}`, background: suggestType===t ? accent+'14' : 'transparent', color: suggestType===t ? accent : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontFamily: F }}>
+                    {t === 'account' ? 'Account / Venue' : 'Contact / Person'}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input ref={suggestNameRef} type="text" value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={`${suggestType === 'account' ? 'Account' : 'Contact'} name *`} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
+                <input type="text" value={(suggestForm as any).address||''} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder={suggestType === 'account' ? 'Address (optional)' : 'Email (optional)'} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
+                <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: suggestForm.reason ? '#f0f0f0' : 'rgba(255,255,255,0.3)', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }}>
+                  <option value="">Why are you suggesting this? *</option>
+                  {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+                <textarea value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes (optional)…" rows={2} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, resize: 'vertical', outline: 'none' }} />
+                <input type="text" value={suggestForm.submitted_by_name} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_name: e.target.value }))} placeholder="Your name (optional)" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
+                <input type="email" value={suggestForm.submitted_by_email} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_email: e.target.value }))} placeholder="Your email (optional)" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
+                {suggestErr && <div style={{ color: '#e85540', fontSize: 12 }}>{suggestErr}</div>}
+                <button onClick={handleSuggest} disabled={submitting} style={{ background: accent, color: '#000', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: F, letterSpacing: '0.02em' }}>
+                  {submitting ? 'Submitting…' : 'Submit Suggestion'}
+                </button>
+              </div>
+            </>
+          )}
+        </Drawer>
+      )}
     </div>
   )
 }

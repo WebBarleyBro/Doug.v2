@@ -56,6 +56,8 @@ export interface Account {
   best_days?: string[]
   best_time?: string
   priority?: string
+  lat?: number | null
+  lng?: number | null
   created_at: string
   // joined
   account_clients?: AccountClient[]
@@ -65,6 +67,9 @@ export interface Account {
 export interface AccountClient {
   account_id: string
   client_slug: string
+  distributor_rep_id?: string | null
+  opened_for_client_at?: string | null
+  opened_by?: string | null
 }
 
 export interface Contact {
@@ -94,6 +99,7 @@ export type VisitStatus =
   | 'Menu Feature Won'
   | 'New Placement'
   | 'General Check-In'
+  | 'Tasted'
 
 export interface Visit {
   id: string
