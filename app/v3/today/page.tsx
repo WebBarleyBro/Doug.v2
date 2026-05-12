@@ -98,7 +98,7 @@ function Stat({ label, value, glow, color, note, children }: {
       </div>
       <div
         className={`v3-mono${glow ? ` ${glow}` : ''}`}
-        style={{ fontSize: '44px', fontWeight: 800, color, letterSpacing: '-0.05em', lineHeight: 1, position: 'relative' }}
+        style={{ fontSize: '38px', fontWeight: 800, color, letterSpacing: '-0.05em', lineHeight: 1, position: 'relative' }}
       >
         {value}
       </div>
@@ -648,10 +648,10 @@ export default function TodayPage() {
   const [showAllOverdue, setShowAllOverdue] = useState(false)
 
   return (
-    <div style={{ padding: '22px 40px 0', maxWidth: 1400, margin: '0 auto', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} className="v3-fade-in">
+    <div style={{ padding: '20px 28px 0', maxWidth: 1600, margin: '0 auto', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} className="v3-fade-in">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 16, flexShrink: 0 }}>
+      <div style={{ marginBottom: 12, flexShrink: 0 }}>
         <div style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.50)', letterSpacing: '0.18em', marginBottom: 12, textTransform: 'uppercase', fontFamily: v3.font.ui }}>
           {todayLabel()}
         </div>
@@ -687,7 +687,7 @@ export default function TodayPage() {
       </div>
 
       {/* ── Stat strip ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', marginBottom: 12, gap: 0, alignItems: 'flex-start', flexShrink: 0 }}>
+      <div style={{ display: 'flex', marginBottom: 8, gap: 0, alignItems: 'flex-start', flexShrink: 0 }}>
         <Stat
           label="Visits Today"
           value={visitsLoading ? '—' : todayVisits.length}
@@ -712,7 +712,7 @@ export default function TodayPage() {
           )}
         </Stat>
 
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 36px 0', alignSelf: 'stretch' }} />
+        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
 
         <Stat
           label={`${monthLabel()} Visits`}
@@ -726,7 +726,7 @@ export default function TodayPage() {
           )}
         </Stat>
 
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 36px 0', alignSelf: 'stretch' }} />
+        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
 
         <Stat
           label="Follow-Ups"
@@ -735,7 +735,7 @@ export default function TodayPage() {
           glow={fuCount > 0 ? 'v3-glow-warn' : undefined}
         />
 
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 36px 0', alignSelf: 'stretch' }} />
+        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
 
         <Stat
           label="Overdue"
@@ -746,7 +746,7 @@ export default function TodayPage() {
 
         {commissionMTD > 0 && (
           <>
-            <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 36px 0', alignSelf: 'stretch' }} />
+            <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
             <Stat
               label="Commission MTD"
               value={fmtCurrency(commissionMTD)}
@@ -759,7 +759,7 @@ export default function TodayPage() {
 
       {/* ── Coverage bar ───────────────────────────────────────────────────── */}
       {coverage && coverage.total > 0 && (
-        <div style={{ flexShrink: 0, marginBottom: 12 }}>
+        <div style={{ flexShrink: 0, marginBottom: 8 }}>
           <CoverageBar visited={coverage.visited} total={coverage.total} pct={coverage.pct} />
         </div>
       )}
@@ -773,7 +773,7 @@ export default function TodayPage() {
           </div>
         )
         : (
-          <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1.6fr 1.4fr 1fr', gap: 32, overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1.6fr 1.4fr 1fr', gap: 24, overflow: 'hidden' }}>
 
             {/* ── Follow-Ups ──────────────────────────────────────────────── */}
             <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20, paddingRight: 4 }}>

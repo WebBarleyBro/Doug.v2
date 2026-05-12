@@ -154,6 +154,13 @@ export default function AccountDetailPage() {
     if (window.google?.maps?.places) {
       initAC()
     } else {
+      if (!document.getElementById('gm-places-script')) {
+        const s = document.createElement('script')
+        s.id = 'gm-places-script'
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places`
+        s.async = true
+        document.head.appendChild(s)
+      }
       const interval = setInterval(() => {
         if (window.google?.maps?.places) { clearInterval(interval); initAC() }
       }, 100)

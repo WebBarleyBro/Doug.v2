@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
 import { getPortalData, submitClientSuggestion, getClientFiles, uploadClientFile } from '../../lib/data'
 import { formatShortDateMT, startOfMonthMT } from '../../lib/formatters'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ComposedChart, Area } from 'recharts'
 import {
   MapPin, LogOut, ChevronRight, CheckCircle,
   Upload, FileDown, Download, X, PanelRightOpen,
@@ -137,7 +137,6 @@ export default function ClientPortalPage() {
   const [drawer, setDrawer] = useState<string|null>(null)
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [winsExpanded,  setWinsExpanded]  = useState(false)
-  const [ordersExpanded, setOrdersExpanded] = useState(false)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') { setDrawer(null); setAnalyticsOpen(false) } }
@@ -620,7 +619,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>Visit Trend · 12 Weeks</div>
             <button
-              onClick={() => { setAnalyticsOpen(true); setWinsExpanded(false); setOrdersExpanded(false) }}
+              onClick={() => { setAnalyticsOpen(true); setWinsExpanded(false) }}
               style={{ background: accent + '16', border: `1px solid ${accent}35`, borderRadius: 5, padding: '4px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, color: accent, transition: 'all 130ms', fontSize: 10, fontFamily: F, fontWeight: 700 }}
             >
               <PanelRightOpen size={11} /> Analytics
@@ -714,179 +713,233 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         </div>
       </Glass>
 
-      {/* ── ANALYTICS OVERLAY (centered modal, no-scroll) ───────────────────── */}
+      {/* ── ANALYTICS OVERLAY ────────────────────────────────────────────────── */}
       {analyticsOpen && (() => {
-        const winRate = drVisits.length > 0 ? Math.round((drWins.length / drVisits.length) * 100) : 0
-        const CARD: React.CSSProperties = { background: 'rgba(255,255,255,0.028)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px 16px' }
-        const SEC_LABEL: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.32)', textTransform: 'uppercase' as const, letterSpacing: '0.18em', marginBottom: 10, display: 'block' }
+        const winRate      = drVisits.length > 0 ? Math.round((drWins.length / drVisits.length) * 100) : 0
+        const uniqueAccts  = new Set(drVisits.map((v: any) => v.account_id).filter(Boolean)).size
+        const totalAccts   = new Set(visits.map((v: any) => v.account_id).filter(Boolean)).size
+        const visitsPerWk  = drDays ? (drVisits.length / (drDays / 7)).toFixed(1) : drVisits.length > 0 ? (drVisits.length / 12).toFixed(1) : '0'
+        const acctOrderTotals = drOrders.reduce((acc: Record<string, { name: string; total: number }>, o: any) => {
+          if (!o.account_id) return acc
+          if (!acc[o.account_id]) acc[o.account_id] = { name: o.accounts?.name || o.deliver_to_name || '—', total: 0 }
+          acc[o.account_id].total += (o.total_amount || 0)
+          return acc
+        }, {} as Record<string, { name: string; total: number }>)
+        const hasDollarData = Object.keys(acctOrderTotals).length > 0
+        const topAccts = (hasDollarData
+          ? Object.entries(acctOrderTotals)
+              .map(([id, d]: [string, any]) => ({
+                id, name: d.name, metric: d.total,
+                display: `$${Math.round(d.total).toLocaleString()}`,
+                hasWin: drVisits.some((v: any) => v.account_id === id && WIN.has(v.status)),
+              }))
+              .sort((a, b) => b.metric - a.metric)
+          : Object.values(
+              drVisits.reduce((acc: Record<string, { id: string; name: string; metric: number; hasWin: boolean }>, v: any) => {
+                if (!v.account_id) return acc
+                if (!acc[v.account_id]) acc[v.account_id] = { id: v.account_id, name: v.accounts?.name || '—', metric: 0, hasWin: false }
+                acc[v.account_id].metric++
+                if (WIN.has(v.status)) acc[v.account_id].hasWin = true
+                return acc
+              }, {})
+            ).sort((a: any, b: any) => b.metric - a.metric)
+              .map((a: any) => ({ ...a, display: `${a.metric} visits` }))
+        ).slice(0, 6) as { id: string; name: string; metric: number; display: string; hasWin: boolean }[]
+        const maxAcctMetric = topAccts[0]?.metric || 1
+
+        const CARD: React.CSSProperties = { background: 'rgba(255,255,255,0.032)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 18px' }
+        const SEC: React.CSSProperties  = { fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase' as const, letterSpacing: '0.14em', marginBottom: 12, display: 'block' }
+
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 40px', background: 'rgba(0,0,0,0.60)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 20px', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
             <div onClick={() => setAnalyticsOpen(false)} style={{ position: 'absolute', inset: 0 }} />
             <div className="hub-fade" style={{
               position: 'relative', zIndex: 1,
-              width: 'min(1080px, calc(100vw - 64px))',
-              height: 'min(680px, calc(100vh - 64px))',
-              background: 'rgba(9,7,4,0.98)',
-              backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 32px 80px rgba(0,0,0,0.85), 0 0 60px ${accent}12`,
+              width: 'min(1360px, calc(100vw - 40px))',
+              height: 'min(840px, calc(100vh - 40px))',
+              background: '#0d0b08',
+              border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.8), 0 40px 100px rgba(0,0,0,0.95), 0 0 80px ${accent}18`,
               borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden',
             }}>
 
-              {/* ── Header ── */}
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 24, background: 'rgba(255,255,255,0.015)' }}>
+              {/* Header */}
+              <div style={{ padding: '14px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 20, background: 'rgba(255,255,255,0.012)' }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#f8f6f2', letterSpacing: '-0.03em', fontFamily: F, lineHeight: 1 }}>Analytics</div>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.14em' }}>{client?.name} · {dateRange === 'all' ? 'All time' : `Last ${dateRange}`}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#f5f3ef', letterSpacing: '-0.03em', fontFamily: F }}>Analytics</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 3, letterSpacing: '0.10em', textTransform: 'uppercase' }}>{client?.name} · {dateRange === 'all' ? 'All time' : `Last ${dateRange}`}</div>
                 </div>
+
                 {/* KPI strip */}
-                <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 4, border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                   {[
-                    { label: 'Visits',   value: drVisits.length, color: accent },
-                    { label: 'Wins',     value: drWins.length,   color: '#5a9ea0' },
-                    { label: 'Shelf',    value: onShelf.length,  color: '#c4a46e' },
-                    { label: 'Progress', value: drInProgress,    color: '#a08440' },
-                    { label: 'Win Rate', value: `${winRate}%`,   color: drWins.length > 0 ? '#5a9ea0' : 'rgba(255,255,255,0.25)' },
-                  ].map((k, ki) => (
-                    <div key={k.label} style={{ textAlign: 'center', padding: '6px 16px', borderRight: ki < 4 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                      <div style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 3 }}>{k.label}</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: k.color as string, letterSpacing: '-0.04em', fontFamily: MONO, lineHeight: 1 }}>{k.value}</div>
+                    { label: 'Total Visits',    value: drVisits.length,   color: accent },
+                    { label: 'Unique Accounts', value: uniqueAccts,       color: '#a08440' },
+                    { label: 'Field Wins',      value: drWins.length,     color: '#5a9ea0' },
+                    { label: 'On Shelf',        value: onShelf.length,    color: '#c4a46e' },
+                    { label: 'Win Rate',        value: `${winRate}%`,     color: winRate >= 20 ? '#5a9ea0' : winRate >= 10 ? '#a08440' : 'rgba(255,255,255,0.40)' },
+                  ].map((k, ki, arr) => (
+                    <div key={k.label} style={{ textAlign: 'center', padding: '10px 22px', borderRight: ki < arr.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.36)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 5, whiteSpace: 'nowrap' }}>{k.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: k.color as string, letterSpacing: '-0.04em', fontFamily: MONO, lineHeight: 1 }}>{k.value}</div>
                     </div>
                   ))}
                 </div>
-                <button onClick={() => setAnalyticsOpen(false)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '7px 9px', cursor: 'pointer', color: 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+
+                <button onClick={() => setAnalyticsOpen(false)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '7px 9px', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                   <X size={14} />
                 </button>
               </div>
 
-              {/* ── Body: chart row + 3-col data ── */}
-              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 20px', gap: 14 }}>
+              {/* Body */}
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '14px 18px', gap: 12 }}>
 
-                {/* Chart (full width) */}
-                <div style={{ ...CARD, flexShrink: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <span style={SEC_LABEL}>Visit &amp; Win Trend · 12 Weeks</span>
-                    <div style={{ display: 'flex', gap: 12 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: accent, opacity: 0.5, flexShrink: 0 }} />Visits</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#5a9ea0', flexShrink: 0 }} />Wins</span>
+                {/* Full-width chart: Area (visits) + Bar (wins) */}
+                <div style={{ ...CARD, flexShrink: 0, padding: '12px 14px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ ...SEC, marginBottom: 0 }}>Visit &amp; Win Trend · 12 Weeks</span>
+                    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.40)' }}>
+                        <span style={{ width: 22, height: 2, background: accent, borderRadius: 2, display: 'inline-block', opacity: 0.7 }} />Visits
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'rgba(255,255,255,0.40)' }}>
+                        <span style={{ width: 8, height: 8, background: '#5a9ea0', borderRadius: 2, display: 'inline-block' }} />Wins
+                      </span>
                     </div>
                   </div>
-                  <ResponsiveContainer width="100%" height={72}>
-                    <BarChart data={winChartData} barSize={12} barGap={2} margin={{ top: 0, right: 0, left: -28, bottom: 0 }}>
-                      <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.22)', fontSize: 8, fontFamily: F }} axisLine={false} tickLine={false} interval={1} />
-                      <Tooltip contentStyle={{ background: 'rgba(9,7,4,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontFamily: F }} labelStyle={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                      <Bar dataKey="visits" fill={accent} opacity={0.35} radius={[2,2,0,0]} name="Visits" />
-                      <Bar dataKey="wins"   fill="#5a9ea0" opacity={0.90} radius={[2,2,0,0]} name="Wins" />
-                    </BarChart>
+                  <ResponsiveContainer width="100%" height={108}>
+                    <ComposedChart data={winChartData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="visitAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%"   stopColor={accent} stopOpacity={0.40} />
+                          <stop offset="100%" stopColor={accent} stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: F }} axisLine={false} tickLine={false} interval={1} />
+                      <YAxis tick={{ fill: 'rgba(255,255,255,0.28)', fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ background: '#0d0b08', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '8px 12px', fontFamily: F, boxShadow: '0 8px 32px rgba(0,0,0,0.9)' }}
+                        labelStyle={{ color: 'rgba(255,255,255,0.50)', fontSize: 10, marginBottom: 4 }}
+                        cursor={{ fill: 'rgba(255,255,255,0.025)' }}
+                      />
+                      <Area type="monotone" dataKey="visits" fill="url(#visitAreaGrad)" stroke={accent} strokeWidth={1.5} strokeOpacity={0.8} dot={false} name="Visits" />
+                      <Bar dataKey="wins" fill="#5a9ea0" opacity={0.90} radius={[2,2,0,0]} barSize={9} name="Wins" />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* 3-column data row */}
-                <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+                {/* 3-col data grid */}
+                <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
 
-                  {/* ── Col 1: Visit outcomes ── */}
+                  {/* ── Col 1: Outcome Breakdown ── */}
                   <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    <span style={SEC_LABEL}>Visit Outcomes</span>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
-                      {outcomeCounts.slice(0, 6).map(({ s, n, c }) => (
-                        <div key={s}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{s}</span>
-                            <span style={{ fontSize: 13, fontWeight: 900, color: c, fontFamily: MONO, flexShrink: 0 }}>{n}</span>
+                    <span style={SEC}>Outcome Breakdown</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {outcomeCounts.slice(0, 6).map(({ s, n, c }) => {
+                        const pct = drVisits.length > 0 ? Math.round((n / drVisits.length) * 100) : 0
+                        return (
+                          <div key={s}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{s}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: MONO }}>{pct}%</span>
+                                <span style={{ fontSize: 17, fontWeight: 900, color: c, fontFamily: MONO, minWidth: 18, textAlign: 'right' }}>{n}</span>
+                              </div>
+                            </div>
+                            <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                              <div style={{ height: '100%', width: `${Math.round((n / maxOutcome) * 100)}%`, background: c, borderRadius: 2, boxShadow: `0 0 6px ${c}55`, transition: 'width 500ms cubic-bezier(0,0,0.2,1)' }} />
+                            </div>
                           </div>
-                          <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
-                            <div style={{ height: '100%', width: `${Math.round((n / maxOutcome) * 100)}%`, background: c, borderRadius: 2, opacity: 0.8, boxShadow: `0 0 6px ${c}44`, transition: 'width 500ms cubic-bezier(0,0,0.2,1)' }} />
+                        )
+                      })}
+                      {outcomeCounts.length === 0 && (
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.22)', textAlign: 'center', paddingTop: 14 }}>No visits in this period</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Col 2: Field Intelligence ── */}
+                  <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <span style={SEC}>Field Intelligence</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      {[
+                        { label: 'Accounts Reached',  value: uniqueAccts,    sub: `of ${totalAccts} total`,                              bar: totalAccts > 0 ? uniqueAccts / totalAccts : 0,     color: accent },
+                        { label: 'Avg Visits / Week', value: visitsPerWk,    sub: `over ${drDays ? Math.round(drDays/7) : 12} weeks`,    bar: null,                                              color: '#a08440' },
+                        { label: 'Showing Interest',  value: drInProgress,   sub: 'accounts with warm outcomes',                          bar: uniqueAccts > 0 ? drInProgress / uniqueAccts : 0,  color: '#bf7850' },
+                        { label: 'Win Rate',          value: `${winRate}%`,  sub: `${drWins.length} wins from ${drVisits.length} visits`, bar: winRate / 100,                                     color: '#5a9ea0' },
+                      ].map(({ label, value, sub, bar, color }) => (
+                        <div key={label} style={{ background: 'rgba(255,255,255,0.025)', borderRadius: 8, padding: '11px 13px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: bar !== null ? 6 : 0 }}>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', letterSpacing: '0.10em', lineHeight: 1, marginBottom: 3 }}>{label}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', lineHeight: 1 }}>{sub}</div>
+                            </div>
+                            <div style={{ fontSize: 26, fontWeight: 900, color, fontFamily: MONO, letterSpacing: '-0.04em', lineHeight: 1 }}>{value}</div>
                           </div>
+                          {bar !== null && (
+                            <div style={{ height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                              <div style={{ height: '100%', width: `${Math.round(Math.min(bar, 1) * 100)}%`, background: color, borderRadius: 2, boxShadow: `0 0 6px ${color}55`, transition: 'width 650ms cubic-bezier(0,0,0.2,1)' }} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* ── Col 2: Placement pipeline ── */}
-                  <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    <span style={SEC_LABEL}>Placement Pipeline · {activePlac.length} active</span>
-                    {placBreakdown.length > 0 ? (
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
-                        {placBreakdown.map(({ s, l, c, n }) => {
-                          const pct = Math.round(n / activePlac.length * 100)
-                          return (
-                            <div key={s}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)', fontWeight: 500 }}>{l}</span>
-                                <span style={{ fontSize: 14, fontWeight: 900, color: c, fontFamily: MONO }}>{n}<span style={{ fontSize: 9, fontWeight: 400, color: 'rgba(255,255,255,0.25)', marginLeft: 4 }}>{pct}%</span></span>
-                              </div>
-                              <div style={{ height: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 3 }}>
-                                <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${c}aa, ${c})`, borderRadius: 3, boxShadow: `0 0 8px ${c}55`, transition: 'width 600ms cubic-bezier(0,0,0.2,1)' }} />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.18)' }}>No active placements</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── Col 3: Recent wins + orders (expandable) ── */}
+                  {/* ── Col 3: Top Accounts + Recent Wins ── */}
                   <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-                    {/* Recent wins */}
-                    <div style={{ ...CARD, flex: recentWins.length > 0 ? 1 : 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0 }}>
-                        <span style={SEC_LABEL}>Recent Wins</span>
-                        {recentWins.length > 3 && (
-                          <button onClick={() => setWinsExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: accent, fontWeight: 600, fontFamily: F, padding: 0 }}>
-                            {winsExpanded ? 'Show less' : `+${recentWins.length - 3} more`}
-                          </button>
-                        )}
+                    {/* Top accounts */}
+                    <div style={{ ...CARD, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
+                        <span style={SEC}>Top Accounts</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.30)', fontFamily: MONO }}>{hasDollarData ? 'by $ ordered' : `${uniqueAccts} visited`}</span>
                       </div>
-                      {recentWins.length === 0 ? (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.18)', textAlign: 'center', paddingTop: 8 }}>No wins yet in this period</div>
+                      {topAccts.length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.22)', textAlign: 'center', paddingTop: 12 }}>No data in this period</div>
                       ) : (
-                        <div style={{ overflowY: winsExpanded ? 'auto' : 'hidden', flex: 1, minHeight: 0 }}>
-                          {(winsExpanded ? recentWins : recentWins.slice(0, 3)).map((v: any, i: number, arr: any[]) => {
-                            const c = STATUS_COLOR[v.status] || '#5a9ea0'
-                            return (
-                              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                                <div style={{ width: 3, alignSelf: 'stretch', minHeight: 28, borderRadius: 2, flexShrink: 0, background: `linear-gradient(180deg, ${c}, ${c}77)` }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || '—'}</div>
-                                  <div style={{ fontSize: 10, color: c, fontWeight: 600, marginTop: 1 }}>{v.status}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+                          {topAccts.map((acct, i) => (
+                            <div key={acct.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ width: 16, fontSize: 10, fontWeight: 700, color: i < 3 ? accent : 'rgba(255,255,255,0.22)', fontFamily: MONO, textAlign: 'center', flexShrink: 0 }}>#{i+1}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acct.name}</span>
+                                  {acct.hasWin && <span style={{ fontSize: 8, fontWeight: 800, color: '#5a9ea0', background: 'rgba(90,158,160,0.14)', padding: '1px 5px', borderRadius: 3, letterSpacing: '0.06em', flexShrink: 0 }}>WIN</span>}
                                 </div>
-                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', flexShrink: 0 }}>{new Date(v.visited_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</div>
+                                <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
+                                  <div style={{ height: '100%', width: `${Math.round((acct.metric / maxAcctMetric) * 100)}%`, background: i < 3 ? accent : 'rgba(255,255,255,0.22)', borderRadius: 2, boxShadow: i < 3 ? `0 0 6px ${accent}44` : 'none', transition: 'width 500ms cubic-bezier(0,0,0.2,1)' }} />
+                                </div>
                               </div>
-                            )
-                          })}
+                              <div style={{ fontSize: 13, fontWeight: 900, color: i < 3 ? accent : 'rgba(255,255,255,0.38)', fontFamily: MONO, flexShrink: 0 }}>{acct.display}</div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
 
-                    {/* Orders / inquiries */}
-                    {drOrders.length > 0 && (
-                      <div style={{ ...CARD, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0 }}>
-                          <span style={SEC_LABEL}>{isDistClient ? 'Order Inquiries' : 'Orders'}</span>
-                          {drOrders.length > 3 && (
-                            <button onClick={() => setOrdersExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: accent, fontWeight: 600, fontFamily: F, padding: 0 }}>
-                              {ordersExpanded ? 'Show less' : `+${drOrders.length - 3} more`}
+                    {/* Recent wins (expandable) */}
+                    {recentWins.length > 0 && (
+                      <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexShrink: 0 }}>
+                          <span style={SEC}>Recent Wins</span>
+                          {recentWins.length > 3 && (
+                            <button onClick={() => setWinsExpanded(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: accent, fontWeight: 600, fontFamily: F, padding: 0 }}>
+                              {winsExpanded ? 'Collapse' : `+${recentWins.length - 3} more`}
                             </button>
                           )}
                         </div>
-                        <div style={{ overflowY: ordersExpanded ? 'auto' : 'hidden', flex: 1, minHeight: 0 }}>
-                          {(ordersExpanded ? drOrders : drOrders.slice(0, 3)).map((o: any, i: number, arr: any[]) => {
-                            const statusLabel = CLIENT_ORDER_STATUS[o.status]
+                        <div style={{ overflowY: winsExpanded ? 'auto' : 'hidden', maxHeight: winsExpanded ? 140 : 'none' }}>
+                          {(winsExpanded ? recentWins : recentWins.slice(0, 3)).map((v: any, i: number, arr: any[]) => {
+                            const c = STATUS_COLOR[v.status] || '#5a9ea0'
                             return (
-                              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                                <div style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.80)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.deliver_to_name || 'Order'}</div>
-                                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>{new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Denver' })}</div>
+                              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                                <div style={{ width: 3, alignSelf: 'stretch', minHeight: 22, borderRadius: 2, flexShrink: 0, background: c }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name || '—'}</div>
+                                  <div style={{ fontSize: 10, color: c, fontWeight: 600, marginTop: 1 }}>{v.status}</div>
                                 </div>
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                  {o.total_amount > 0 && <div style={{ fontSize: 13, fontWeight: 900, color: accent, fontFamily: MONO, lineHeight: 1 }}>${Number(o.total_amount).toLocaleString()}</div>}
-                                  {statusLabel && <div style={{ fontSize: 8, fontWeight: 700, color: statusLabel === 'Delivered' ? '#5a9ea0' : 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginTop: 2 }}>{statusLabel}</div>}
-                                </div>
+                                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.30)', flexShrink: 0 }}>{new Date(v.visited_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</div>
                               </div>
                             )
                           })}
