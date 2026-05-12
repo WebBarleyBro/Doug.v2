@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { MapPin, Plus, Search, ChevronRight, X, AlertTriangle, Trash2 } from 'lucide-react'
+import { MapPin, Plus, Search, ChevronRight, X, AlertTriangle, Trash2, LocateFixed } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import VisitLogModal from '../components/VisitLogModal'
 import AddAccountModal from '../components/AddAccountModal'
@@ -101,6 +101,8 @@ export default function AccountsPage() {
   const [isMobile, setIsMobile] = useState(false)
   const [showDupes, setShowDupes] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [geocoding, setGeocoding] = useState(false)
+  const [geocodeResult, setGeocodeResult] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
@@ -119,6 +121,22 @@ export default function AccountsPage() {
       }
     })
   }, [])
+
+  async function handleGeocodeAll() {
+    setGeocoding(true)
+    setGeocodeResult(null)
+    try {
+      const res = await fetch('/api/geocode-accounts', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed')
+      setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${json.failed > 0 ? ` (${json.failed} failed)` : ''}`)
+      if (json.updated > 0) load()
+    } catch (e: any) {
+      setGeocodeResult(`Error: ${e.message}`)
+    } finally {
+      setGeocoding(false)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -193,7 +211,12 @@ export default function AccountsPage() {
             {!isMobile && <h1 className="page-h1" style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Accounts</h1>}
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>{accounts.length} accounts total</p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {['owner','admin'].includes(profile?.role || '') && (
+              <button onClick={handleGeocodeAll} disabled={geocoding} title="Geocode all accounts with missing coordinates" style={{ ...btnSecondary, padding: '9px 12px', fontSize: '13px', opacity: geocoding ? 0.6 : 1 }}>
+                <LocateFixed size={14} /> {geocoding ? 'Geocoding…' : 'Geocode All'}
+              </button>
+            )}
             <button onClick={() => setVisitModal(true)} style={{ ...btnSecondary, padding: '9px 14px', fontSize: '13px' }}>
               <MapPin size={15} /> Log Visit
             </button>
@@ -201,6 +224,11 @@ export default function AccountsPage() {
               <Plus size={15} /> Add Account
             </button>
           </div>
+          {geocodeResult && (
+            <div style={{ fontSize: 12, color: geocodeResult.startsWith('Error') ? '#e85540' : '#5a9ea0', marginTop: 6, gridColumn: '1/-1' }}>
+              {geocodeResult}
+            </div>
+          )}
         </div>
 
         {/* Duplicate warning */}

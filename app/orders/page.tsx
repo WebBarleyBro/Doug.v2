@@ -911,7 +911,7 @@ export default function OrdersPage() {
                       <select
                         value={editStatusDraft}
                         onChange={e => setEditStatusDraft(e.target.value)}
-                        style={{ ...selectStyle, width: '100%' }}
+                        style={{ ...selectStyle, width: '100%', colorScheme: 'dark' }}
                       >
                         <option value="draft">Draft</option>
                         <option value="sent">Sent</option>
@@ -1113,7 +1113,7 @@ export default function OrdersPage() {
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
                   <label style={labelStyle}>Brand</label>
-                  <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
+                  <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={{ ...selectStyle, colorScheme: 'dark' }}>
                     <option value="">Select brand...</option>
                     {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                   </select>
@@ -1171,7 +1171,7 @@ export default function OrdersPage() {
                               distributor_email: rep?.email || f.distributor_email,
                             }))
                           }}
-                          style={selectStyle}
+                          style={{ ...selectStyle, colorScheme: 'dark' }}
                         >
                           <option value="">Select existing rep...</option>
                           {distributorReps.map(r => <option key={r.id} value={r.id}>{r.name} {r.email ? `(${r.email})` : ''}</option>)}

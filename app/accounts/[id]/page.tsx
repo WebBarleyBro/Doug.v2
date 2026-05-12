@@ -134,7 +134,7 @@ export default function AccountDetailPage() {
     function initAC() {
       if (!alive || !editAddressRef.current || editAcRef.current) return
       editAcRef.current = new window.google.maps.places.Autocomplete(editAddressRef.current, {
-        types: ['establishment', 'geocode'],
+        types: ['establishment'],
         componentRestrictions: { country: 'us' },
         fields: ['name', 'formatted_address', 'formatted_phone_number', 'geometry'],
       })

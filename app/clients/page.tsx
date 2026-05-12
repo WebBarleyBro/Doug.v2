@@ -163,8 +163,8 @@ export default function ClientsPage() {
 
       {/* Add Brand Modal */}
       {showAdd && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ ...card, width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', padding: '28px' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', padding: '28px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: t.text.primary }}>Add Brand</h2>
               <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '4px' }}><X size={18} /></button>
@@ -185,7 +185,7 @@ export default function ClientsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Order Type *</label>
-                  <select style={selectStyle} value={form.order_type} onChange={e => setForm(f => ({ ...f, order_type: e.target.value as any }))}>
+                  <select style={{ ...selectStyle, colorScheme: 'dark' }} value={form.order_type} onChange={e => setForm(f => ({ ...f, order_type: e.target.value as any }))}>
                     <option value="distributor">Distributor</option>
                     <option value="direct">Direct</option>
                   </select>

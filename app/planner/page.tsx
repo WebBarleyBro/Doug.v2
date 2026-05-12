@@ -437,7 +437,7 @@ export default function PlannerPage() {
                 backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`,
                 borderRadius: '8px', padding: '8px 12px', color: t.text.primary,
                 fontSize: '13px', outline: 'none', cursor: 'pointer',
-                maxWidth: isMobile ? '160px' : 'none',
+                maxWidth: isMobile ? '160px' : 'none', colorScheme: 'dark',
               }} />
           </div>
         </div>

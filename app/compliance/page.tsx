@@ -11,8 +11,18 @@ import { formatShortDateMT, daysAgoMT } from '../lib/formatters'
 import { US_STATES } from '../lib/constants'
 import type { Client } from '../lib/types'
 
+// Use theme tokens directly instead of hardcoded hex values
 const STATUS_COLORS: Record<string, string> = {
-  active: '#3dba78', pending: '#e89a2e', expired: '#e05252', not_registered: '#6b6966',
+  active: t.status.success,
+  pending: t.status.warning,
+  expired: t.status.danger,
+  not_registered: t.status.neutral,
+}
+const STATUS_BG_COLORS: Record<string, string> = {
+  active: t.status.successBg,
+  pending: t.status.warningBg,
+  expired: t.status.dangerBg,
+  not_registered: t.status.neutralBg,
 }
 
 export default function CompliancePage() {
@@ -118,10 +128,17 @@ export default function CompliancePage() {
                   {clientRegs.map((r: any) => {
                     const expiryDays = r.expiry_date ? daysAgoMT(r.expiry_date) : null
                     const isExpiringSoon = expiryDays !== null && expiryDays > -90 && expiryDays <= 0
+                    const statusBorderMap: Record<string, string> = {
+                      active: 'rgba(61,188,118,0.35)',
+                      pending: 'rgba(233,153,40,0.35)',
+                      expired: 'rgba(232,85,64,0.35)',
+                      not_registered: 'rgba(122,112,96,0.25)',
+                    }
                     return (
                       <div key={r.id} style={{
                         backgroundColor: t.bg.elevated,
-                        border: `1px solid ${isExpiringSoon ? STATUS_COLORS[r.status] + '60' : t.border.default}`,
+                        border: `1px solid ${isExpiringSoon ? (statusBorderMap[r.status] || t.border.default) : t.border.default}`,
+                        borderLeft: `3px solid ${STATUS_COLORS[r.status] || t.status.neutral}`,
                         borderRadius: '8px',
                         padding: '10px 12px',
                         position: 'relative',
@@ -131,8 +148,8 @@ export default function CompliancePage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{
                               fontSize: '9px', padding: '2px 6px', borderRadius: '8px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em',
-                              backgroundColor: STATUS_COLORS[r.status] + '20',
-                              color: STATUS_COLORS[r.status],
+                              backgroundColor: STATUS_BG_COLORS[r.status] || 'rgba(122,112,96,0.15)',
+                              color: STATUS_COLORS[r.status] || t.status.neutral,
                             }}>
                               {r.status.replace('_', ' ')}
                             </span>
@@ -159,7 +176,7 @@ export default function CompliancePage() {
 
         {/* Add modal */}
         {addModal.open && (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
             <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '440px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>{addModal.editing ? 'Edit Registration' : 'Add State Registration'}</h3>
@@ -168,14 +185,14 @@ export default function CompliancePage() {
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>State</label>
-                  <select value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} style={selectStyle}>
+                  <select value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} style={{ ...selectStyle, colorScheme: 'dark' }}>
                     <option value="">Select...</option>
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={labelStyle}>Status</label>
-                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={selectStyle}>
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={{ ...selectStyle, colorScheme: 'dark' }}>
                     <option value="pending">Pending</option>
                     <option value="active">Active</option>
                     <option value="expired">Expired</option>
@@ -188,7 +205,7 @@ export default function CompliancePage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Expiry Date</label>
-                  <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} style={inputStyle} />
+                  <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} style={{ ...inputStyle, colorScheme: 'dark' }} />
                 </div>
               </div>
               <div style={{ marginTop: '12px' }}>

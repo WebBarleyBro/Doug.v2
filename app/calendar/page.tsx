@@ -244,7 +244,7 @@ export default function CalendarPage() {
             <select
               value={filterUser}
               onChange={e => setFilterUser(e.target.value)}
-              style={{ ...pillStyle(filterUser !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none' }}
+              style={{ ...pillStyle(filterUser !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none', colorScheme: 'dark' }}
             >
               <option value="all">All Users</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.name || u.full_name}</option>)}
@@ -255,7 +255,7 @@ export default function CalendarPage() {
           <select
             value={filterClient}
             onChange={e => setFilterClient(e.target.value)}
-            style={{ ...pillStyle(filterClient !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none' }}
+            style={{ ...pillStyle(filterClient !== 'all'), paddingRight: '20px', appearance: 'none' as const, outline: 'none', colorScheme: 'dark' }}
           >
             <option value="all">All Brands</option>
             {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
@@ -297,11 +297,13 @@ export default function CalendarPage() {
             const isSelected = selectedDay === day
             return (
               <div key={day} onClick={() => setSelectedDay(day === selectedDay ? null : day)} style={{
-                backgroundColor: isSelected ? t.bg.card : t.bg.page,
+                backgroundColor: isSelected ? t.bg.elevated : t.bg.page,
                 minHeight: isMobile ? '48px' : '80px',
                 padding: isMobile ? '4px' : '8px',
                 cursor: 'pointer',
                 transition: 'background 150ms ease',
+                outline: isSelected ? `1px solid ${t.border.hover}` : 'none',
+                outlineOffset: '-1px',
               }}>
                 <div style={{
                   width: isMobile ? 20 : 26, height: isMobile ? 20 : 26, borderRadius: '50%',
@@ -409,7 +411,7 @@ export default function CalendarPage() {
 
         {/* Create event modal */}
         {showCreate && (
-          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
             <div style={{ backgroundColor: t.bg.elevated, border: `1px solid ${t.border.hover}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '17px', fontWeight: '600', color: t.text.primary }}>New Event</h3>
@@ -419,7 +421,7 @@ export default function CalendarPage() {
                 <div><label style={labelStyle}>Title</label><input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Event name..." style={inputStyle} /></div>
                 <div>
                   <label style={labelStyle}>Type</label>
-                  <select value={form.event_type} onChange={e => setForm(f => ({ ...f, event_type: e.target.value, client_slugs: [] }))} style={selectStyle}>
+                  <select value={form.event_type} onChange={e => setForm(f => ({ ...f, event_type: e.target.value, client_slugs: [] }))} style={{ ...selectStyle, colorScheme: 'dark' }}>
                     {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
@@ -447,21 +449,21 @@ export default function CalendarPage() {
                   </div>
                 ) : (
                   <div><label style={labelStyle}>Brand</label>
-                    <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={selectStyle}>
+                    <select value={form.client_slug} onChange={e => setForm(f => ({ ...f, client_slug: e.target.value }))} style={{ ...selectStyle, colorScheme: 'dark' }}>
                       <option value="">No brand</option>
                       {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
                     </select>
                   </div>
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
-                  <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box' }} /></div>
+                  <div><label style={labelStyle}>Start</label><input type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box', colorScheme: 'dark' }} /></div>
+                  <div><label style={labelStyle}>End (optional)</label><input type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} style={{ ...inputStyle, boxSizing: 'border-box', colorScheme: 'dark' }} /></div>
                 </div>
                 <div><label style={labelStyle}>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: 'none' }} /></div>
                 <div><label style={labelStyle}>URL / RSVP Link (optional)</label><input type="url" value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="https://..." style={inputStyle} /></div>
               </div>
               {createErr && (
-                <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: 'rgba(224,82,82,0.1)', border: '1px solid rgba(224,82,82,0.25)', borderRadius: '8px', fontSize: '13px', color: '#e05252' }}>
+                <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: t.status.dangerBg, border: `1px solid rgba(232,85,64,0.3)`, borderRadius: '8px', fontSize: '13px', color: t.status.danger }}>
                   {createErr}
                 </div>
               )}

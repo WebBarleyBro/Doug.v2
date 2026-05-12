@@ -104,10 +104,10 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
   // Search
   useEffect(() => {
     if (!search || search.length < 2) { setSearchResults(null); return }
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       globalSearch(search).then(setSearchResults)
     }, 200)
-    return () => clearTimeout(t)
+    return () => clearTimeout(timer)
   }, [search])
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -136,7 +136,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                 onFocus={() => setSearchOpen(true)}
                 placeholder="Search accounts, contacts..."
                 style={{
-                  backgroundColor: t.bg.card,
+                  backgroundColor: t.bg.input,
                   border: `1px solid ${t.border.default}`,
                   borderRadius: '8px',
                   padding: '9px 12px 9px 34px',
@@ -144,6 +144,7 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
                   fontSize: '13px',
                   width: '240px',
                   outline: 'none',
+                  fontFamily: 'inherit',
                 }}
               />
               {search && (
