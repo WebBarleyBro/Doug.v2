@@ -2,6 +2,10 @@
 // Philosophy: restraint over spectacle. Data first. One warm accent.
 // Fonts: Space Grotesk (UI) + JetBrains Mono (numbers)
 
+// Shared visit status constants — single source of truth
+export const WIN_STATUSES  = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
+export const HOT_STATUSES  = new Set(['Will Order Soon', 'Needs Follow Up'])
+
 export const v3 = {
   // ── Backgrounds ─────────────────────────────────────────────────────────────
   bg: {

@@ -1328,7 +1328,11 @@ export default function AccountDetailPage() {
                   </div>
                   {nextLabel && (
                     <button
-                      onClick={() => advancePlacement.mutate(p.id)}
+                      onClick={async () => {
+                        const next = await advancePlacement.mutateAsync({ id: p.id, status: p.status })
+                        if (next === 'on_shelf') triggerWin({ product: p.product_name, account: account.name, title: 'ON SHELF' })
+                        else toast(`Placement → ${PLAC_STATUS_LABEL[next] ?? next}`)
+                      }}
                       disabled={advancePlacement.isPending}
                       style={{ flexShrink: 0, padding: '3px 9px', background: 'rgba(196,164,110,0.12)', border: `1px solid rgba(196,164,110,0.35)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}
                     >
@@ -1405,6 +1409,7 @@ export default function AccountDetailPage() {
                             onClick={async () => {
                               const next = await advancePlacement.mutateAsync({ id: p.id, status: p.status })
                               if (next === 'on_shelf') triggerWin({ product: p.product_name, account: account.name, title: 'ON SHELF' })
+                              else toast(`Placement → ${PLAC_STATUS_LABEL[next] ?? next}`)
                             }}
                             style={{ flex: 1, padding: '5px 8px', background: sc + '16', border: `1px solid ${sc}35`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: sc, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             → {PLAC_STATUS_LABEL[PLAC_STATUS_NEXT[p.status]]}

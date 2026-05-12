@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { v3 } from '../lib/theme'
+import { v3, WIN_STATUSES } from '../lib/theme'
 import { useV3Clients, useV3RecentVisits, useV3Placements, useV3Orders, useV3AllProfiles } from '../lib/query'
 import { formatCurrency, resolveTotal, relativeTimeStr } from '../../lib/formatters'
 import type { Client } from '../../lib/types'
@@ -31,8 +31,6 @@ const VISIT_STATUS_COLOR: Record<string, string> = {
   'General Check-In': 'rgba(255,255,255,0.40)',
   'Tasted':           v3.amber,
 }
-const WIN_STATUSES = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered', 'Will Order Soon'])
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function computeTrend(current: number, prior: number) {
@@ -337,7 +335,7 @@ function TeamView({ visits, priorVisits, profiles }: { visits: any[]; priorVisit
       const wins = curr.filter(v => WIN_STATUSES.has(v.status)).length
       const displayName = (p.name || p.full_name || 'Rep').split(' ')[0]
       return { id: p.id, name: displayName, current: curr.length, prior: prev.length, trend, uniqueAccounts, wins }
-    }).filter(r => r.current > 0).sort((a, b) => b.current - a.current)
+    }).sort((a, b) => b.current - a.current)
   }, [visits, priorVisits, profiles])
 
   const maxCount = Math.max(...repStats.map(r => r.current), 1)
@@ -541,7 +539,8 @@ export default function ReportsPage() {
   const [brandSlug, setBrandSlug] = useState('all')
   const [deepTab, setDeepTab]     = useState<DeepTab | null>(null)
 
-  const { data: allVisits = [] } = useV3RecentVisits(period * 2)
+  // Cap prior-period fetch at 365 days total to avoid massive queries on 1Y view
+  const { data: allVisits = [] } = useV3RecentVisits(Math.min(period * 2, 365))
 
   const periodStartMs = Date.now() - period * 86400000
   const priorStartMs  = periodStartMs - period * 86400000

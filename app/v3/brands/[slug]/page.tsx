@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ShoppingCart, Pencil, X, Check, AlertTriangle, Plus, ExternalLink, Zap } from 'lucide-react'
-import { v3, v3input, v3label } from '../../lib/theme'
+import { v3, v3input, v3label, WIN_STATUSES, HOT_STATUSES } from '../../lib/theme'
 import { useV3Clients } from '../../lib/query'
 import { useV3Toast } from '../../lib/context'
 import { getSupabase } from '../../../lib/supabase'
@@ -24,7 +24,7 @@ function useBrandVisits(slug: string) {
         .select('id, visited_at, status, notes, account_id, accounts(id, name)')
         .eq('client_slug', slug)
         .order('visited_at', { ascending: false })
-        .limit(60)
+        .limit(500)
       if (error) throw error
       return (data ?? []) as any[]
     },
@@ -61,7 +61,7 @@ function useBrandOrders(slug: string) {
         .select('id, po_number, status, order_type, total_amount, account_id, created_at, sent_at, accounts(id, name), po_line_items(id, total)')
         .eq('client_slug', slug)
         .order('created_at', { ascending: false })
-        .limit(25)
+        .limit(200)
       if (error) throw error
       return (data ?? []) as any[]
     },
@@ -461,7 +461,19 @@ export default function BrandDetailPage() {
     }
   }
 
-  // Top accounts by visit count
+  // Top accounts by $ ordered (all-time, non-draft)
+  const nonDraftOrders = (orders as any[]).filter(o => o.status !== 'draft')
+  const acctOrderTotals: Record<string, { id: string; name: string; total: number }> = {}
+  for (const o of nonDraftOrders) {
+    if (!o.account_id) continue
+    if (!acctOrderTotals[o.account_id]) {
+      acctOrderTotals[o.account_id] = { id: o.account_id, name: o.accounts?.name || o.deliver_to_name || '—', total: 0 }
+    }
+    acctOrderTotals[o.account_id].total += resolveTotal(o)
+  }
+  const hasDollarData = Object.keys(acctOrderTotals).length > 0
+
+  // Fallback to visit count if no order data
   const accountVisits: Record<string, { name: string; count: number; id: string }> = {}
   for (const v of visits) {
     if (!v.accounts) continue
@@ -469,13 +481,16 @@ export default function BrandDetailPage() {
     if (!accountVisits[id]) accountVisits[id] = { id, name: v.accounts.name, count: 0 }
     accountVisits[id].count++
   }
-  const topAccounts = Object.values(accountVisits).sort((a, b) => b.count - a.count).slice(0, 8)
+
+  const topAccounts = hasDollarData
+    ? Object.values(acctOrderTotals).sort((a, b) => b.total - a.total).slice(0, 8)
+    : Object.values(accountVisits).sort((a, b) => b.count - a.count).slice(0, 8).map(a => ({ ...a, total: 0 }))
 
   // Hot leads — accounts with actionable status in last 30d, deduped
   const hotLeadsSeen = new Set<string>()
   const hotLeads = visits.filter(v => {
     const ms = new Date(v.visited_at).getTime()
-    return ms >= now30ms && (v.status === 'Will Order Soon' || v.status === 'Needs Follow Up')
+    return ms >= now30ms && HOT_STATUSES.has(v.status)
   }).filter(v => {
     if (!v.account_id || hotLeadsSeen.has(v.account_id)) return false
     hotLeadsSeen.add(v.account_id); return true
@@ -496,12 +511,12 @@ export default function BrandDetailPage() {
 
   // Filtered activity feed
   const filteredVisits = actFilter === 'hot'
-    ? visits.filter(v => v.status === 'Will Order Soon' || v.status === 'Needs Follow Up')
+    ? visits.filter(v => HOT_STATUSES.has(v.status))
     : actFilter === 'wins'
-    ? visits.filter(v => ['New Placement', 'Menu Feature Won', 'Just Ordered'].includes(v.status))
+    ? visits.filter(v => WIN_STATUSES.has(v.status))
     : visits
 
-  const winsCount = visits.filter(v => ['New Placement', 'Menu Feature Won', 'Just Ordered'].includes(v.status)).length
+  const winsCount = visits.filter(v => WIN_STATUSES.has(v.status)).length
 
   const kpis = [
     { label: 'Visits (30d)',    value: visits30.length,                                                    color: v3.text.secondary },
@@ -580,7 +595,7 @@ export default function BrandDetailPage() {
           {kpis.map((k, i, arr) => (
             <div key={k.label} style={{ flex: 1, paddingRight: i < arr.length - 1 ? 16 : 0, borderRight: i < arr.length - 1 ? `1px solid ${v3.border.subtle}` : 'none', marginRight: i < arr.length - 1 ? 16 : 0 }}>
               <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.40)', textTransform: 'uppercase', letterSpacing: '0.20em', marginBottom: 8, fontFamily: v3.font.ui }}>{k.label}</div>
-              <div className={k.glow ?? ''} style={{ fontSize: '40px', fontWeight: 900, color: k.color, fontFamily: 'monospace', lineHeight: 1, letterSpacing: '-0.04em' }}>{k.value}</div>
+              <div className={k.glow ?? ''} style={{ fontSize: '26px', fontWeight: 900, color: k.color, fontFamily: 'monospace', lineHeight: 1, letterSpacing: '-0.03em' }}>{k.value}</div>
             </div>
           ))}
         </div>
@@ -588,39 +603,41 @@ export default function BrandDetailPage() {
 
       {/* ── 12-week visit sparkline ───────────────────────────────────────── */}
       {visits.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>Visit Trend · 12 Weeks</span>
-            <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace' }}>{visits.length} total</span>
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-end', gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>Visit Trend · 12 Weeks</span>
+              <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace' }}>{visits.length} total</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 36 }}>
+              {weeklyVisits.map((w, i) => {
+                const heightPx = Math.max((w.count / maxWeekCount) * 32, w.count > 0 ? 3 : 1)
+                const isRecent = i >= weeklyVisits.length - 3
+                return (
+                  <div key={i} title={`${w.count} visit${w.count !== 1 ? 's' : ''}`} style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
+                    <div style={{
+                      width: '100%', height: `${heightPx}px`,
+                      background: w.count > 0 ? (isRecent ? ac : ac + '55') : v3.border.subtle,
+                      borderRadius: '2px 2px 0 0', transition: 'height 500ms',
+                    }} />
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 48 }}>
-            {weeklyVisits.map((w, i) => {
-              const heightPx = Math.max((w.count / maxWeekCount) * 44, w.count > 0 ? 4 : 2)
-              const isRecent = i >= weeklyVisits.length - 3
-              return (
-                <div key={i} title={`${w.count} visit${w.count !== 1 ? 's' : ''}`} style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
-                  <div style={{
-                    width: '100%', height: `${heightPx}px`,
-                    background: w.count > 0 ? (isRecent ? ac : ac + '55') : v3.border.subtle,
-                    borderRadius: '2px 2px 0 0', transition: 'height 500ms',
-                  }} />
-                </div>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: '10px', color: v3.text.muted }}>12w ago</span>
-            <span style={{ fontSize: '10px', color: v3.text.muted }}>now</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: 80, flexShrink: 0, paddingBottom: 2 }}>
+            <span style={{ fontSize: '9px', color: v3.text.muted }}>12w ago</span>
+            <span style={{ fontSize: '9px', color: v3.text.muted }}>now</span>
           </div>
         </div>
       )}
 
       </div> {/* end header zone */}
 
-      {/* ── Main 3-col grid ───────────────────────────────────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr', gap: 24, overflow: 'hidden' }}>
+      {/* ── Main 2-col grid ───────────────────────────────────────────────── */}
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 28, overflow: 'hidden' }}>
 
-        {/* LEFT — Placement pipeline + Hot Leads + Orders */}
+        {/* LEFT — Placement pipeline + Hot Leads + Orders + Compliance */}
         <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20 }}>
           <SectionLabel>{`Placement Pipeline · ${activePlacements.length} active`}</SectionLabel>
           {activePlacements.length === 0
@@ -670,7 +687,7 @@ export default function BrandDetailPage() {
             </div>
           )}
 
-          {/* Orders — in col 1 */}
+          {/* Orders */}
           <div style={{ marginTop: 20 }}>
             <div style={{ padding: '0 0 10px', borderBottom: `1px solid ${v3.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
               <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', fontFamily: v3.font.ui }}>Orders</span>
@@ -690,8 +707,8 @@ export default function BrandDetailPage() {
                 const statusColor = o.status === 'fulfilled' ? v3.status.success : o.status === 'sent' ? v3.status.warning : v3.text.muted
                 return (
                   <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${v3.border.subtle}` }}
-                    onMouseEnter={e => e.currentTarget.style.background = v3.bg.elevated}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = v3.bg.elevated}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                   >
                     <ShoppingCart size={10} color={statusColor} style={{ flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -709,82 +726,36 @@ export default function BrandDetailPage() {
               })
             }
           </div>
-        </div>
 
-        {/* MIDDLE — Top Accounts + Compliance */}
-        <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20 }}>
-          {topAccounts.length > 0 && (
-            <>
-              <SectionLabel>{`Top Accounts · ${topAccounts.length}`}</SectionLabel>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
-                {topAccounts.map(a => {
-                  const plStatus = placByAccount[a.id]
-                  const plColor = plStatus ? PLAC_STATUS_COLOR[plStatus] : null
-                  return (
-                    <Link key={a.id} href={`/v3/territory/${a.id}`} style={{ textDecoration: 'none' }}>
-                      <div className="v3-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, transition: 'all 80ms' }}
-                        onMouseEnter={e => e.currentTarget.style.background = v3.bg.elevated}
-                        onMouseLeave={e => e.currentTarget.style.background = v3.bg.surface}
-                      >
-                        {plColor
-                          ? <div style={{ width: 5, height: 5, borderRadius: '50%', background: plColor, flexShrink: 0 }} />
-                          : <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.border.default, flexShrink: 0 }} />
-                        }
-                        <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: v3.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                        {plStatus && (
-                          <span style={{ fontSize: '10px', color: plColor ?? v3.text.muted, flexShrink: 0 }}>{PLAC_STATUS_LABEL[plStatus]}</span>
-                        )}
-                        <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace', flexShrink: 0 }}>{a.count}v</span>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {/* Compliance — in col 2 */}
+          {/* Compliance */}
           {(() => {
             const now = new Date()
             const in30 = new Date(Date.now() + 30 * 86400000)
             const in90 = new Date(Date.now() + 90 * 86400000)
             const urgent       = compliance.filter(r => r.expiry_date && r.status === 'active' && new Date(r.expiry_date) <= in30)
             const expiringSoon = compliance.filter(r => r.expiry_date && r.status === 'active' && new Date(r.expiry_date) > in30 && new Date(r.expiry_date) <= in90)
-
             return (
               <div style={{ marginTop: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, paddingBottom: 10, borderBottom: `1px solid ${v3.border.subtle}` }}>
-                  <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', fontFamily: v3.font.ui }}>
-                    State Compliance
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${v3.border.subtle}` }}>
+                  <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', fontFamily: v3.font.ui }}>State Compliance</span>
                   {compliance.length > 0 && <span style={{ fontSize: '12px', fontWeight: 700, color: v3.text.muted, fontFamily: 'monospace' }}>{compliance.length} states</span>}
-                  <button onClick={() => setRegModal({})} style={{
-                    marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px',
-                    background: 'rgba(196,164,110,0.07)', border: `1px solid rgba(196,164,110,0.25)`,
-                    borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.04em',
-                  }}>
+                  <button onClick={() => setRegModal({})} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: 'rgba(196,164,110,0.07)', border: `1px solid rgba(196,164,110,0.25)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.04em' }}>
                     <Plus size={10} />Add State
                   </button>
                 </div>
-
                 {urgent.length > 0 && (
                   <div style={{ background: `${v3.status.danger}10`, border: `1px solid ${v3.status.danger}28`, borderLeft: `3px solid ${v3.status.danger}`, borderRadius: v3.radius.sm, padding: '8px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <AlertTriangle size={12} color={v3.status.danger} />
-                    <span style={{ fontSize: '12px', color: v3.status.danger, fontWeight: 600 }}>
-                      {urgent.length} expiring within 30 days
-                    </span>
+                    <span style={{ fontSize: '12px', color: v3.status.danger, fontWeight: 600 }}>{urgent.length} expiring within 30 days</span>
                   </div>
                 )}
                 {expiringSoon.length > 0 && (
                   <div style={{ background: `${v3.status.warning}10`, border: `1px solid ${v3.status.warning}28`, borderLeft: `3px solid ${v3.status.warning}`, borderRadius: v3.radius.sm, padding: '8px 12px', marginBottom: 8 }}>
-                    <span style={{ fontSize: '12px', color: v3.status.warning, fontWeight: 600 }}>
-                      {expiringSoon.length} expiring in 30–90 days
-                    </span>
+                    <span style={{ fontSize: '12px', color: v3.status.warning, fontWeight: 600 }}>{expiringSoon.length} expiring in 30–90 days</span>
                   </div>
                 )}
-
                 {compliance.length === 0
-                  ? <div style={{ color: v3.text.muted, fontSize: '13px' }}>No state registrations tracked yet — <button onClick={() => setRegModal({})} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '13px', padding: 0, textDecoration: 'underline' }}>add one</button></div>
+                  ? <div style={{ color: v3.text.muted, fontSize: '13px' }}>No state registrations yet — <button onClick={() => setRegModal({})} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '13px', padding: 0, textDecoration: 'underline' }}>add one</button></div>
                   : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {compliance.map(r => {
@@ -792,17 +763,10 @@ export default function BrandDetailPage() {
                         const isExpiringSoon = r.expiry_date && r.status === 'active' && new Date(r.expiry_date) <= in90
                         const daysUntil = r.expiry_date ? Math.ceil((new Date(r.expiry_date).getTime() - now.getTime()) / 86400000) : null
                         return (
-                          <div key={r.id}
-                            onClick={() => setRegModal({ reg: r })}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 10,
-                              padding: '8px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm,
-                              border: `1px solid ${isExpiringSoon ? sc + '30' : v3.border.subtle}`,
-                              borderLeft: `2px solid ${sc}`,
-                              cursor: 'pointer', transition: 'background 80ms',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = v3.bg.elevated}
-                            onMouseLeave={e => e.currentTarget.style.background = v3.bg.surface}
+                          <div key={r.id} onClick={() => setRegModal({ reg: r })}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${isExpiringSoon ? sc + '30' : v3.border.subtle}`, borderLeft: `2px solid ${sc}`, cursor: 'pointer', transition: 'background 80ms' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = v3.bg.elevated}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = v3.bg.surface}
                           >
                             <span style={{ fontSize: '13px', fontWeight: 900, color: v3.text.primary, fontFamily: 'monospace', width: 28, flexShrink: 0 }}>{r.state}</span>
                             <span style={{ flex: 1, fontSize: '9px', fontWeight: 700, color: sc, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{REG_STATUS_LABEL[r.status] ?? r.status}</span>
@@ -822,8 +786,56 @@ export default function BrandDetailPage() {
           })()}
         </div>
 
-        {/* RIGHT — Field Activity feed with filter tabs */}
+        {/* RIGHT — Top Accounts + Field Activity */}
         <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20 }}>
+
+          {/* Top Accounts */}
+          {topAccounts.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <SectionLabel>
+                {hasDollarData ? `Top Accounts · by $ ordered · all time` : `Top Accounts · by visits`}
+              </SectionLabel>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+                {topAccounts.map((a, idx) => {
+                  const plStatus = placByAccount[a.id]
+                  const plColor = plStatus ? PLAC_STATUS_COLOR[plStatus] : null
+                  const acctTotal = (a as any).total ?? 0
+                  const maxTotal = (topAccounts[0] as any).total ?? 1
+                  const barPct = maxTotal > 0 ? (acctTotal / maxTotal) * 100 : 0
+                  return (
+                    <Link key={a.id} href={`/v3/territory/${a.id}`} style={{ textDecoration: 'none' }}>
+                      <div className="v3-row-hover" style={{ padding: '8px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, transition: 'all 80ms' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = v3.bg.elevated}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = v3.bg.surface}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, fontFamily: 'monospace', width: 14, flexShrink: 0 }}>{idx + 1}</span>
+                          {plColor
+                            ? <div style={{ width: 5, height: 5, borderRadius: '50%', background: plColor, flexShrink: 0 }} />
+                            : <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.border.default, flexShrink: 0 }} />
+                          }
+                          <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: v3.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                          {hasDollarData && acctTotal > 0 && (
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: v3.amberLight, fontFamily: 'monospace', flexShrink: 0 }}>{formatCurrency(acctTotal)}</span>
+                          )}
+                          {!hasDollarData && (
+                            <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace', flexShrink: 0 }}>{(a as any).count} visits</span>
+                          )}
+                        </div>
+                        {hasDollarData && barPct > 0 && (
+                          <div style={{ marginTop: 5, height: 2, borderRadius: 2, background: v3.border.subtle, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${barPct}%`, background: `linear-gradient(90deg, ${ac}40, ${ac})`, borderRadius: 2 }} />
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Field Activity */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>Field Activity</span>
             <div style={{ display: 'flex', gap: 2, marginLeft: 2 }}>

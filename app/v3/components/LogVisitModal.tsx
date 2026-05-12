@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { X, Check, Plus, Package, User, ChevronDown, Calendar, GlassWater, Building2, Clock } from 'lucide-react'
-import { v3, v3input, v3label } from '../lib/theme'
+import { v3, v3input, v3label, WIN_STATUSES } from '../lib/theme'
 import { useV3Clients, useLogVisit } from '../lib/query'
 import { useWinMoment, useV3Toast } from '../lib/context'
 import { useQueryClient } from '@tanstack/react-query'
@@ -35,8 +35,6 @@ const STATUS_GROUPS = [
     ],
   },
 ]
-
-const WIN_STATUSES = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
 
 const FOLLOWUP_OPTIONS = [
   { label: 'None',    days: 0  },

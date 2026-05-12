@@ -3,8 +3,8 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { ChevronRight, Filter } from 'lucide-react'
-import { v3 } from '../lib/theme'
-import { useV3Clients } from '../lib/query'
+import { v3, WIN_STATUSES } from '../lib/theme'
+import { useV3Clients, useV3Profile, useV3AllProfiles } from '../lib/query'
 import { getSupabase } from '../../lib/supabase'
 
 const PERIODS = [
@@ -26,11 +26,9 @@ const STATUS_COLORS: Record<string, string> = {
   'Tasted':           '#c4a46e',
 }
 
-const WIN_STATUSES = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
-
-function useVisitsLog(days: number, clientSlug: string, status: string) {
+function useVisitsLog(days: number, clientSlug: string, status: string, repUserId: string) {
   return useQuery({
-    queryKey: ['v3', 'visits', 'log', days, clientSlug, status],
+    queryKey: ['v3', 'visits', 'log', days, clientSlug, status, repUserId],
     queryFn: async () => {
       const sb = getSupabase()
       let q = sb
@@ -40,9 +38,9 @@ function useVisitsLog(days: number, clientSlug: string, status: string) {
         .limit(1000)
 
       if (days === 0) {
-        const today = new Date()
-        const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-        q = q.gte('visited_at', ymd).lt('visited_at', ymd + 'T23:59:59Z')
+        const now = new Date()
+        const mtDate = now.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+        q = q.gte('visited_at', mtDate + 'T00:00:00-07:00').lt('visited_at', mtDate + 'T23:59:59-06:00')
       } else if (days > 0) {
         const since = new Date(Date.now() - days * 86400000).toISOString()
         q = q.gte('visited_at', since)
@@ -50,6 +48,7 @@ function useVisitsLog(days: number, clientSlug: string, status: string) {
 
       if (clientSlug !== 'all') q = q.eq('client_slug', clientSlug)
       if (status !== 'all') q = q.eq('status', status)
+      if (repUserId !== 'all') q = q.eq('user_id', repUserId)
 
       const { data, error } = await q
       if (error) throw error
@@ -90,12 +89,16 @@ const ALL_STATUSES = [
 
 export default function VisitsPage() {
   const { data: clients = [] } = useV3Clients()
+  const { data: profile } = useV3Profile()
+  const { data: allProfiles = [] } = useV3AllProfiles()
   const [period, setPeriod] = useState(1)  // index into PERIODS
   const [brandFilter, setBrandFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [repFilter, setRepFilter] = useState('all')
 
+  const isAdminOrOwner = ['owner', 'admin'].includes((profile as any)?.role || '')
   const selectedPeriod = PERIODS[period]
-  const { data: visits = [], isLoading } = useVisitsLog(selectedPeriod.days, brandFilter, statusFilter)
+  const { data: visits = [], isLoading } = useVisitsLog(selectedPeriod.days, brandFilter, statusFilter, repFilter)
 
   const groups = useMemo(() => groupByDate(visits), [visits])
 
@@ -181,6 +184,15 @@ export default function VisitsPage() {
           <option value="all">All Outcomes</option>
           {ALL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        {isAdminOrOwner && (
+          <select value={repFilter} onChange={e => setRepFilter(e.target.value)}
+            style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '13px', padding: '6px 10px', cursor: 'pointer', outline: 'none', fontFamily: v3.font.ui }}>
+            <option value="all">All Reps</option>
+            {(allProfiles as any[]).map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name || p.full_name || 'Rep'}</option>
+            ))}
+          </select>
+        )}
         <span style={{ fontSize: '12px', color: v3.text.muted }}>
           {visits.length} row{visits.length !== 1 ? 's' : ''}
         </span>

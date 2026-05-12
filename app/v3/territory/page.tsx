@@ -2,10 +2,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, ChevronUp, ChevronDown, Plus, X, Check, Map, List } from 'lucide-react'
+import { Search, ChevronUp, ChevronDown, Plus, X, Check, Map, List, LocateFixed } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { v3, v3input, v3label, v3btnPrimary, v3btnSecondary, healthColor, healthLabel } from '../lib/theme'
-import { useV3Accounts, useV3Clients, useV3RecentVisits, useV3Orders } from '../lib/query'
+import { useV3Accounts, useV3Clients, useV3RecentVisits, useV3Orders, useV3Profile } from '../lib/query'
 import { useOpenLogVisit } from '../lib/context'
 import { getSupabase } from '../../lib/supabase'
 import { formatCurrency, relativeTimeStr } from '../../lib/formatters'
@@ -283,15 +283,15 @@ function TerritoryMap({ accounts, orderMap, clients }: {
 
   if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
     return (
-      <div style={{ height: 480, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${v3.border.subtle}`, borderRadius: v3.radius.lg }}>
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${v3.border.subtle}`, borderRadius: v3.radius.lg }}>
         <div style={{ textAlign: 'center', color: v3.text.muted, fontSize: '14px' }}>Map token not configured</div>
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'relative' }}>
-      <div ref={mapRef} style={{ height: 520, borderRadius: v3.radius.lg, overflow: 'hidden', border: `1px solid ${v3.border.subtle}` }} />
+    <div style={{ position: 'relative', height: '100%' }}>
+      <div ref={mapRef} style={{ height: '100%', borderRadius: v3.radius.lg, overflow: 'hidden', border: `1px solid ${v3.border.subtle}` }} />
       {!mapReady && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', borderRadius: v3.radius.lg }}>
           <div style={{ color: v3.text.muted, fontSize: '13px' }}>Loading map…</div>
@@ -428,6 +428,7 @@ export default function TerritoryPage() {
   const { data: clients = [] }   = useV3Clients()
   const { data: visits = [] }    = useV3RecentVisits(90)
   const { data: orders = [] }    = useV3Orders()
+  const { data: profile }        = useV3Profile()
 
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [viewMode, setViewMode]           = useState<'list' | 'map'>('list')
@@ -438,6 +439,22 @@ export default function TerritoryPage() {
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>('all')
   const [sortKey, setSortKey]             = useState<SortKey>('health')
   const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('asc')
+  const [geocoding, setGeocoding]         = useState(false)
+  const [geocodeMsg, setGeocodeMsg]       = useState<string | null>(null)
+
+  async function handleGeocodeAll() {
+    setGeocoding(true); setGeocodeMsg(null)
+    try {
+      const res  = await fetch('/api/geocode-accounts', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed')
+      setGeocodeMsg(json.total === 0 ? 'All accounts already geocoded' : `Geocoded ${json.updated} of ${json.total} accounts${json.failed > 0 ? ` (${json.failed} failed)` : ''}`)
+    } catch (e: any) {
+      setGeocodeMsg(`Error: ${e.message}`)
+    } finally {
+      setGeocoding(false)
+    }
+  }
 
   const orderMap = useMemo(() => {
     const m: Record<string, { lastDate: string; revenue: number }> = {}
@@ -552,21 +569,43 @@ export default function TerritoryPage() {
     transition: 'color 120ms', fontFamily: v3.font.ui,
   })
 
-  return (
-    <div style={{ padding: '20px 28px 0', maxWidth: 1400, margin: '0 auto', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const isAdminOrOwner = ['owner', 'admin'].includes(profile?.role || '')
 
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12, flexShrink: 0 }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0 }}>Territory</h1>
-          <div style={{ fontSize: '14px', color: v3.text.muted, marginTop: 4 }}>{accounts.length} accounts</div>
+  return (
+    <div style={{ padding: '16px 28px 0', maxWidth: 1400, margin: '0 auto', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+      {/* ── Header row: title + KPIs + actions ───────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+        {/* Title */}
+        <div style={{ flexShrink: 0 }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0, lineHeight: 1 }}>Territory</h1>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+
+        {/* Inline KPI strip */}
+        <div style={{ display: 'flex', gap: 0, flex: 1, minWidth: 0 }}>
+          {[
+            { label: 'Total',         value: accounts.length,   color: v3.text.secondary, sub: 'accounts' },
+            { label: 'Warm',          value: healthCounts.warm, color: v3.health.warm,    sub: 'on schedule' },
+            { label: 'Active Buyers', value: activeBuyers,      color: v3.amber,           sub: 'ordered <90d' },
+            { label: 'Coverage',      value: `${coverage30}%`,  color: v3.status.info,     sub: 'visited 30d' },
+          ].map((s, i, arr) => (
+            <div key={s.label} style={{ paddingRight: i < arr.length - 1 ? 20 : 0, borderRight: i < arr.length - 1 ? `1px solid ${v3.border.subtle}` : 'none', marginRight: i < arr.length - 1 ? 20 : 0, flexShrink: 0 }}>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: 3, fontFamily: v3.font.ui }}>{s.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                <span className="v3-mono" style={{ fontSize: '22px', fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.03em' }}>{s.value}</span>
+                <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.40)' }}>{s.sub}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
           {/* View toggle */}
           <div style={{ display: 'flex', background: v3.bg.sheet, borderRadius: v3.radius.md, padding: 3, border: `1px solid ${v3.border.default}` }}>
             {([
-              { id: 'list', icon: List,  label: 'List' },
-              { id: 'map',  icon: Map,   label: 'Map'  },
+              { id: 'list', icon: List, label: 'List' },
+              { id: 'map',  icon: Map,  label: 'Map'  },
             ] as const).map(({ id, icon: Icon, label }) => (
               <button key={id} onClick={() => setViewMode(id)} style={{
                 display: 'flex', alignItems: 'center', gap: 5,
@@ -574,162 +613,140 @@ export default function TerritoryPage() {
                 fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: v3.font.ui,
                 background: viewMode === id ? v3.bg.elevated : 'transparent',
                 color: viewMode === id ? v3.amberLight : v3.text.muted,
-                boxShadow: viewMode === id ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
                 transition: 'all 120ms',
-              }}>
-                <Icon size={12} />{label}
-              </button>
+              }}><Icon size={12} />{label}</button>
             ))}
           </div>
-          <button onClick={() => setShowAddAccount(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: v3.amberDim, border: `1px solid ${v3.amber}40`, borderRadius: v3.radius.md, cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: v3.amberLight }}>
+          {isAdminOrOwner && (
+            <button onClick={handleGeocodeAll} disabled={geocoding} title="Geocode accounts for map view"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, cursor: geocoding ? 'default' : 'pointer', fontSize: '12px', fontWeight: 600, color: v3.text.muted, opacity: geocoding ? 0.5 : 1, fontFamily: v3.font.ui }}>
+              <LocateFixed size={12} />{geocoding ? 'Geocoding…' : 'Geocode'}
+            </button>
+          )}
+          <button onClick={() => setShowAddAccount(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: v3.amberDim, border: `1px solid ${v3.amber}40`, borderRadius: v3.radius.md, cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: v3.amberLight }}>
             <Plus size={13} /> Add Account
           </button>
         </div>
       </div>
 
-      {/* Stat strip */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${v3.border.subtle}`, flexShrink: 0 }}>
-        {[
-          { label: 'Total',          value: accounts.length,   color: v3.text.secondary, sub: 'accounts' },
-          { label: 'Warm',           value: healthCounts.warm, color: v3.health.warm,    sub: 'on schedule' },
-          { label: 'Active Buyers',  value: activeBuyers,      color: v3.amber,           sub: 'ordered <90d' },
-          { label: 'Coverage',       value: `${coverage30}%`,  color: v3.status.info,     sub: 'visited 30d' },
-        ].map((s, i, arr) => (
-          <div key={s.label} style={{ flex: 1, paddingRight: i < arr.length - 1 ? 24 : 0, borderRight: i < arr.length - 1 ? `1px solid ${v3.border.subtle}` : 'none', marginRight: i < arr.length - 1 ? 24 : 0 }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.60)', textTransform: 'uppercase', letterSpacing: '0.22em', marginBottom: 8, fontFamily: v3.font.ui }}>{s.label}</div>
-            <div className="v3-mono" style={{ fontSize: '40px', fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.04em' }}>{s.value}</div>
-            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.60)', marginTop: 5 }}>{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Order recency bar */}
-      <div style={{ marginBottom: 10, flexShrink: 0 }}>
-        <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.60)', textTransform: 'uppercase', letterSpacing: '0.22em', marginBottom: 10, fontFamily: v3.font.ui }}>
-          Order Recency · when did each account last place an order?
-          {recencyFilter !== 'all' && (
-            <button onClick={() => setRecencyFilter('all')} style={{ marginLeft: 10, background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '9px', fontWeight: 700, padding: 0, fontFamily: v3.font.ui }}>
-              Clear ×
-            </button>
-          )}
+      {geocodeMsg && (
+        <div style={{ fontSize: '11px', color: geocodeMsg.startsWith('Error') ? v3.status.danger : v3.status.success, marginBottom: 8, padding: '6px 12px', background: geocodeMsg.startsWith('Error') ? `${v3.status.danger}10` : `${v3.status.success}10`, borderRadius: v3.radius.sm, border: `1px solid ${geocodeMsg.startsWith('Error') ? v3.status.danger : v3.status.success}22`, flexShrink: 0 }}>
+          {geocodeMsg}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {RECENCY_OPTIONS.map(r => {
-            const count = recencyCounts[r.id]
-            const isActive = recencyFilter === r.id
-            return (
-              <button key={r.id} onClick={() => setRecencyFilter(isActive ? 'all' : r.id)} title={r.desc}
-                style={{
-                  flex: 1, padding: '10px 12px', background: 'none', cursor: 'pointer', textAlign: 'left',
-                  border: `1px solid ${r.color}${isActive ? '55' : '20'}`,
-                  borderTop: `2px solid ${r.color}${isActive ? 'dd' : '50'}`,
-                  borderRadius: v3.radius.md,
-                  backgroundColor: isActive ? r.color + '15' : r.color + '06',
-                  transition: 'all 150ms',
-                }}>
-                <div className="v3-mono" style={{ fontSize: '22px', fontWeight: 900, color: r.color, lineHeight: 1, marginBottom: 4, opacity: count === 0 ? 0.3 : 1 }}>{count}</div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: r.color, opacity: 0.8 }}>{r.label}</div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      )}
 
-      {/* Visit health filter pills */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
-        <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.60)', textTransform: 'uppercase', letterSpacing: '0.22em', fontFamily: v3.font.ui }}>Visit health</span>
-        {([
-          { id: 'all',     label: 'All',     count: accounts.length,     color: v3.text.muted },
-          { id: 'warm',    label: 'Warm',    count: healthCounts.warm,   color: v3.health.warm },
-          { id: 'cooling', label: 'Cooling', count: healthCounts.cooling, color: v3.health.cooling },
-          { id: 'cold',    label: 'Cold',    count: healthCounts.cold,   color: v3.health.cold },
-          { id: 'new',     label: 'New',     count: healthCounts.new,    color: v3.health.new },
-        ] as const).map(h => (
-          <button key={h.id} onClick={() => setHealthFilter(h.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 12px', borderRadius: v3.radius.full, fontSize: '12px', fontWeight: 700,
-            border: `1.5px solid ${healthFilter === h.id ? h.color + '70' : v3.border.default}`,
-            background: healthFilter === h.id ? h.color + '14' : 'transparent',
-            color: healthFilter === h.id ? h.color : v3.text.muted,
-            cursor: 'pointer', transition: `all 130ms ${v3.ease.default}`,
-          }}>
-            {h.id !== 'all' && <div style={{ width: 5, height: 5, borderRadius: '50%', background: h.color }} />}
-            {h.label} <span style={{ opacity: 0.6 }}>{h.count}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Search + filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <Search size={13} color={v3.text.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+      {/* ── Filter row: search + health pills + brand + type ─────────────── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+          <Search size={13} color={v3.text.muted} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts…"
-            style={{ background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.primary, fontSize: '14px', padding: '9px 12px 9px 32px', outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: v3.font.ui }} />
+            style={{ background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.primary, fontSize: '13px', padding: '8px 10px 8px 30px', outline: 'none', width: '100%', boxSizing: 'border-box' as any, fontFamily: v3.font.ui }} />
         </div>
+
+        {/* Health pills inline */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {([
+            { id: 'all',     label: 'All',     count: accounts.length,      color: v3.text.muted },
+            { id: 'warm',    label: 'Warm',    count: healthCounts.warm,    color: v3.health.warm },
+            { id: 'cooling', label: 'Cooling', count: healthCounts.cooling, color: v3.health.cooling },
+            { id: 'cold',    label: 'Cold',    count: healthCounts.cold,    color: v3.health.cold },
+            { id: 'new',     label: 'New',     count: healthCounts.new,     color: v3.health.new },
+          ] as const).map(h => (
+            <button key={h.id} onClick={() => setHealthFilter(h.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '5px 10px', borderRadius: v3.radius.full, fontSize: '12px', fontWeight: 700,
+              border: `1.5px solid ${healthFilter === h.id ? h.color + '70' : v3.border.default}`,
+              background: healthFilter === h.id ? h.color + '14' : 'transparent',
+              color: healthFilter === h.id ? h.color : v3.text.muted,
+              cursor: 'pointer', transition: 'all 120ms', whiteSpace: 'nowrap' as any,
+            }}>
+              {h.id !== 'all' && <div style={{ width: 5, height: 5, borderRadius: '50%', background: h.color }} />}
+              {h.label} <span style={{ opacity: 0.6, fontSize: '10px' }}>{h.count}</span>
+            </button>
+          ))}
+        </div>
+
         <select value={brandFilter} onChange={e => setBrandFilter(e.target.value)}
-          style={{ background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '13px', padding: '9px 12px', cursor: 'pointer', outline: 'none', fontFamily: v3.font.ui }}>
+          style={{ background: v3.bg.sheet, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '12px', padding: '8px 10px', cursor: 'pointer', outline: 'none', colorScheme: 'dark' as any }}>
           <option value="all">All Brands</option>
           {clients.map((c: Client) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
         </select>
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}
-          style={{ background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '13px', padding: '9px 12px', cursor: 'pointer', outline: 'none', fontFamily: v3.font.ui }}>
+          style={{ background: v3.bg.sheet, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '12px', padding: '8px 10px', cursor: 'pointer', outline: 'none', colorScheme: 'dark' as any }}>
           <option value="all">All Types</option>
           <option value="on_premise">On-Premise</option>
           <option value="off_premise">Off-Premise</option>
         </select>
       </div>
 
-      {/* Map view */}
+      {/* ── Order recency compact pills ───────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.40)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: v3.font.ui, flexShrink: 0 }}>Last Order</span>
+        {RECENCY_OPTIONS.map(r => {
+          const count = recencyCounts[r.id]
+          const isActive = recencyFilter === r.id
+          return (
+            <button key={r.id} onClick={() => setRecencyFilter(isActive ? 'all' : r.id)} title={r.desc}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', borderRadius: v3.radius.full, cursor: 'pointer',
+                border: `1px solid ${r.color}${isActive ? '60' : '28'}`,
+                background: isActive ? r.color + '18' : 'transparent',
+                fontSize: '11px', fontWeight: 700, color: isActive ? r.color : 'rgba(255,255,255,0.50)',
+                transition: 'all 120ms', opacity: count === 0 ? 0.4 : 1,
+              }}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 900 }}>{count}</span>
+              <span style={{ fontWeight: 600, opacity: 0.85 }}>{r.label}</span>
+            </button>
+          )
+        })}
+        {recencyFilter !== 'all' && (
+          <button onClick={() => setRecencyFilter('all')} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '11px', fontWeight: 700, padding: '2px 6px' }}>Clear ×</button>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace' }}>{filtered.length} of {accounts.length}</span>
+      </div>
+
+      {/* ── Map view ──────────────────────────────────────────────────────── */}
       {viewMode === 'map' && (
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <TerritoryMap
-            accounts={filtered}
-            orderMap={orderMap}
-            clients={clients}
-          />
+        <div style={{ flex: 1, minHeight: 0, paddingBottom: 16 }}>
+          <TerritoryMap accounts={filtered} orderMap={orderMap} clients={clients} />
         </div>
       )}
 
-      {/* Table */}
-      {viewMode === 'list' && <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: COL, gap: '0 12px', padding: '8px 16px', borderBottom: `1px solid ${v3.border.subtle}`, flexShrink: 0 }}>
-          <div />
-          <button onClick={() => toggleSort('name')}      style={colHdr('name')}>Account <SortIcon k="name" /></button>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: v3.font.ui }}>Type</div>
-          <button onClick={() => toggleSort('health')}    style={colHdr('health')}>Health <SortIcon k="health" /></button>
-          <button onClick={() => toggleSort('lastVisit')} style={colHdr('lastVisit')}>Last Visit <SortIcon k="lastVisit" /></button>
-          <button onClick={() => toggleSort('lastOrder')} style={colHdr('lastOrder')}>Last Order <SortIcon k="lastOrder" /></button>
-          <button onClick={() => toggleSort('revenue')}   style={colHdr('revenue')}>Revenue <SortIcon k="revenue" /></button>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: v3.font.ui }}>Brands</div>
-          <div />
-        </div>
+      {/* ── List view ─────────────────────────────────────────────────────── */}
+      {viewMode === 'list' && (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: COL, gap: '0 12px', padding: '7px 16px', borderBottom: `1px solid ${v3.border.subtle}`, flexShrink: 0 }}>
+            <div />
+            <button onClick={() => toggleSort('name')}      style={colHdr('name')}>Account <SortIcon k="name" /></button>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: v3.font.ui }}>Type</div>
+            <button onClick={() => toggleSort('health')}    style={colHdr('health')}>Health <SortIcon k="health" /></button>
+            <button onClick={() => toggleSort('lastVisit')} style={colHdr('lastVisit')}>Last Visit <SortIcon k="lastVisit" /></button>
+            <button onClick={() => toggleSort('lastOrder')} style={colHdr('lastOrder')}>Last Order <SortIcon k="lastOrder" /></button>
+            <button onClick={() => toggleSort('revenue')}   style={colHdr('revenue')}>Revenue <SortIcon k="revenue" /></button>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: v3.font.ui }}>Brands</div>
+            <div />
+          </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          {acctLoading
-            ? <div style={{ padding: '32px', textAlign: 'center', color: v3.text.muted, fontSize: '14px' }}>Loading accounts…</div>
-            : filtered.length === 0
-            ? <div style={{ padding: '32px', textAlign: 'center', color: v3.text.muted, fontSize: '14px' }}>No accounts match these filters.</div>
-            : filtered.slice(0, 120).map(a => (
-              <AccountRow key={a.id}
-                account={a}
-                orderData={orderMap[a.id]}
-                lastVisit={a.last_visited ?? null}
-                brandSlugs={[...(brandMap[a.id] ?? [])].filter(Boolean)}
-                clients={clients}
-                maxRev={maxRev}
-              />
-            ))
-          }
-          {filtered.length > 120 && (
-            <div style={{ padding: '10px 16px', fontSize: '12px', color: v3.text.muted, textAlign: 'center', borderTop: `1px solid ${v3.border.subtle}` }}>
-              Showing 120 of {filtered.length} — refine filters to narrow
-            </div>
-          )}
-          <div style={{ padding: '8px 16px', fontSize: '11px', color: v3.text.muted, textAlign: 'right', opacity: 0.6 }}>
-            {filtered.length} of {accounts.length} accounts
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            {acctLoading
+              ? <div style={{ padding: '32px', textAlign: 'center', color: v3.text.muted, fontSize: '14px' }}>Loading accounts…</div>
+              : filtered.length === 0
+              ? <div style={{ padding: '32px', textAlign: 'center', color: v3.text.muted, fontSize: '14px' }}>No accounts match these filters.</div>
+              : filtered.map(a => (
+                <AccountRow key={a.id}
+                  account={a}
+                  orderData={orderMap[a.id]}
+                  lastVisit={a.last_visited ?? null}
+                  brandSlugs={[...(brandMap[a.id] ?? [])].filter(Boolean)}
+                  clients={clients}
+                  maxRev={maxRev}
+                />
+              ))
+            }
           </div>
         </div>
-      </div>}
+      )}
 
       {showAddAccount && <AddAccountModal onClose={() => setShowAddAccount(false)} />}
     </div>

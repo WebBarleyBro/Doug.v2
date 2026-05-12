@@ -512,7 +512,7 @@ export function useV3WinRate() {
         .gte('visited_at', since)
         .limit(200)
       if (!data?.length) return { rate: null, hotHand: false, recent: 0, wins: 0 }
-      const WIN = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered', 'Will Order Soon'])
+      const WIN = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
       const wins = data.filter(v => WIN.has(v.status)).length
       const rate = Math.round((wins / data.length) * 100)
       // Hot hand: 3+ wins in last 7 days

@@ -4,7 +4,8 @@ import { Plus, X, Check, Trash2, Search, Pencil } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { v3, v3input, v3label, v3btnPrimary, v3btnSecondary } from '../lib/theme'
 import { useV3Orders, useV3Clients } from '../lib/query'
-import { formatCurrency, relativeTimeStr } from '../../lib/formatters'
+import { useV3Toast } from '../lib/context'
+import { formatCurrency, relativeTimeStr, resolveTotal } from '../../lib/formatters'
 import { getSupabase } from '../../lib/supabase'
 import { getProducts, getDistributorReps, getNextOrderNumber } from '../../lib/data'
 import type { Client, Product, Contact } from '../../lib/types'
@@ -159,8 +160,10 @@ function CreateOrderModal({ clients, onClose }: { clients: Client[]; onClose: ()
   const [lineItems, setLineItems]       = useState([{ name: '', qty: 1, price: 0 }])
   const [products, setProducts]         = useState<Product[]>([])
   const [distReps, setDistReps]         = useState<Contact[]>([])
+  const [productsLoading, setProductsLoading] = useState(false)
   const [error, setError]               = useState('')
   const [showAddAccount, setShowAddAccount] = useState(false)
+  const toast = useV3Toast()
 
   const selectedClient   = clients.find(c => c.slug === brandSlug)
   const total            = lineItems.reduce((s, li) => s + li.qty * (li.price || 0), 0)
@@ -176,12 +179,14 @@ function CreateOrderModal({ clients, onClose }: { clients: Client[]; onClose: ()
     }
     setDistRepId('')
     setDistEmail('')
+    setProductsLoading(true)
     Promise.all([
       getProducts(brandSlug).catch(() => [] as Product[]),
       getDistributorReps(brandSlug).catch(() => [] as Contact[]),
     ]).then(([prods, reps]) => {
       setProducts(prods)
       setDistReps(reps)
+      setProductsLoading(false)
     })
   }, [brandSlug])
 
@@ -240,9 +245,10 @@ function CreateOrderModal({ clients, onClose }: { clients: Client[]; onClose: ()
         if (liErr) throw liErr
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, sendNow) => {
       qc.invalidateQueries({ queryKey: ['v3', 'orders'] })
-      setTimeout(onClose, 500)
+      toast.show(sendNow ? 'Order sent' : 'Draft saved')
+      setTimeout(onClose, 400)
     },
     onError: (e: any) => setError(e?.message ?? 'Failed to create order'),
   })
@@ -401,6 +407,17 @@ function CreateOrderModal({ clients, onClose }: { clients: Client[]; onClose: ()
                   Select a brand above to load product suggestions
                 </div>
               )}
+              {brandSlug && productsLoading && (
+                <div style={{ fontSize: '10px', color: v3.amber, paddingLeft: 2, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span className="spin" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: `1.5px solid ${v3.amber}`, borderTopColor: 'transparent' }} />
+                  Loading products…
+                </div>
+              )}
+              {brandSlug && !productsLoading && products.length === 0 && (
+                <div style={{ fontSize: '10px', color: v3.text.muted, paddingLeft: 2, marginTop: 2 }}>
+                  No products on file for this brand — type manually
+                </div>
+              )}
             </div>
 
             {/* Total + commission preview */}
@@ -468,6 +485,7 @@ function CreateOrderModal({ clients, onClose }: { clients: Client[]; onClose: ()
 // ── Edit Order Modal ──────────────────────────────────────────────────────────
 function EditOrderModal({ order, clients, onClose }: { order: any; clients: Client[]; onClose: () => void }) {
   const qc = useQueryClient()
+  const toast = useV3Toast()
   const cl = clients.find(c => c.slug === order.client_slug)
   const ac = cl?.color || v3.amber
   const [status, setStatus]       = useState<string>(order.status)
@@ -490,7 +508,11 @@ function EditOrderModal({ order, clients, onClose }: { order: any; clients: Clie
       const { error } = await sb.from('purchase_orders').update(updates).eq('id', order.id)
       if (error) throw error
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'orders'] }); setTimeout(onClose, 300) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['v3', 'orders'] })
+      toast.show('Order updated')
+      setTimeout(onClose, 300)
+    },
     onError: (e: any) => setError(e?.message ?? 'Save failed'),
   })
 
@@ -500,7 +522,11 @@ function EditOrderModal({ order, clients, onClose }: { order: any; clients: Clie
       const { error } = await sb.from('purchase_orders').delete().eq('id', order.id)
       if (error) throw error
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'orders'] }); onClose() },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['v3', 'orders'] })
+      toast.show('Order deleted')
+      onClose()
+    },
     onError: (e: any) => setError(e?.message ?? 'Delete failed'),
   })
 
@@ -738,7 +764,7 @@ function OrderDetailModal({ order, clients, onEdit, onClose }: { order: any; cli
 function OrderRow({ o, clients, onEdit, onDetail }: { o: any; clients: Client[]; onEdit: (o: any) => void; onDetail: (o: any) => void }) {
   const cl         = clients.find(c => c.slug === o.client_slug)
   const ac         = cl?.color || v3.amber
-  const total      = Number(o.total_amount) || 0
+  const total      = resolveTotal(o)
   const commission = Number(o.commission_amount) || 0
   const isDirect   = o.order_type === 'direct'
   const label      = o.deliver_to_name || o.accounts?.name || '—'
@@ -823,7 +849,7 @@ export default function OrdersPage() {
 
   const stats = useMemo(() => {
     const sent = (orders as any[]).filter(o => ['sent', 'fulfilled'].includes(o.status))
-    const revenue    = sent.reduce((s, o) => s + (Number(o.total_amount) || 0), 0)
+    const revenue    = sent.reduce((s, o) => s + resolveTotal(o), 0)
     const commission = sent.reduce((s, o) => s + (Number(o.commission_amount) || 0), 0)
     return { draft: counts.draft, sent: counts.sent + counts.fulfilled, revenue, commission }
   }, [orders, counts])

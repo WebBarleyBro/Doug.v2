@@ -73,6 +73,31 @@ function monthStartStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
+// ── Progress ring ─────────────────────────────────────────────────────────────
+
+function ProgressRing({ value, total, size = 72, strokeWidth = 5, color }: {
+  value: number; total: number; size?: number; strokeWidth?: number; color: string
+}) {
+  const radius = (size - strokeWidth * 2) / 2
+  const circ   = 2 * Math.PI * radius
+  const pct    = total > 0 ? Math.min(value / total, 1) : 0
+  const filled = circ * pct
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+      <circle cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
+      {pct > 0 && (
+        <circle cx={size / 2} cy={size / 2} r={radius}
+          fill="none" stroke={color} strokeWidth={strokeWidth}
+          strokeDasharray={`${filled} ${circ - filled}`}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 600ms cubic-bezier(0.4,0,0.2,1)' }}
+        />
+      )}
+    </svg>
+  )
+}
+
 // ── Stat ──────────────────────────────────────────────────────────────────────
 
 function Stat({ label, value, glow, color, note, children }: {
@@ -412,25 +437,33 @@ function GoalWidget({ todayCount, mtdCount, daily, monthly, setDaily, setMonthly
         </div>
       ) : (
         <div style={{ marginTop: 16 }}>
-          {/* Today */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.20em' }}>Today</span>
-              <span className="v3-mono" style={{ fontSize: '14px', fontWeight: 700, color: dayDone ? v3.status.success : 'rgba(255,255,255,0.35)' }}>
-                {todayCount} / {daily}
-              </span>
-            </div>
-            <div style={{ height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
-              <div className="v3-bar-fill" style={{
-                height: '100%', borderRadius: 1, width: `${dayPct}%`,
-                background: dayDone ? v3.status.success : 'rgba(90,158,160,0.70)',
-              }} />
-            </div>
-            {dayDone && (
-              <div style={{ marginTop: 6, fontSize: '14px', color: v3.status.success, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <CheckCircle2 size={10} /> Daily goal reached
+          {/* Today — ring */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 24 }}>
+            <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }}>
+              <ProgressRing value={todayCount} total={daily} size={72} strokeWidth={5}
+                color={dayDone ? v3.status.success : 'rgba(90,158,160,0.85)'} />
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="v3-mono" style={{
+                  fontSize: '20px', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1,
+                  color: dayDone ? v3.status.success : v3.text.primary,
+                }}>{todayCount}</span>
+                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.30)', letterSpacing: '0.04em', marginTop: 2 }}>/{daily}</span>
               </div>
-            )}
+            </div>
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.20em', display: 'block', marginBottom: 6 }}>Today</span>
+              {dayDone
+                ? <div style={{ fontSize: '13px', color: v3.status.success, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <CheckCircle2 size={11} /> Daily goal reached!
+                  </div>
+                : <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.40)' }}>
+                    {daily - todayCount} more to go
+                  </div>
+              }
+            </div>
           </div>
           {/* Month */}
           <div>
