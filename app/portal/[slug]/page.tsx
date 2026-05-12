@@ -164,7 +164,9 @@ export default function ClientPortalPage() {
 
   // Suggest
   const [suggestType,  setSuggestType]  = useState<'account'|'contact'>('account')
-  const [suggestForm,  setSuggestForm]  = useState({ name:'', address:'', contact_email:'', reason:'', notes:'', submitted_by_name:'', submitted_by_email:'' })
+  const [suggestForm,  setSuggestForm]  = useState({ name: '', address: '', contact_email: '', contact_phone: '', contact_name: '', contact_role: '', reason: '', notes: '' })
+  const [showContactSection, setShowContactSection] = useState(false)
+  const [userProfile,  setUserProfile]  = useState<{ name: string; email: string } | null>(null)
   const suggestNameRef = useRef<HTMLInputElement>(null)
   const suggestAcRef   = useRef<any>(null)
   const [submitting,   setSubmitting]   = useState(false)
@@ -177,7 +179,7 @@ export default function ClientPortalPage() {
     sb.auth.getSession().then(async ({ data: { session } }) => {
       const user = session?.user ?? null
       if (!user) { window.location.replace(`/login?redirect=/portal/${slug}`); return }
-      const { data: profile } = await sb.from('user_profiles').select('role, client_slug').eq('id', user.id).single()
+      const { data: profile } = await sb.from('user_profiles').select('role, client_slug, name').eq('id', user.id).single()
       const isStaff  = ['owner','admin','rep','intern'].includes(profile?.role)
       const isPortal = profile?.role === 'portal'
       if (!isStaff && !isPortal) { setError('Access denied'); setLoading(false); return }
@@ -185,6 +187,7 @@ export default function ClientPortalPage() {
         setError(`Access denied — this portal is for ${profile.client_slug}.`); setLoading(false); return
       }
       if (isStaff) setIsPreview(true)
+      setUserProfile({ name: profile?.name || '', email: user.email || '' })
       try {
         const d = await getPortalData(slug)
         if (!d) { setError('Brand not found'); setLoading(false); return }
@@ -303,14 +306,39 @@ export default function ClientPortalPage() {
     setSubmitting(true); setSuggestErr('')
     try {
       await submitClientSuggestion({
-        client_slug: slug, suggestion_type: suggestType, name: suggestForm.name,
-        address: (suggestForm as any).address || undefined,
-        contact_email: suggestForm.contact_email || undefined,
-        reason: suggestForm.reason, notes: suggestForm.notes || undefined,
-        submitted_by_name: suggestForm.submitted_by_name || undefined,
-        submitted_by_email: suggestForm.submitted_by_email || undefined,
-        contact_category: 'general',
+        client_slug: slug,
+        suggestion_type: suggestType,
+        name: suggestForm.name,
+        address: suggestForm.address || undefined,
+        contact_email: suggestType === 'contact'
+          ? suggestForm.contact_email || undefined
+          : (showContactSection ? suggestForm.contact_email || undefined : undefined),
+        contact_phone: (showContactSection || suggestType === 'contact') ? suggestForm.contact_phone || undefined : undefined,
+        contact_person: suggestType === 'account' && showContactSection ? suggestForm.contact_name || undefined : undefined,
+        contact_category: suggestForm.contact_role || undefined,
+        reason: suggestForm.reason,
+        notes: suggestForm.notes || undefined,
+        submitted_by_name: userProfile?.name || undefined,
+        submitted_by_email: userProfile?.email || undefined,
       })
+      // Non-blocking staff notification
+      fetch('/api/client-suggestion-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_name: client?.name || slug,
+          suggestion_type: suggestType,
+          name: suggestForm.name,
+          address: suggestForm.address,
+          reason: SUGGESTION_REASONS.find(r => r.value === suggestForm.reason)?.label,
+          notes: suggestForm.notes,
+          submitted_by: userProfile?.name || userProfile?.email,
+          contact_name: suggestType === 'account' && showContactSection ? suggestForm.contact_name : undefined,
+          contact_role: suggestForm.contact_role,
+          contact_email: suggestForm.contact_email,
+          contact_phone: suggestForm.contact_phone,
+        }),
+      }).catch(() => {})
       setSubmitted(true)
     } catch (e: any) { setSuggestErr(e.message || 'Failed to submit') }
     finally { setSubmitting(false) }
@@ -495,6 +523,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         .mapboxgl-popup-tip { border-top-color: rgba(10,8,5,0.97) !important; }
         .portal-pin { transition: transform 150ms; }
         ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        select { color-scheme: dark; } select option { background: #0d0b08 !important; color: #f0f0f0 !important; }
       `}</style>
 
       {/* MAP — full screen background */}
@@ -719,7 +748,8 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         const uniqueAccts  = new Set(drVisits.map((v: any) => v.account_id).filter(Boolean)).size
         const totalAccts   = new Set(visits.map((v: any) => v.account_id).filter(Boolean)).size
         const visitsPerWk  = drDays ? (drVisits.length / (drDays / 7)).toFixed(1) : drVisits.length > 0 ? (drVisits.length / 12).toFixed(1) : '0'
-        const acctOrderTotals = drOrders.reduce((acc: Record<string, { name: string; total: number }>, o: any) => {
+        const allNonDraftOrders = orders.filter((o: any) => o.status !== 'draft')
+        const acctOrderTotals = allNonDraftOrders.reduce((acc: Record<string, { name: string; total: number }>, o: any) => {
           if (!o.account_id) return acc
           if (!acc[o.account_id]) acc[o.account_id] = { name: o.accounts?.name || o.deliver_to_name || '—', total: 0 }
           acc[o.account_id].total += (o.total_amount || 0)
@@ -893,7 +923,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
                     <div style={{ ...CARD, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
                         <span style={SEC}>Top Accounts</span>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.30)', fontFamily: MONO }}>{hasDollarData ? 'by $ ordered' : `${uniqueAccts} visited`}</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.30)', fontFamily: MONO }}>{hasDollarData ? 'by $ ordered · all time' : `${uniqueAccts} visited`}</span>
                       </div>
                       {topAccts.length === 0 ? (
                         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.22)', textAlign: 'center', paddingTop: 12 }}>No data in this period</div>
@@ -1097,40 +1127,167 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
       )}
 
       {/* Suggest */}
-      {drawer === 'suggest' && (
-        <Drawer title="Suggest an Account" onClose={() => setDrawer(null)} accent={accent}>
-          {submitted ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#5a9ea0', fontSize: 13, padding: '20px 0' }}>
-              <CheckCircle size={16} /> Submitted — our team will review this.
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', gap: 5, marginBottom: 16 }}>
-                {(['account','contact'] as const).map(t => (
-                  <button key={t} onClick={() => setSuggestType(t)} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: `1px solid ${suggestType===t ? accent+'45' : 'rgba(255,255,255,0.1)'}`, background: suggestType===t ? accent+'14' : 'transparent', color: suggestType===t ? accent : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontFamily: F }}>
-                    {t === 'account' ? 'Account / Venue' : 'Contact / Person'}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <input ref={suggestNameRef} type="text" value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder={`${suggestType === 'account' ? 'Account' : 'Contact'} name *`} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
-                <input type="text" value={(suggestForm as any).address||''} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder={suggestType === 'account' ? 'Address (optional)' : 'Email (optional)'} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
-                <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: suggestForm.reason ? '#f0f0f0' : 'rgba(255,255,255,0.3)', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }}>
-                  <option value="">Why are you suggesting this? *</option>
-                  {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-                <textarea value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notes (optional)…" rows={2} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, resize: 'vertical', outline: 'none' }} />
-                <input type="text" value={suggestForm.submitted_by_name} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_name: e.target.value }))} placeholder="Your name (optional)" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
-                <input type="email" value={suggestForm.submitted_by_email} onChange={e => setSuggestForm(f => ({ ...f, submitted_by_email: e.target.value }))} placeholder="Your email (optional)" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '9px 12px', fontFamily: F, outline: 'none' }} />
-                {suggestErr && <div style={{ color: '#e85540', fontSize: 12 }}>{suggestErr}</div>}
-                <button onClick={handleSuggest} disabled={submitting} style={{ background: accent, color: '#000', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: F, letterSpacing: '0.02em' }}>
-                  {submitting ? 'Submitting…' : 'Submit Suggestion'}
+      {drawer === 'suggest' && (() => {
+        const SG_INPUT: React.CSSProperties = { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 7, color: '#f0f0f0', fontSize: 13, padding: '10px 13px', fontFamily: F, outline: 'none', width: '100%', boxSizing: 'border-box' }
+        const SG_LABEL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.12em', display: 'block', marginBottom: 6 }
+        const resetForm = () => {
+          setSuggestForm({ name: '', address: '', contact_email: '', contact_phone: '', contact_name: '', contact_role: '', reason: '', notes: '' })
+          setShowContactSection(false)
+          setSubmitted(false)
+          setSuggestErr('')
+        }
+        return (
+          <Drawer title="Suggest to Barley Bros" onClose={() => setDrawer(null)} accent={accent}>
+            {submitted ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '48px 0', textAlign: 'center' }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(90,158,160,0.12)', border: '1px solid rgba(90,158,160,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CheckCircle size={24} color="#5a9ea0" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#f0f0f0', marginBottom: 8 }}>Submitted</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.6 }}>Our team will review your suggestion and follow up.</div>
+                </div>
+                <button onClick={resetForm} style={{ fontSize: 12, color: accent, background: 'none', border: `1px solid ${accent}30`, borderRadius: 7, padding: '8px 20px', cursor: 'pointer', fontFamily: F, fontWeight: 600 }}>
+                  Submit another
                 </button>
               </div>
-            </>
-          )}
-        </Drawer>
-      )}
+            ) : (
+              <>
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: 3, marginBottom: 18, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  {([['account', 'Account / Venue'], ['contact', 'Industry Contact']] as const).map(([t, lbl]) => (
+                    <button key={t} onClick={() => { setSuggestType(t); setSuggestForm({ name: '', address: '', contact_email: '', contact_phone: '', contact_name: '', contact_role: '', reason: '', notes: '' }); setShowContactSection(false); setSuggestErr('') }}
+                      style={{ flex: 1, padding: '8px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', background: suggestType === t ? accent : 'transparent', color: suggestType === t ? '#000' : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontFamily: F, transition: 'all 130ms' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)', lineHeight: 1.6, margin: '0 0 20px' }}>
+                  {suggestType === 'account'
+                    ? 'Know a bar, restaurant, or retailer we should approach? Tell us about it.'
+                    : 'Know a buyer, manager, or distributor rep we should connect with?'}
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <span style={SG_LABEL}>{suggestType === 'account' ? 'Venue / Account Name *' : 'Their name *'}</span>
+                    <input ref={suggestNameRef} type="text" value={suggestForm.name}
+                      onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder={suggestType === 'account' ? 'e.g. The Crafty Fox' : 'e.g. Jamie Rivera'}
+                      style={SG_INPUT} />
+                  </div>
+
+                  {suggestType === 'account' && (
+                    <div>
+                      <span style={SG_LABEL}>Address</span>
+                      <input type="text" value={suggestForm.address}
+                        onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))}
+                        placeholder="Start typing to search…"
+                        style={SG_INPUT} />
+                    </div>
+                  )}
+
+                  {suggestType === 'contact' && (
+                    <>
+                      <div>
+                        <span style={SG_LABEL}>Their role</span>
+                        <input type="text" value={suggestForm.contact_role}
+                          onChange={e => setSuggestForm(f => ({ ...f, contact_role: e.target.value }))}
+                          placeholder="e.g. Bar Manager, Head Buyer, Distributor Rep"
+                          style={SG_INPUT} />
+                      </div>
+                      <div>
+                        <span style={SG_LABEL}>Where they work</span>
+                        <input type="text" value={suggestForm.address}
+                          onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))}
+                          placeholder="Account or company name"
+                          style={SG_INPUT} />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <span style={SG_LABEL}>Phone</span>
+                          <input type="tel" value={suggestForm.contact_phone}
+                            onChange={e => setSuggestForm(f => ({ ...f, contact_phone: e.target.value }))}
+                            placeholder="Optional"
+                            style={SG_INPUT} />
+                        </div>
+                        <div>
+                          <span style={SG_LABEL}>Email</span>
+                          <input type="email" value={suggestForm.contact_email}
+                            onChange={e => setSuggestForm(f => ({ ...f, contact_email: e.target.value }))}
+                            placeholder="Optional"
+                            style={SG_INPUT} />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <span style={SG_LABEL}>Why are you suggesting this? *</span>
+                    <select value={suggestForm.reason}
+                      onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))}
+                      style={{ ...SG_INPUT, color: suggestForm.reason ? '#f0f0f0' : 'rgba(255,255,255,0.35)', colorScheme: 'dark' } as React.CSSProperties}>
+                      <option value="">Select a reason…</option>
+                      {SUGGESTION_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <span style={SG_LABEL}>Additional notes</span>
+                    <textarea value={suggestForm.notes}
+                      onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Anything else we should know…"
+                      rows={3}
+                      style={{ ...SG_INPUT, resize: 'vertical' as const }} />
+                  </div>
+
+                  {suggestType === 'account' && (
+                    !showContactSection ? (
+                      <button onClick={() => setShowContactSection(true)} style={{ background: 'none', border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 7, padding: '10px 14px', color: 'rgba(255,255,255,0.38)', cursor: 'pointer', fontSize: 12, fontFamily: F, textAlign: 'left', width: '100%' }}>
+                        + Add a key contact at this venue (optional)
+                      </button>
+                    ) : (
+                      <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ ...SG_LABEL, marginBottom: 0 }}>Key Contact</span>
+                          <button onClick={() => { setShowContactSection(false); setSuggestForm(f => ({ ...f, contact_name: '', contact_role: '', contact_phone: '', contact_email: '' })) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(255,255,255,0.28)', fontFamily: F }}>Remove</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <input type="text" value={suggestForm.contact_name}
+                            onChange={e => setSuggestForm(f => ({ ...f, contact_name: e.target.value }))}
+                            placeholder="Their name"
+                            style={SG_INPUT} />
+                          <input type="text" value={suggestForm.contact_role}
+                            onChange={e => setSuggestForm(f => ({ ...f, contact_role: e.target.value }))}
+                            placeholder="Role (e.g. Bar Manager, Head Buyer)"
+                            style={SG_INPUT} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <input type="tel" value={suggestForm.contact_phone}
+                              onChange={e => setSuggestForm(f => ({ ...f, contact_phone: e.target.value }))}
+                              placeholder="Phone"
+                              style={SG_INPUT} />
+                            <input type="email" value={suggestForm.contact_email}
+                              onChange={e => setSuggestForm(f => ({ ...f, contact_email: e.target.value }))}
+                              placeholder="Email"
+                              style={SG_INPUT} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  {suggestErr && <div style={{ color: '#e85540', fontSize: 12, padding: '8px 12px', background: 'rgba(232,85,64,0.08)', borderRadius: 6, border: '1px solid rgba(232,85,64,0.18)' }}>{suggestErr}</div>}
+
+                  <button onClick={handleSuggest} disabled={submitting} style={{ background: accent, color: '#000', border: 'none', borderRadius: 8, padding: '13px', fontSize: 13, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: F, letterSpacing: '0.02em', opacity: submitting ? 0.7 : 1, transition: 'opacity 150ms', marginTop: 4 }}>
+                    {submitting ? 'Sending to team…' : 'Submit to Barley Bros'}
+                  </button>
+                </div>
+              </>
+            )}
+          </Drawer>
+        )
+      })()}
     </div>
   )
 }

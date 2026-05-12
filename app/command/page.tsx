@@ -19,7 +19,7 @@ import type { MapPin } from './MapView'
 type MapBounds = { north: number; south: number; east: number; west: number } | null
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false, loading: () => (
-  <div style={{ width: '100%', height: '100%', minHeight: '340px', borderRadius: '12px', background: '#0a0906', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+  <div style={{ width: '100%', height: '100%', minHeight: '340px', borderRadius: '12px', background: t.bg.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <span style={{ fontSize: '11px', color: t.text.muted, opacity: 0.4 }}>Loading map…</span>
   </div>
 ) })
@@ -129,7 +129,7 @@ function HeroTile({ label, value, sub, desc, trend, color, loading }: {
         ? <div style={{ height: '32px', width: '60%', background: 'rgba(255,255,255,0.06)', borderRadius: '4px' }} />
         : <div style={{
             fontSize: '26px', fontWeight: '900', lineHeight: 1,
-            color: value === '—' ? '#282420' : c,
+            color: value === '—' ? t.border.default : c,
             fontFamily: "'JetBrains Mono','SF Mono',monospace",
             letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums',
             textShadow: value !== '—' ? `0 0 24px ${c}45, 0 0 50px ${c}15` : 'none',
@@ -232,7 +232,7 @@ function MapPanel({ accounts, dist }: {
         radial-gradient(ellipse at 70% 60%, rgba(61,188,118,0.03) 0%, transparent 50%),
         linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px),
-        #0a0906
+        ${t.bg.page}
       `,
       backgroundSize: 'auto, auto, 36px 36px, 36px 36px, auto',
       borderRadius: '12px',
@@ -498,7 +498,7 @@ function VisitsPanel({ visits, period, coverage }: { visits: VisitRow[]; period:
         </div>
         <div style={{ flex: 1, padding: '10px 12px', background: 'rgba(61,188,118,0.06)', borderRadius: '8px', border: '1px solid rgba(61,188,118,0.18)' }}>
           <div style={{ fontSize: '8px', color: t.status.success, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.7, marginBottom: '3px' }}>Coverage</div>
-          <div style={{ fontSize: '20px', fontWeight: '900', color: coverage > 0 ? t.status.success : '#282420', fontFamily: 'monospace', textShadow: coverage > 0 ? `0 0 16px ${t.status.success}40` : 'none' }}>
+          <div style={{ fontSize: '20px', fontWeight: '900', color: coverage > 0 ? t.status.success : t.border.default, fontFamily: 'monospace', textShadow: coverage > 0 ? `0 0 16px ${t.status.success}40` : 'none' }}>
             {coverage > 0 ? `${Math.round(coverage)}%` : '—'}
           </div>
         </div>
@@ -560,7 +560,7 @@ function PlacementsPanel({ placements }: { placements: PlacRow[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ padding: '10px 12px', background: `${t.gold}0a`, borderRadius: '8px', border: `1px solid ${t.goldBorder}` }}>
         <div style={{ fontSize: '8px', color: t.gold, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.7, marginBottom: '3px' }}>Active Placements</div>
-        <div style={{ fontSize: '22px', fontWeight: '900', color: active > 0 ? t.gold : '#282420', fontFamily: 'monospace', textShadow: active > 0 ? `0 0 20px ${t.gold}40` : 'none' }}>{active}</div>
+        <div style={{ fontSize: '22px', fontWeight: '900', color: active > 0 ? t.gold : t.border.default, fontFamily: 'monospace', textShadow: active > 0 ? `0 0 20px ${t.gold}40` : 'none' }}>{active}</div>
       </div>
       <div>
         <div style={{ fontSize: '8px', fontWeight: '700', color: t.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.4, marginBottom: '10px' }}>Placement Pipeline</div>
@@ -572,7 +572,7 @@ function PlacementsPanel({ placements }: { placements: PlacRow[] }) {
               <div style={{ flex: 1, height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.04)', position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', inset: 0, width: `${(f.count / maxCount) * 100}%`, background: `linear-gradient(90deg, ${f.color}50, ${f.color})`, borderRadius: '2px', boxShadow: f.count > 0 ? `0 0 8px ${f.color}60` : 'none', transition: 'width 400ms ease' }} />
               </div>
-              <span style={{ fontSize: '13px', fontWeight: '900', color: f.count > 0 ? f.color : '#282420', fontFamily: 'monospace', width: '22px', textAlign: 'right' }}>{f.count}</span>
+              <span style={{ fontSize: '13px', fontWeight: '900', color: f.count > 0 ? f.color : t.border.default, fontFamily: 'monospace', width: '22px', textAlign: 'right' }}>{f.count}</span>
             </div>
           ))}
         </div>
@@ -780,7 +780,7 @@ function AccountsTable({ accounts, orders, visits, clients }: {
                   {relAge(ord?.date)}
                 </div>
                 <div style={{ fontSize: '11px', color: t.text.muted, opacity: 0.6, alignSelf: 'center' }}>{relAge(lastVisit)}</div>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: (ord?.rev ?? 0) > 0 ? t.gold : '#282420', fontFamily: 'monospace', alignSelf: 'center' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: (ord?.rev ?? 0) > 0 ? t.gold : t.border.default, fontFamily: 'monospace', alignSelf: 'center' }}>
                   {(ord?.rev ?? 0) > 0 ? formatCurrency(ord!.rev) : '—'}
                 </div>
                 <div style={{ display: 'flex', gap: '3px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1081,12 +1081,12 @@ function CommandContent() {
 
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
 
-  const selectStyle: React.CSSProperties = {
+  const cmdSelectStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.03)',
-    border: `1px solid rgba(255,255,255,0.07)`,
+    border: `1px solid ${t.border.default}`,
     borderRadius: '7px', color: t.text.secondary, fontSize: '11px', fontWeight: '600',
     padding: '6px 28px 6px 10px', cursor: 'pointer', outline: 'none',
-    appearance: 'none',
+    appearance: 'none', fontFamily: 'inherit',
     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%237a7060' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
     backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
   }
@@ -1136,14 +1136,14 @@ function CommandContent() {
           </div>
 
           {/* Brand */}
-          <select value={brandSlug} onChange={e => setBrandSlug(e.target.value)} style={selectStyle}>
+          <select value={brandSlug} onChange={e => setBrandSlug(e.target.value)} style={cmdSelectStyle}>
             <option value="all">All Brands</option>
             {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </select>
 
           {/* Rep (admin only) */}
           {isAdmin && (
-            <select value={repId} onChange={e => setRepId(e.target.value)} style={selectStyle}>
+            <select value={repId} onChange={e => setRepId(e.target.value)} style={cmdSelectStyle}>
               <option value="all">All Reps</option>
               {profiles.map(p => <option key={p.id} value={p.id}>{p.name || p.full_name || p.id.slice(0, 8)}</option>)}
             </select>
@@ -1152,7 +1152,7 @@ function CommandContent() {
           {/* Product filter */}
           {availableProducts.length > 0 && (
             <select value={productFilter} onChange={e => setProductFilter(e.target.value)} style={{
-              ...selectStyle,
+              ...cmdSelectStyle,
               borderColor: productFilter !== 'all' ? `${t.status.success}55` : undefined,
               color: productFilter !== 'all' ? t.status.success : t.text.secondary,
             }}>

@@ -943,7 +943,7 @@ export default function MarketingPage() {
                 </div>
               </div>
               {editError && (
-                <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', backgroundColor: 'rgba(224,82,82,0.12)', border: '1px solid rgba(224,82,82,0.3)', fontSize: '13px', color: '#e05252' }}>
+                <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', backgroundColor: t.status.dangerBg, border: `1px solid rgba(232,85,64,0.3)`, fontSize: '13px', color: t.status.danger }}>
                   {editError}
                 </div>
               )}

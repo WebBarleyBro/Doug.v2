@@ -10,7 +10,7 @@ import LayoutShell from '../layout-shell'
 import StatCard from '../components/StatCard'
 import { StatsSkeleton } from '../components/LoadingSkeleton'
 import { getOrders, getClients } from '../lib/data'
-import { t, card, badge } from '../lib/theme'
+import { t, card, badge, btnSecondary } from '../lib/theme'
 import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal } from '../lib/formatters'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client } from '../lib/types'
@@ -141,12 +141,7 @@ export default function FinancePage() {
             <h1 className="page-h1" style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>Finance</h1>
             <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Commission and revenue tracking</p>
           </div>
-          <button onClick={exportCSV} style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '8px 14px', borderRadius: '8px', fontSize: '13px',
-            border: `1px solid ${t.border.default}`, backgroundColor: 'transparent',
-            color: t.text.secondary, cursor: 'pointer', flexShrink: 0,
-          }}>
+          <button onClick={exportCSV} style={{ ...btnSecondary, flexShrink: 0 }}>
             <Download size={14} /> Export CSV
           </button>
         </div>

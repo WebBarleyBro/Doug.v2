@@ -699,7 +699,7 @@ export default function VisitLogModal({
           {error && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
-              backgroundColor: t.status.dangerBg, border: `1px solid rgba(224,82,82,0.2)`,
+              backgroundColor: t.status.dangerBg, border: `1px solid rgba(232,85,64,0.25)`,
               borderRadius: '8px', color: t.status.danger, fontSize: '13px', marginBottom: '16px',
             }}>
               <AlertCircle size={15} />

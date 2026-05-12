@@ -174,7 +174,7 @@ export default function ContactsPage() {
         <div style={{ position: 'relative', marginBottom: '16px' }}>
           <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: t.text.muted }} />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search contacts..."
-            style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '10px 12px 10px 36px', color: t.text.primary, fontSize: '14px', width: '100%', outline: 'none' }} />
+            style={{ ...inputStyle, paddingLeft: '36px' }} />
         </div>
 
         {/* Category pills */}

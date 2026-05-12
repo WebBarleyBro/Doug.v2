@@ -168,11 +168,7 @@ export default function PlacementsPage() {
         {/* Client filter */}
         {clients.length > 1 && (
           <div style={{ marginBottom: '16px' }}>
-            <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} style={{
-              padding: '7px 12px', borderRadius: '8px', fontSize: '13px',
-              border: `1px solid ${t.border.default}`,
-              backgroundColor: t.bg.card, color: t.text.secondary, outline: 'none', cursor: 'pointer',
-            }}>
+            <select value={clientFilter} onChange={e => setClientFilter(e.target.value)} style={selectStyle}>
               <option value="all">All Brands</option>
               {clients.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
@@ -251,7 +247,7 @@ export default function PlacementsPage() {
                       </button>
                       <button onClick={() => { setLostModal({ id: p.id, clientSlug: p.client_slug || '', open: true }); setLostReason('') }} style={{
                         padding: '4px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer',
-                        border: `1px solid rgba(224,82,82,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
+                        border: `1px solid rgba(232,85,64,0.3)`, backgroundColor: t.status.dangerBg, color: t.status.danger,
                       }}>
                         Mark Lost
                       </button>

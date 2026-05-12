@@ -5,7 +5,7 @@ import { MapPin, ChevronLeft } from 'lucide-react'
 import LayoutShell from '../layout-shell'
 import { getVisits } from '../lib/data'
 import { getSupabase } from '../lib/supabase'
-import { t, card, badge } from '../lib/theme'
+import { t, card, badge, selectStyle } from '../lib/theme'
 import { nDaysAgoMT, todayMT } from '../lib/formatters'
 import type { UserProfile } from '../lib/types'
 
@@ -89,19 +89,19 @@ export default function VisitsPage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {isOwner && reps.length > 0 && (
-              <select value={repFilter} onChange={e => setRepFilter(e.target.value)}
-                style={{ backgroundColor: t.bg.card, border: `1px solid ${t.border.default}`, borderRadius: '8px', padding: '7px 10px', color: t.text.secondary, fontSize: '12px', outline: 'none' }}>
+              <select value={repFilter} onChange={e => setRepFilter(e.target.value)} style={selectStyle}>
                 <option value="all">All reps</option>
                 {reps.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             )}
             {(['today', '7d', '30d', 'all'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)} style={{
-                padding: '7px 12px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
+                padding: '7px 14px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer',
                 border: `1px solid ${filter === f ? t.gold : t.border.default}`,
                 backgroundColor: filter === f ? t.goldDim : 'transparent',
                 color: filter === f ? t.gold : t.text.secondary,
                 fontWeight: filter === f ? '600' : '400',
+                fontFamily: 'inherit', transition: 'all 150ms ease',
               }}>
                 {f === 'today' ? 'Today' : f === '7d' ? 'Last 7 days' : f === '30d' ? 'Last 30 days' : 'All time'}
               </button>

@@ -480,7 +480,7 @@ export default function AnalyticsPage() {
                             </button>
                             <button onClick={() => { setDismissedIds(prev => new Set([...prev, v.id])); clearFollowUp(v.id) }} style={{
                               flex: 1, padding: '5px 8px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                              border: `1px solid rgba(61,186,120,0.3)`, backgroundColor: 'rgba(61,186,120,0.08)', color: '#3dba78',
+                              border: `1px solid rgba(61,188,118,0.3)`, backgroundColor: t.status.successBg, color: t.status.success,
                             }}>
                               <CheckCircle2 size={11} /> Cleared
                             </button>
