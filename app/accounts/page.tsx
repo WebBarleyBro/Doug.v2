@@ -129,7 +129,10 @@ export default function AccountsPage() {
       const res = await fetch('/api/geocode-accounts', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
-      setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${json.failed > 0 ? ` (${json.failed} failed)` : ''}`)
+      const failNote = json.failed > 0
+        ? ` (${json.failed} failed${json.failures?.length ? ': ' + json.failures[0].split(': ').slice(-1)[0] : ''})`
+        : ''
+      setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${failNote}`)
       if (json.updated > 0) load()
     } catch (e: any) {
       setGeocodeResult(`Error: ${e.message}`)
