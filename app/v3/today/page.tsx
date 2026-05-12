@@ -10,11 +10,15 @@ import {
   useV3MyTasks, useV3AtRiskPlacements,
   useV3OverdueQuery, useV3CommissionMTD,
   useV3TodayStops, useV3WinRate, useV3PotentialToday,
+  useV3Orders, useV3Placements, useV3Accounts,
 } from '../lib/query'
 import { useOpenLogVisit, useV3Toast } from '../lib/context'
 import { clientLogoUrl } from '../../lib/constants'
 import { clearFollowUp, dismissFollowUp, completeTask, createTask } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
+import { buildGradeMap } from '../lib/grading'
+import type { GradeResult } from '../lib/grading'
+import { GradeBadge } from '../components/GradeBadge'
 
 // ── Goals (user-editable, persisted in user_profiles) ────────────────────────
 
@@ -203,7 +207,7 @@ function LogBtn({ onClick }: { onClick: () => void }) {
 
 // ── Follow-up row ─────────────────────────────────────────────────────────────
 
-function FollowUpRow({ visit }: { visit: any }) {
+function FollowUpRow({ visit, gradeResult }: { visit: any; gradeResult?: GradeResult }) {
   const { open } = useOpenLogVisit()
   const toast = useV3Toast()
   const qc = useQueryClient()
@@ -221,7 +225,7 @@ function FollowUpRow({ visit }: { visit: any }) {
 
   return (
     <div className="v3-row-hover" style={{
-      display: 'grid', gridTemplateColumns: '1fr auto auto auto auto',
+      display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto',
       alignItems: 'center', gap: 8, padding: '13px 8px',
       borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}>
@@ -239,6 +243,10 @@ function FollowUpRow({ visit }: { visit: any }) {
           </div>
         </div>
       </Link>
+      {gradeResult
+        ? <GradeBadge grade={gradeResult.grade} size="sm" showMomentum momentum={gradeResult.momentum} tooltip />
+        : <div style={{ width: 22 }} />
+      }
       <span className="v3-mono" style={{ fontSize: '14px', color: isUrgent ? v3.status.warning : 'rgba(255,255,255,0.38)', whiteSpace: 'nowrap' }}>
         {daysAgo === 0 ? 'today' : `${daysAgo}d`}
       </span>
@@ -277,14 +285,14 @@ function FollowUpRow({ visit }: { visit: any }) {
 
 // ── Overdue row ───────────────────────────────────────────────────────────────
 
-function OverdueRow({ account }: { account: any }) {
+function OverdueRow({ account, gradeResult }: { account: any; gradeResult?: GradeResult }) {
   const { open } = useOpenLogVisit()
   const isVeryOverdue = (account.overdueDays ?? 0) >= 14
 
   return (
     <div className="v3-row-hover" style={{
-      display: 'grid', gridTemplateColumns: '1fr auto auto',
-      alignItems: 'center', gap: 14, padding: '13px 8px',
+      display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+      alignItems: 'center', gap: 10, padding: '13px 8px',
       borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}>
       <Link href={`/v3/territory/${account.id}`} style={{ textDecoration: 'none', minWidth: 0, display: 'flex', alignItems: 'center', gap: 11 }}>
@@ -301,6 +309,10 @@ function OverdueRow({ account }: { account: any }) {
           </div>
         </div>
       </Link>
+      {gradeResult
+        ? <GradeBadge grade={gradeResult.grade} size="sm" showMomentum momentum={gradeResult.momentum} tooltip />
+        : <div style={{ width: 22 }} />
+      }
       <span className="v3-mono" style={{ fontSize: '14px', color: isVeryOverdue ? v3.status.danger : v3.status.warning, whiteSpace: 'nowrap' }}>
         {account.neverVisited ? 'new' : `+${account.overdueDays}d`}
       </span>
@@ -635,6 +647,9 @@ export default function TodayPage() {
   const { data: todayStops = [] }                              = useV3TodayStops()
   const { data: winRate }                                      = useV3WinRate()
   const { data: potential }                                    = useV3PotentialToday()
+  const { data: allOrders = [] }                               = useV3Orders()
+  const { data: allPlacements = [] }                           = useV3Placements()
+  const { data: allAccounts = [] }                             = useV3Accounts()
   const goals = useGoals()
 
   const TODAY_STR       = useMemo(todayDateStr,  [])
@@ -662,14 +677,38 @@ export default function TodayPage() {
     )
   }, [allRecentVisits, MONTH_START_STR, myUserId])
 
+  const gradeMap = useMemo(
+    () => buildGradeMap(allAccounts as any[], allOrders as any[], allRecentVisits as any[], allPlacements as any[]),
+    [allAccounts, allOrders, allRecentVisits, allPlacements],
+  )
+
+  const GRADE_ORDER: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 }
+
   const dedupedFollowUps = useMemo(() => {
     const seen = new Set<string>()
-    return followUps.filter(f => { if (seen.has(f.account_id)) return false; seen.add(f.account_id); return true })
-  }, [followUps])
+    const deduped = followUps.filter(f => { if (seen.has(f.account_id)) return false; seen.add(f.account_id); return true })
+    return deduped.sort((a, b) => {
+      const ga = GRADE_ORDER[gradeMap[a.account_id]?.grade ?? 'D'] ?? 4
+      const gb = GRADE_ORDER[gradeMap[b.account_id]?.grade ?? 'D'] ?? 4
+      if (ga !== gb) return ga - gb
+      const da = Math.floor((Date.now() - new Date(a.visited_at).getTime()) / 86400000)
+      const db = Math.floor((Date.now() - new Date(b.visited_at).getTime()) / 86400000)
+      return db - da
+    })
+  }, [followUps, gradeMap])
+
+  const sortedOverdue = useMemo(() => {
+    return [...(overdue as any[])].sort((a, b) => {
+      const ga = GRADE_ORDER[gradeMap[a.id]?.grade ?? 'D'] ?? 4
+      const gb = GRADE_ORDER[gradeMap[b.id]?.grade ?? 'D'] ?? 4
+      if (ga !== gb) return ga - gb
+      return (b.overdueDays ?? 0) - (a.overdueDays ?? 0)
+    })
+  }, [overdue, gradeMap])
 
   const name = profile?.name?.split(' ')[0] || profile?.full_name?.split(' ')[0] || 'there'
   const fuCount      = dedupedFollowUps.length
-  const overdueCount = (overdue as any[]).length
+  const overdueCount = sortedOverdue.length
   const queueClear   = !fuLoading && !overdueLoading && fuCount === 0 && overdueCount === 0
 
   const visitColor = todayVisits.length > 0 ? '#5a9ea0' : 'rgba(255,255,255,0.10)'
@@ -815,7 +854,7 @@ export default function TodayPage() {
                 ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.55)', fontSize: '14px' }}>Loading…</div>
                 : fuCount === 0
                 ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.50)', fontSize: '14px' }}>Queue clear</div>
-                : (showAllFU ? dedupedFollowUps : dedupedFollowUps.slice(0, LIST_CAP)).map(f => <FollowUpRow key={f.id} visit={f} />)
+                : (showAllFU ? dedupedFollowUps : dedupedFollowUps.slice(0, LIST_CAP)).map(f => <FollowUpRow key={f.id} visit={f} gradeResult={gradeMap[f.account_id]} />)
               }
               {fuCount > LIST_CAP && (
                 <button onClick={() => setShowAllFU(v => !v)} style={{
@@ -837,7 +876,7 @@ export default function TodayPage() {
                 ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.55)', fontSize: '14px' }}>Loading…</div>
                 : overdueCount === 0
                 ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.50)', fontSize: '14px' }}>All on schedule</div>
-                : (showAllOverdue ? overdue : (overdue as any[]).slice(0, LIST_CAP)).map((a: any) => <OverdueRow key={a.id} account={a} />)
+                : (showAllOverdue ? sortedOverdue : sortedOverdue.slice(0, LIST_CAP)).map((a: any) => <OverdueRow key={a.id} account={a} gradeResult={gradeMap[a.id]} />)
               }
               {overdueCount > LIST_CAP && (
                 <button onClick={() => setShowAllOverdue(v => !v)} style={{
@@ -847,7 +886,7 @@ export default function TodayPage() {
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.amberLight}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(196,164,110,0.50)'}
                 >
-                  {showAllOverdue ? 'Show less' : `+${overdueCount - LIST_CAP} more`} <ChevronRight size={11} />
+                  {showAllOverdue ? 'Show less' : `+${sortedOverdue.length - LIST_CAP} more`} <ChevronRight size={11} />
                 </button>
               )}
             </div>

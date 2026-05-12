@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation'
 import { Search, ChevronUp, ChevronDown, Plus, X, Check, Map, List, LocateFixed } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { v3, v3input, v3label, v3btnPrimary, v3btnSecondary, healthColor, healthLabel } from '../lib/theme'
-import { useV3Accounts, useV3Clients, useV3RecentVisits, useV3Orders, useV3Profile } from '../lib/query'
+import { useV3Accounts, useV3Clients, useV3RecentVisits, useV3Orders, useV3Placements, useV3Profile } from '../lib/query'
 import { useOpenLogVisit } from '../lib/context'
 import { getSupabase } from '../../lib/supabase'
 import { formatCurrency, relativeTimeStr } from '../../lib/formatters'
 import type { Client } from '../../lib/types'
+import { buildGradeMap, gradeOrder, GRADE_CONFIG } from '../lib/grading'
+import type { Grade, GradeResult } from '../lib/grading'
+import { GradeBadge } from '../components/GradeBadge'
 
 // ── Add Account Modal ─────────────────────────────────────────────────────────
 function AddAccountModal({ onClose }: { onClose: () => void }) {
@@ -146,7 +149,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-type SortKey = 'name' | 'health' | 'lastVisit' | 'lastOrder' | 'revenue'
+type SortKey = 'name' | 'health' | 'lastVisit' | 'lastOrder' | 'revenue' | 'grade'
 type HealthFilter = 'all' | 'warm' | 'cooling' | 'cold' | 'new'
 type RecencyFilter = 'all' | 'd30' | 'd90' | 'd180' | 'old' | 'none'
 
@@ -318,15 +321,16 @@ function TerritoryMap({ accounts, orderMap, clients }: {
 }
 
 // ── Account row ───────────────────────────────────────────────────────────────
-const COL = '8px 1fr 70px 80px 88px 88px 88px 80px 44px'
+const COL = '8px 1fr 70px 32px 88px 88px 88px 80px 44px'
 
-function AccountRow({ account, orderData, lastVisit, brandSlugs, clients, maxRev }: {
+function AccountRow({ account, orderData, lastVisit, brandSlugs, clients, maxRev, gradeResult }: {
   account: any
   orderData: { lastDate: string; revenue: number } | undefined
   lastVisit: string | null
   brandSlugs: string[]
   clients: Client[]
   maxRev: number
+  gradeResult?: GradeResult
 }) {
   const router = useRouter()
   const { open } = useOpenLogVisit()
@@ -370,7 +374,10 @@ function AccountRow({ account, orderData, lastVisit, brandSlugs, clients, maxRev
         {account.account_type === 'on_premise' ? 'On-prem' : account.account_type === 'off_premise' ? 'Off-prem' : '—'}
       </div>
 
-      <div style={{ fontSize: '12px', fontWeight: 700, color: hColor }}>{healthLabel(account.last_visited, account.visit_frequency_days)}</div>
+      {gradeResult
+        ? <GradeBadge grade={gradeResult.grade} size="sm" showMomentum momentum={gradeResult.momentum} tooltip />
+        : <div style={{ width: 22, height: 22 }} />
+      }
 
       <div style={{ fontSize: '12px', color: lastVisit ? v3.text.secondary : v3.text.muted }}>
         {lastVisit ? relativeTimeStr(lastVisit) ?? '—' : 'Never'}
@@ -425,10 +432,11 @@ function AccountRow({ account, orderData, lastVisit, brandSlugs, clients, maxRev
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function TerritoryPage() {
   const { data: accounts = [], isLoading: acctLoading } = useV3Accounts()
-  const { data: clients = [] }   = useV3Clients()
-  const { data: visits = [] }    = useV3RecentVisits(90)
-  const { data: orders = [] }    = useV3Orders()
-  const { data: profile }        = useV3Profile()
+  const { data: clients = [] }     = useV3Clients()
+  const { data: visits = [] }      = useV3RecentVisits(90)
+  const { data: orders = [] }      = useV3Orders()
+  const { data: placements = [] }  = useV3Placements()
+  const { data: profile }          = useV3Profile()
 
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [viewMode, setViewMode]           = useState<'list' | 'map'>('list')
@@ -437,7 +445,8 @@ export default function TerritoryPage() {
   const [typeFilter, setTypeFilter]       = useState<'all' | 'on_premise' | 'off_premise'>('all')
   const [healthFilter, setHealthFilter]   = useState<HealthFilter>('all')
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>('all')
-  const [sortKey, setSortKey]             = useState<SortKey>('health')
+  const [gradeFilter, setGradeFilter]     = useState<Grade | 'all'>('all')
+  const [sortKey, setSortKey]             = useState<SortKey>('grade')
   const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('asc')
   const [geocoding, setGeocoding]         = useState(false)
   const [geocodeMsg, setGeocodeMsg]       = useState<string | null>(null)
@@ -485,6 +494,17 @@ export default function TerritoryPage() {
     return c
   }, [accounts])
 
+  const gradeMap = useMemo(() =>
+    buildGradeMap(accounts, orders as any[], visits as any[], placements as any[]),
+    [accounts, orders, visits, placements]
+  )
+
+  const gradeCounts = useMemo(() => {
+    const c: Record<string, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }
+    for (const r of Object.values(gradeMap)) c[r.grade]++
+    return c as Record<Grade, number>
+  }, [gradeMap])
+
   const recencyCounts = useMemo(() => {
     const now = Date.now()
     const c: Record<RecencyFilter, number> = { all: accounts.length, d30: 0, d90: 0, d180: 0, old: 0, none: 0 }
@@ -523,6 +543,9 @@ export default function TerritoryPage() {
       if (healthFilter !== 'all') {
         if (getHealth(a.last_visited, a.visit_frequency_days) !== healthFilter) return false
       }
+      if (gradeFilter !== 'all') {
+        if (gradeMap[a.id]?.grade !== gradeFilter) return false
+      }
       if (recencyFilter !== 'all') {
         const o = orderMap[a.id]
         if (recencyFilter === 'none') { if (o) return false }
@@ -540,6 +563,11 @@ export default function TerritoryPage() {
     const dir = sortDir === 'asc' ? 1 : -1
     arr.sort((a, b) => {
       if (sortKey === 'name') return dir * a.name.localeCompare(b.name)
+      if (sortKey === 'grade') {
+        const ga = gradeOrder(gradeMap[a.id]?.grade ?? 'D')
+        const gb = gradeOrder(gradeMap[b.id]?.grade ?? 'D')
+        return dir * (ga - gb)
+      }
       if (sortKey === 'health') {
         const ha = healthOrder[getHealth(a.last_visited, a.visit_frequency_days) as keyof typeof healthOrder]
         const hb = healthOrder[getHealth(b.last_visited, b.visit_frequency_days) as keyof typeof healthOrder]
@@ -551,7 +579,7 @@ export default function TerritoryPage() {
       return 0
     })
     return arr
-  }, [accounts, search, typeFilter, brandFilter, healthFilter, recencyFilter, sortKey, sortDir, orderMap, brandMap])
+  }, [accounts, search, typeFilter, brandFilter, healthFilter, gradeFilter, recencyFilter, sortKey, sortDir, orderMap, brandMap, gradeMap])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -679,6 +707,35 @@ export default function TerritoryPage() {
         </select>
       </div>
 
+      {/* ── Grade filter pills ───────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 5, marginBottom: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.40)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: v3.font.ui, flexShrink: 0 }}>Grade</span>
+        <button onClick={() => setGradeFilter('all')} style={{
+          padding: '4px 10px', borderRadius: v3.radius.full, fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+          border: `1px solid ${gradeFilter === 'all' ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.09)'}`,
+          background: gradeFilter === 'all' ? 'rgba(255,255,255,0.07)' : 'transparent',
+          color: gradeFilter === 'all' ? v3.text.secondary : v3.text.muted, transition: 'all 120ms',
+        }}>All</button>
+        {(['S', 'A', 'B', 'C', 'D'] as Grade[]).map(g => {
+          const cfg = GRADE_CONFIG[g]
+          const count = gradeCounts[g] ?? 0
+          const sel = gradeFilter === g
+          return (
+            <button key={g} onClick={() => setGradeFilter(sel ? 'all' : g)} title={cfg.label} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 10px', borderRadius: v3.radius.full, fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+              border: `1px solid ${sel ? cfg.border : 'rgba(255,255,255,0.09)'}`,
+              background: sel ? cfg.bg : 'transparent',
+              color: sel ? cfg.color : v3.text.muted,
+              transition: 'all 120ms', opacity: count === 0 ? 0.35 : 1,
+            }}>
+              <span style={{ fontWeight: 900 }}>{g}</span>
+              <span style={{ opacity: 0.65, fontSize: '10px' }}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── Order recency compact pills ───────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
         <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.40)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: v3.font.ui, flexShrink: 0 }}>Last Order</span>
@@ -720,7 +777,7 @@ export default function TerritoryPage() {
             <div />
             <button onClick={() => toggleSort('name')}      style={colHdr('name')}>Account <SortIcon k="name" /></button>
             <div style={{ fontSize: '10px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: v3.font.ui }}>Type</div>
-            <button onClick={() => toggleSort('health')}    style={colHdr('health')}>Health <SortIcon k="health" /></button>
+            <button onClick={() => toggleSort('grade')}     style={colHdr('grade')}>Gr <SortIcon k="grade" /></button>
             <button onClick={() => toggleSort('lastVisit')} style={colHdr('lastVisit')}>Last Visit <SortIcon k="lastVisit" /></button>
             <button onClick={() => toggleSort('lastOrder')} style={colHdr('lastOrder')}>Last Order <SortIcon k="lastOrder" /></button>
             <button onClick={() => toggleSort('revenue')}   style={colHdr('revenue')}>Revenue <SortIcon k="revenue" /></button>
@@ -741,6 +798,7 @@ export default function TerritoryPage() {
                   brandSlugs={[...(brandMap[a.id] ?? [])].filter(Boolean)}
                   clients={clients}
                   maxRev={maxRev}
+                  gradeResult={gradeMap[a.id]}
                 />
               ))
             }

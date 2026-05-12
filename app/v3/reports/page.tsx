@@ -2,9 +2,11 @@
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { v3, WIN_STATUSES } from '../lib/theme'
-import { useV3Clients, useV3RecentVisits, useV3Placements, useV3Orders, useV3AllProfiles } from '../lib/query'
+import { useV3Clients, useV3RecentVisits, useV3Placements, useV3Orders, useV3AllProfiles, useV3Accounts } from '../lib/query'
 import { formatCurrency, resolveTotal, relativeTimeStr } from '../../lib/formatters'
 import type { Client } from '../../lib/types'
+import { buildGradeMap, GRADE_CONFIG } from '../lib/grading'
+import type { Grade } from '../lib/grading'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -535,6 +537,7 @@ export default function ReportsPage() {
   const { data: placements = [] } = useV3Placements()
   const { data: orders = [] }     = useV3Orders()
   const { data: profiles = [] }   = useV3AllProfiles()
+  const { data: accounts = [] }   = useV3Accounts()
   const [period, setPeriod]       = useState(30)
   const [brandSlug, setBrandSlug] = useState('all')
   const [deepTab, setDeepTab]     = useState<DeepTab | null>(null)
@@ -647,6 +650,30 @@ export default function ReportsPage() {
     }).sort((a, b) => b.rev - a.rev)
   }, [clients, orders, pVisits, placements, periodStartMs])
 
+  const gradeMap = useMemo(
+    () => buildGradeMap(accounts as any[], orders as any[], allVisits as any[], placements as any[]),
+    [accounts, orders, allVisits, placements],
+  )
+
+  const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D']
+
+  const gradeCounts = useMemo(() => {
+    const counts: Record<Grade, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }
+    const relevant = brandSlug === 'all'
+      ? accounts
+      : accounts.filter((a: any) => allVisits.some(v => v.account_id === a.id && v.client_slug === brandSlug))
+    for (const a of relevant as any[]) {
+      const g = gradeMap[a.id]?.grade ?? 'D'
+      counts[g]++
+    }
+    return counts
+  }, [accounts, gradeMap, brandSlug, allVisits])
+
+  const gradeTotal = useMemo(
+    () => GRADES.reduce((s, g) => s + gradeCounts[g], 0),
+    [gradeCounts],
+  )
+
   const periodLabel = period === 30 ? '30 days' : period === 90 ? '90 days' : '12 months'
 
   const periodRange = useMemo(() => {
@@ -736,6 +763,70 @@ export default function ReportsPage() {
           <PlacementsPanel placements={pPlacements} clients={clients} brandSlug={brandSlug} />
           <FieldPanel visits={pVisits} profileMap={profileMap} visitChart={visitChart} />
           <RevenuePanel orders={pOrders} clients={clients} revenueChart={revenueChart} brandBreakdown={brandBreakdown} totalRev={totalRev} totalComm={totalComm} />
+        </div>
+      )}
+
+      {/* ── Account Grade Distribution ──────────────────────────── */}
+      {gradeTotal > 0 && (
+        <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: '6px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>
+              Account Grades
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: v3.text.muted, fontFamily: 'monospace' }}>
+              {gradeTotal} accounts
+            </span>
+          </div>
+          {/* Segmented bar */}
+          <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', gap: 2, marginBottom: 16 }}>
+            {GRADES.map(g => {
+              const pct = gradeTotal > 0 ? (gradeCounts[g] / gradeTotal) * 100 : 0
+              if (pct === 0) return null
+              const cfg = GRADE_CONFIG[g]
+              return (
+                <div key={g} title={`${g}: ${gradeCounts[g]}`} style={{
+                  flex: pct, height: '100%',
+                  background: cfg.color,
+                  opacity: g === 'D' ? 0.4 : 0.85,
+                  minWidth: gradeCounts[g] > 0 ? 4 : 0,
+                  boxShadow: cfg.glow !== 'none' ? cfg.glow : undefined,
+                  borderRadius: 2,
+                  transition: 'flex 400ms ease',
+                }} />
+              )
+            })}
+          </div>
+          {/* Grade legend */}
+          <div style={{ display: 'flex', gap: 0 }}>
+            {GRADES.map((g, i) => {
+              const cfg = GRADE_CONFIG[g]
+              const count = gradeCounts[g]
+              const pct = gradeTotal > 0 ? Math.round((count / gradeTotal) * 100) : 0
+              return (
+                <div key={g} style={{
+                  flex: 1, paddingRight: i < 4 ? 12 : 0,
+                  borderRight: i < 4 ? `1px solid ${v3.border.subtle}` : 'none',
+                  paddingLeft: i > 0 ? 12 : 0,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: '3px',
+                      background: cfg.bg, border: `1px solid ${cfg.border}`,
+                      boxShadow: cfg.glow !== 'none' ? cfg.glow : undefined,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      <span style={{ fontSize: '10px', fontWeight: 900, color: cfg.color, lineHeight: 1, userSelect: 'none' }}>{g}</span>
+                    </div>
+                    <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: v3.font.ui }}>{cfg.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                    <span style={{ fontSize: '22px', fontWeight: 900, color: count > 0 ? cfg.color : 'rgba(255,255,255,0.15)', fontFamily: 'monospace', lineHeight: 1, letterSpacing: '-0.04em' }}>{count}</span>
+                    {count > 0 && <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>{pct}%</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

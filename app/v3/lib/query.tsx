@@ -273,36 +273,6 @@ export function useV3OrdersWithItems(orderId: string) {
   })
 }
 
-// ── Visit streak ──────────────────────────────────────────────────────────────
-
-export function useV3Streak() {
-  return useQuery({
-    queryKey: ['v3', 'streak'],
-    queryFn: async () => {
-      const sb = getSupabase()
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) return { current: 0, best: 0 }
-      const { data } = await sb
-        .from('visits')
-        .select('visited_at')
-        .eq('user_id', user.id)
-        .order('visited_at', { ascending: false })
-        .limit(200)
-      if (!data?.length) return { current: 0, best: 0 }
-      const days = new Set(data.map(v => v.visited_at.slice(0, 10)))
-      let current = 0, best = 0; const check = new Date()
-      for (let i = 0; i < 180; i++) {
-        const d = check.toISOString().slice(0, 10)
-        check.setDate(check.getDate() - 1)
-        if (days.has(d)) { current++; best = Math.max(best, current) }
-        else if (i > 0) break
-      }
-      return { current, best }
-    },
-    staleTime: 5 * 60_000,
-  })
-}
-
 // ── Territory coverage (accounts visited this month / total tracked) ─────────
 
 export function useV3TerritoryCoverage() {
@@ -310,11 +280,13 @@ export function useV3TerritoryCoverage() {
     queryKey: ['v3', 'coverage'],
     queryFn: async () => {
       const sb = getSupabase()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) return { visited: 0, total: 0, pct: 0 }
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       const [accountsRes, visitsRes] = await Promise.all([
         sb.from('accounts').select('id').not('visit_frequency_days', 'is', null),
-        sb.from('visits').select('account_id').gte('visited_at', monthStart).limit(5000),
+        sb.from('visits').select('account_id').eq('user_id', user.id).gte('visited_at', monthStart).limit(5000),
       ])
       if (accountsRes.error) throw accountsRes.error
       if (visitsRes.error) throw visitsRes.error

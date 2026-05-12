@@ -16,6 +16,8 @@ import { clientLogoUrl } from '../../../lib/constants'
 import { relativeTimeStr, formatShortDateMT } from '../../../lib/formatters'
 import { createPlacement } from '../../../lib/data'
 import type { Client } from '../../../lib/types'
+import { computeGrade, GRADE_CONFIG } from '../../lib/grading'
+import { GradeBadge, GradeDetail } from '../../components/GradeBadge'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1039,6 +1041,19 @@ export default function AccountDetailPage() {
 
   const hc = healthColor(account.last_visited, account.visit_frequency_days)
   const hl = healthLabel(account.last_visited, account.visit_frequency_days)
+
+  // Grade — computed from this account's actual data.
+  // maxRevenue: use $50k as the normalization ceiling (top-tier account benchmark).
+  const gradeResult = computeGrade(
+    account.id,
+    orders.map((o: any) => ({ ...o, account_id: account.id })),
+    visits.map((v: any) => ({ ...v, account_id: account.id })),
+    placements.map((p: any) => ({ ...p, account_id: account.id })),
+    50000,
+  )
+  const gradeCfg = GRADE_CONFIG[gradeResult.grade]
+  const [showGradeDetail, setShowGradeDetail] = useState(false)
+
   const clientSlugs: string[] = (account.account_clients ?? []).map((ac: any) => ac.client_slug).filter(Boolean)
   const linkedClients = clients.filter(c => clientSlugs.includes(c.slug))
   const latestVisit = visits[0] ?? null
@@ -1086,7 +1101,23 @@ export default function AccountDetailPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <h1 style={{ fontSize: '20px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0, lineHeight: 1.1 }}>{account.name}</h1>
               <span style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, background: v3.bg.elevated, padding: '2px 7px', borderRadius: v3.radius.sm, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{typeLabel}</span>
+              <button
+                onClick={() => setShowGradeDetail(s => !s)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                title={`${gradeResult.grade}-tier · ${gradeCfg.label} · Score ${gradeResult.score}/100 — click for breakdown`}
+              >
+                <GradeBadge grade={gradeResult.grade} size="md" showMomentum momentum={gradeResult.momentum} />
+              </button>
             </div>
+            {showGradeDetail && (
+              <div style={{
+                marginBottom: 10, padding: '14px 16px',
+                background: gradeCfg.bg, border: `1px solid ${gradeCfg.border}`,
+                borderRadius: v3.radius.lg, maxWidth: 340,
+              }}>
+                <GradeDetail result={gradeResult} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {account.address && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '12px', color: v3.text.secondary }}>

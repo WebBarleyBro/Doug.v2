@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { ChevronRight, Filter } from 'lucide-react'
+import { ChevronRight, Filter, Download } from 'lucide-react'
 import { v3, WIN_STATUSES } from '../lib/theme'
 import { useV3Clients, useV3Profile, useV3AllProfiles } from '../lib/query'
 import { getSupabase } from '../../lib/supabase'
@@ -82,6 +82,29 @@ function groupByDate(visits: any[]) {
   return groups
 }
 
+function exportCsv(visits: any[]) {
+  const rows = [
+    ['Date', 'Time', 'Account', 'Status', 'Brand', 'Rep', 'Notes'],
+    ...visits.map(v => [
+      v.visited_at.slice(0, 10),
+      new Date(v.visited_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Denver' }),
+      v.accounts?.name ?? '',
+      v.status ?? '',
+      v.client_slug ?? '',
+      v.user_profiles?.name || v.user_profiles?.full_name || '',
+      (v.notes ?? '').replace(/"/g, '""'),
+    ]),
+  ]
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `visits-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const ALL_STATUSES = [
   'New Placement', 'Menu Feature Won', 'Just Ordered',
   'Will Order Soon', 'General Check-In', 'Needs Follow Up', 'Not Interested', 'Tasted',
@@ -123,8 +146,8 @@ export default function VisitsPage() {
           </div>
         </div>
 
-        {/* Period toggles */}
-        <div style={{ display: 'flex', gap: 3 }}>
+        {/* Period toggles + export */}
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {PERIODS.map((p, i) => (
             <button key={p.label} onClick={() => setPeriod(i)} style={{
               padding: '6px 14px', borderRadius: v3.radius.md, fontSize: '12px', fontWeight: 700,
@@ -134,6 +157,16 @@ export default function VisitsPage() {
               cursor: 'pointer', transition: 'all 120ms', fontFamily: v3.font.ui,
             }}>{p.label}</button>
           ))}
+          {visits.length > 0 && (
+            <button onClick={() => exportCsv(visits)} title="Export CSV" style={{
+              marginLeft: 4, padding: '6px 10px', borderRadius: v3.radius.md, fontSize: '12px',
+              border: `1px solid ${v3.border.default}`, background: 'transparent',
+              color: v3.text.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+              fontFamily: v3.font.ui, fontWeight: 600,
+            }}>
+              <Download size={11} />CSV
+            </button>
+          )}
         </div>
       </div>
 

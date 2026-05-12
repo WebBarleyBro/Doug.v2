@@ -601,33 +601,48 @@ export default function BrandDetailPage() {
         </div>
       </div>
 
-      {/* ── 12-week visit sparkline ───────────────────────────────────────── */}
+      {/* ── 12-week sparkline — compact SVG ──────────────────────────────── */}
       {visits.length > 0 && (
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-end', gap: 16 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>Visit Trend · 12 Weeks</span>
-              <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: 'monospace' }}>{visits.length} total</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 36 }}>
-              {weeklyVisits.map((w, i) => {
-                const heightPx = Math.max((w.count / maxWeekCount) * 32, w.count > 0 ? 3 : 1)
-                const isRecent = i >= weeklyVisits.length - 3
-                return (
-                  <div key={i} title={`${w.count} visit${w.count !== 1 ? 's' : ''}`} style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
-                    <div style={{
-                      width: '100%', height: `${heightPx}px`,
-                      background: w.count > 0 ? (isRecent ? ac : ac + '55') : v3.border.subtle,
-                      borderRadius: '2px 2px 0 0', transition: 'height 500ms',
-                    }} />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: 80, flexShrink: 0, paddingBottom: 2 }}>
-            <span style={{ fontSize: '9px', color: v3.text.muted }}>12w ago</span>
-            <span style={{ fontSize: '9px', color: v3.text.muted }}>now</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${v3.border.subtle}` }}>
+          <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.30)', textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui, flexShrink: 0 }}>
+            {visits.length} visits · 12 wks
+          </span>
+          <svg width={200} height={22} style={{ display: 'block', flexShrink: 0, overflow: 'visible' }}>
+            <defs>
+              <linearGradient id={`sg-${slug}`} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor={ac} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={ac} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <polygon
+              points={[
+                '1,20',
+                ...weeklyVisits.map((w, i) => {
+                  const x = 1 + (i / (weeklyVisits.length - 1)) * 198
+                  const y = 20 - ((w.count / maxWeekCount) * 17)
+                  return `${x.toFixed(1)},${y.toFixed(1)}`
+                }),
+                '199,20',
+              ].join(' ')}
+              fill={`url(#sg-${slug})`}
+            />
+            <polyline
+              points={weeklyVisits.map((w, i) => {
+                const x = 1 + (i / (weeklyVisits.length - 1)) * 198
+                const y = 20 - ((w.count / maxWeekCount) * 17)
+                return `${x.toFixed(1)},${y.toFixed(1)}`
+              }).join(' ')}
+              fill="none"
+              stroke={ac}
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              opacity={0.65}
+            />
+          </svg>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: 60, flexShrink: 0 }}>
+            <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.22)' }}>12w ago</span>
+            <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.22)' }}>now</span>
           </div>
         </div>
       )}
