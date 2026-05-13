@@ -123,18 +123,53 @@ export default function AccountsPage() {
   }, [])
 
   async function handleGeocodeAll() {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    if (!apiKey) { setGeocodeResult('Error: NEXT_PUBLIC_GOOGLE_MAPS_KEY not set'); return }
+
     setGeocoding(true)
-    setGeocodeResult(null)
+    setGeocodeResult('Geocoding…')
+
     try {
-      const res = await fetch('/api/geocode-accounts', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed')
-      if (json.updated > 0) load()
-      if (json.failed > 0 && json.failures?.length) {
-        setGeocodeResult(`Geocoded ${json.updated}/${json.total} · ${json.failed} failed · ${json.failures[0]}`)
-      } else {
-        setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${!json.hasMapbox ? ' (no Mapbox token found)' : ''}`)
+      const sb = getSupabase()
+      const { data: ungeocoded, error } = await sb
+        .from('accounts')
+        .select('id, name, address')
+        .not('address', 'is', null)
+        .neq('address', '')
+        .or('lat.is.null,lng.is.null')
+
+      if (error) { setGeocodeResult(`Error: ${error.message}`); return }
+      if (!ungeocoded?.length) { setGeocodeResult('All accounts already geocoded'); return }
+
+      let updated = 0
+      let failed  = 0
+
+      for (const acct of ungeocoded) {
+        try {
+          const url  = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(acct.address)}&key=${apiKey}`
+          const res  = await fetch(url)
+          const json = await res.json()
+          if (json.status === 'OK' && json.results?.[0]?.geometry?.location) {
+            const { lat, lng } = json.results[0].geometry.location
+            await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
+            updated++
+            setGeocodeResult(`Geocoding… ${updated} done`)
+          } else {
+            failed++
+            console.warn('[geocode]', acct.name, json.status, json.error_message)
+          }
+        } catch (e: any) {
+          failed++
+          console.error('[geocode]', acct.name, e.message)
+        }
       }
+
+      if (updated > 0) load()
+      setGeocodeResult(
+        failed === 0
+          ? `Geocoded all ${updated} accounts`
+          : `Geocoded ${updated} of ${ungeocoded.length} · ${failed} failed (check browser console for details)`
+      )
     } catch (e: any) {
       setGeocodeResult(`Error: ${e.message}`)
     } finally {

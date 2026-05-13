@@ -452,12 +452,42 @@ export default function TerritoryPage() {
   const [geocodeMsg, setGeocodeMsg]       = useState<string | null>(null)
 
   async function handleGeocodeAll() {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    if (!apiKey) { setGeocodeMsg('Error: NEXT_PUBLIC_GOOGLE_MAPS_KEY not set'); return }
+
     setGeocoding(true); setGeocodeMsg(null)
     try {
-      const res  = await fetch('/api/geocode-accounts', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed')
-      setGeocodeMsg(json.total === 0 ? 'All accounts already geocoded' : `Geocoded ${json.updated} of ${json.total} accounts${json.failed > 0 ? ` (${json.failed} failed)` : ''}`)
+      const sb = getSupabase()
+      const { data: ungeocoded, error } = await sb
+        .from('accounts')
+        .select('id, name, address')
+        .not('address', 'is', null)
+        .neq('address', '')
+        .or('lat.is.null,lng.is.null')
+
+      if (error) { setGeocodeMsg(`Error: ${error.message}`); return }
+      if (!ungeocoded?.length) { setGeocodeMsg('All accounts already geocoded'); return }
+
+      let updated = 0; let failed = 0
+      for (const acct of ungeocoded) {
+        try {
+          const url  = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(acct.address)}&key=${apiKey}`
+          const res  = await fetch(url)
+          const json = await res.json()
+          if (json.status === 'OK' && json.results?.[0]?.geometry?.location) {
+            const { lat, lng } = json.results[0].geometry.location
+            await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
+            updated++
+            setGeocodeMsg(`Geocoding… ${updated} done`)
+          } else {
+            failed++
+            console.warn('[geocode]', acct.name, json.status, json.error_message)
+          }
+        } catch (e: any) { failed++; console.error('[geocode]', acct.name, e.message) }
+      }
+      setGeocodeMsg(failed === 0
+        ? `Geocoded all ${updated} accounts`
+        : `Geocoded ${updated}/${ungeocoded.length} · ${failed} failed`)
     } catch (e: any) {
       setGeocodeMsg(`Error: ${e.message}`)
     } finally {
