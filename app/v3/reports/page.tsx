@@ -10,6 +10,8 @@ import type { Grade } from '../lib/grading'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
+const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D']
+
 const PLAC_STATUS_LABEL: Record<string, string> = {
   committed: 'Committed', ordered: 'Ordered', on_shelf: 'On Shelf', reordering: 'Reordering',
 }
@@ -84,8 +86,8 @@ function Panel({ title, badge, children, action }: {
 function PlacementsPanel({ placements, clients, brandSlug }: { placements: any[]; clients: any[]; brandSlug: string }) {
   const [statusF, setStatusF] = useState('active')
 
-  const active = placements.filter(p => !p.lost_at)
-  const lost   = placements.filter(p => p.lost_at)
+  const active = useMemo(() => placements.filter(p => !p.lost_at), [placements])
+  const lost   = useMemo(() => placements.filter(p => p.lost_at),  [placements])
 
   const filtered = useMemo(() => {
     const base = statusF === 'lost' ? lost : statusF === 'active' ? active : active.filter(p => p.status === statusF)
@@ -95,7 +97,7 @@ function PlacementsPanel({ placements, clients, brandSlug }: { placements: any[]
       const pb = PLAC_STATUS_PRIORITY[b.status] ?? 0
       return pb - pa || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
-  }, [placements, statusF, brandSlug])
+  }, [active, lost, statusF])
 
   const statusOptions: { key: string; label: string; count: number }[] = [
     { key: 'active',     label: 'Active',     count: active.length },
@@ -654,8 +656,6 @@ export default function ReportsPage() {
     () => buildGradeMap(accounts as any[], orders as any[], allVisits as any[], placements as any[]),
     [accounts, orders, allVisits, placements],
   )
-
-  const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D']
 
   const gradeCounts = useMemo(() => {
     const counts: Record<Grade, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }

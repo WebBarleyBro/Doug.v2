@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, MapPin, Phone, Mail, ShoppingCart, User, Navigation,
   Clock, CalendarDays, Settings, Plus, X, Check, Pencil, Trash2,
-  AlertTriangle, Package, GlassWater, StickyNote, Globe, Instagram,
+  AlertTriangle, GlassWater, StickyNote, Globe, Instagram,
 } from 'lucide-react'
 import { v3, v3input, v3label, healthColor, healthLabel } from '../../lib/theme'
 import { useV3Clients, useAdvancePlacement } from '../../lib/query'
@@ -987,6 +987,7 @@ export default function AccountDetailPage() {
   const [showAllVisits, setShowAllVisits]     = useState(false)
   const [showAllOrders, setShowAllOrders]     = useState(false)
   const [briefNoteExpanded, setBriefNoteExpanded] = useState(false)
+  const [showGradeDetail, setShowGradeDetail] = useState(false)
 
   const deleteContact = useMutation({
     mutationFn: async (contactId: string) => {
@@ -1052,7 +1053,6 @@ export default function AccountDetailPage() {
     50000,
   )
   const gradeCfg = GRADE_CONFIG[gradeResult.grade]
-  const [showGradeDetail, setShowGradeDetail] = useState(false)
 
   const clientSlugs: string[] = (account.account_clients ?? []).map((ac: any) => ac.client_slug).filter(Boolean)
   const linkedClients = clients.filter(c => clientSlugs.includes(c.slug))
