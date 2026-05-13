@@ -493,7 +493,7 @@ export default function TerritoryPage() {
         .select('id, name, address')
         .not('address', 'is', null)
         .neq('address', '')
-        .or('lat.is.null,lng.is.null')
+        .or('lat.is.null,lng.is.null,lat.eq.0,lng.eq.0')
 
       if (error) { setGeocodeMsg(`Error: ${error.message}`); return }
       if (!ungeocoded?.length) { setGeocodeMsg('All accounts already geocoded'); return }

@@ -175,7 +175,7 @@ export default function AccountsPage() {
         .select('id, name, address')
         .not('address', 'is', null)
         .neq('address', '')
-        .or('lat.is.null,lng.is.null')
+        .or('lat.is.null,lng.is.null,lat.eq.0,lng.eq.0')
 
       if (error) { setGeocodeResult(`DB error: ${error.message}`); return }
       if (!ungeocoded?.length) { setGeocodeResult('All accounts already geocoded'); return }

@@ -202,7 +202,9 @@ export default function ClientPortalPage() {
           ...(d.visits    || []).map((v: any) => v.account_id),
           ...(d.placements || []).map((p: any) => p.account_id),
         ])
-        sb.from('accounts').select('id,name,account_type,lat,lng').not('lat','is',null)
+        sb.from('accounts').select('id,name,account_type,lat,lng')
+          .not('lat','is',null).not('lng','is',null)
+          .neq('lat',0).neq('lng',0)
           .then(({ data: accs }) => {
             setMapAccounts((accs || []).filter((a: any) => clientAccountIds.has(a.id)))
           })
@@ -238,7 +240,7 @@ export default function ClientPortalPage() {
     const coords: [number, number][] = []
     document.querySelectorAll('.portal-pin').forEach(el => el.remove())
     mapAccounts.forEach((acc: any) => {
-      if (!acc.lat || !acc.lng) return
+      if (acc.lat == null || acc.lng == null || acc.lat === 0 || acc.lng === 0) return
       coords.push([acc.lng, acc.lat])
       const isPlaced = placed.has(acc.id)
       const el = document.createElement('div')
