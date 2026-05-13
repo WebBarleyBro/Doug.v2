@@ -452,10 +452,37 @@ export default function TerritoryPage() {
   const [geocodeMsg, setGeocodeMsg]       = useState<string | null>(null)
 
   async function handleGeocodeAll() {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
-    if (!apiKey) { setGeocodeMsg('Error: NEXT_PUBLIC_GOOGLE_MAPS_KEY not set'); return }
+    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+    const googleKey   = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    if (!mapboxToken && !googleKey) { setGeocodeMsg('Error: no geocoding key set'); return }
 
     setGeocoding(true); setGeocodeMsg(null)
+
+    async function tryGeocode(address: string): Promise<{ lat: number; lng: number } | { error: string }> {
+      if (mapboxToken) {
+        try {
+          const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&country=US&limit=1&types=address,place`
+          const res  = await fetch(url)
+          const json = await res.json()
+          const feature = json.features?.[0]
+          if (feature?.center) { const [lng, lat] = feature.center; return { lat, lng } }
+        } catch {}
+      }
+      if (googleKey) {
+        try {
+          const url  = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}`
+          const res  = await fetch(url)
+          const json = await res.json()
+          if (json.status === 'OK' && json.results?.[0]?.geometry?.location) {
+            const { lat, lng } = json.results[0].geometry.location
+            return { lat, lng }
+          }
+          return { error: `Google: ${json.status}${json.error_message ? ` — ${json.error_message}` : ''}` }
+        } catch (e: any) { return { error: e.message } }
+      }
+      return { error: 'No results from Mapbox' }
+    }
+
     try {
       const sb = getSupabase()
       const { data: ungeocoded, error } = await sb
@@ -469,25 +496,24 @@ export default function TerritoryPage() {
       if (!ungeocoded?.length) { setGeocodeMsg('All accounts already geocoded'); return }
 
       let updated = 0; let failed = 0
+      const firstError: string[] = []
       for (const acct of ungeocoded) {
-        try {
-          const url  = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(acct.address)}&key=${apiKey}`
-          const res  = await fetch(url)
-          const json = await res.json()
-          if (json.status === 'OK' && json.results?.[0]?.geometry?.location) {
-            const { lat, lng } = json.results[0].geometry.location
-            await sb.from('accounts').update({ lat, lng }).eq('id', acct.id)
-            updated++
-            setGeocodeMsg(`Geocoding… ${updated} done`)
-          } else {
-            failed++
-            console.warn('[geocode]', acct.name, json.status, json.error_message)
-          }
-        } catch (e: any) { failed++; console.error('[geocode]', acct.name, e.message) }
+        const result = await tryGeocode(acct.address)
+        if ('error' in result) {
+          failed++
+          if (firstError.length < 2) firstError.push(`${acct.name}: ${result.error}`)
+          console.warn('[geocode]', acct.name, result.error)
+        } else {
+          await sb.from('accounts').update({ lat: result.lat, lng: result.lng }).eq('id', acct.id)
+          updated++
+          setGeocodeMsg(`Geocoding… ${updated} done`)
+        }
+        await new Promise(r => setTimeout(r, 150))
       }
+      const detail = firstError.length ? ` — ${firstError[0]}` : ''
       setGeocodeMsg(failed === 0
         ? `Geocoded all ${updated} accounts`
-        : `Geocoded ${updated}/${ungeocoded.length} · ${failed} failed`)
+        : `${updated}/${ungeocoded.length} geocoded${detail}`)
     } catch (e: any) {
       setGeocodeMsg(`Error: ${e.message}`)
     } finally {
