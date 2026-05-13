@@ -134,24 +134,23 @@ export default function AccountsPage() {
     setGeocodeResult('Geocoding…')
 
     async function tryGeocode(address: string): Promise<{ lat: number; lng: number; source: string } | { error: string }> {
-      // Try Mapbox first (public key, no referrer restriction)
       if (mapboxToken) {
-        try {
-          const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&country=US&limit=1&types=address,place`
-          const res  = await fetch(url)
-          const json = await res.json()
-          if (json.message) return { error: `Mapbox: ${json.message}` }
-          const feature = json.features?.[0]
-          if (feature?.center) {
-            const [lng, lat] = feature.center
-            return { lat, lng, source: 'mapbox' }
-          }
-          // Mapbox returned no results — try Google before giving up
-        } catch (e: any) {
-          // Mapbox failed, fall through to Google
+        // Try with broad types first (address + place + poi covers bars, restaurants, etc.)
+        for (const types of ['address,place,poi', '']) {
+          try {
+            const typeParam = types ? `&types=${types}` : ''
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&country=US&limit=1${typeParam}`
+            const res  = await fetch(url)
+            const json = await res.json()
+            if (json.message) return { error: `Mapbox: ${json.message}` }
+            const feature = json.features?.[0]
+            if (feature?.center) {
+              const [lng, lat] = feature.center
+              return { lat, lng, source: 'mapbox' }
+            }
+          } catch {}
         }
       }
-      // Fall back to Google Geocoding (browser sends Referer so key works)
       if (googleKey) {
         try {
           const url  = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${googleKey}`
@@ -163,10 +162,10 @@ export default function AccountsPage() {
           }
           return { error: `Google: ${json.status}${json.error_message ? ` — ${json.error_message}` : ''}` }
         } catch (e: any) {
-          return { error: `Google exception: ${e.message}` }
+          return { error: `Google: ${e.message}` }
         }
       }
-      return { error: 'No results from Mapbox' }
+      return { error: 'no results' }
     }
 
     try {
@@ -190,11 +189,18 @@ export default function AccountsPage() {
         if ('error' in result) {
           failed++
           if (firstError.length < 3) firstError.push(`${acct.name}: ${result.error}`)
-          console.warn('[geocode]', acct.name, result.error)
+          console.warn('[geocode] FAIL', acct.name, '|', acct.address, '→', result.error)
         } else {
-          await sb.from('accounts').update({ lat: result.lat, lng: result.lng }).eq('id', acct.id)
-          updated++
-          setGeocodeResult(`Geocoding… ${updated} done`)
+          const { error: updateErr } = await sb.from('accounts').update({ lat: result.lat, lng: result.lng }).eq('id', acct.id)
+          if (updateErr) {
+            failed++
+            if (firstError.length < 3) firstError.push(`${acct.name}: save failed — ${updateErr.message}`)
+            console.error('[geocode] SAVE FAIL', acct.name, updateErr.message)
+          } else {
+            updated++
+            setGeocodeResult(`Geocoding… ${updated} done`)
+            console.log('[geocode] OK', acct.name, result.source, result.lat, result.lng)
+          }
         }
         await new Promise(r => setTimeout(r, 150))
       }

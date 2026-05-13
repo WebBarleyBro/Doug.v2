@@ -460,13 +460,17 @@ export default function TerritoryPage() {
 
     async function tryGeocode(address: string): Promise<{ lat: number; lng: number } | { error: string }> {
       if (mapboxToken) {
-        try {
-          const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&country=US&limit=1&types=address,place`
-          const res  = await fetch(url)
-          const json = await res.json()
-          const feature = json.features?.[0]
-          if (feature?.center) { const [lng, lat] = feature.center; return { lat, lng } }
-        } catch {}
+        for (const types of ['address,place,poi', '']) {
+          try {
+            const typeParam = types ? `&types=${types}` : ''
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&country=US&limit=1${typeParam}`
+            const res  = await fetch(url)
+            const json = await res.json()
+            if (json.message) return { error: `Mapbox: ${json.message}` }
+            const feature = json.features?.[0]
+            if (feature?.center) { const [lng, lat] = feature.center; return { lat, lng } }
+          } catch {}
+        }
       }
       if (googleKey) {
         try {
@@ -480,7 +484,7 @@ export default function TerritoryPage() {
           return { error: `Google: ${json.status}${json.error_message ? ` — ${json.error_message}` : ''}` }
         } catch (e: any) { return { error: e.message } }
       }
-      return { error: 'No results from Mapbox' }
+      return { error: 'no results' }
     }
 
     try {
@@ -502,11 +506,18 @@ export default function TerritoryPage() {
         if ('error' in result) {
           failed++
           if (firstError.length < 2) firstError.push(`${acct.name}: ${result.error}`)
-          console.warn('[geocode]', acct.name, result.error)
+          console.warn('[geocode] FAIL', acct.name, '|', acct.address, '→', result.error)
         } else {
-          await sb.from('accounts').update({ lat: result.lat, lng: result.lng }).eq('id', acct.id)
-          updated++
-          setGeocodeMsg(`Geocoding… ${updated} done`)
+          const { error: updateErr } = await sb.from('accounts').update({ lat: result.lat, lng: result.lng }).eq('id', acct.id)
+          if (updateErr) {
+            failed++
+            if (firstError.length < 2) firstError.push(`${acct.name}: save failed — ${updateErr.message}`)
+            console.error('[geocode] SAVE FAIL', acct.name, updateErr.message)
+          } else {
+            updated++
+            setGeocodeMsg(`Geocoding… ${updated} done`)
+            console.log('[geocode] OK', acct.name, result.lat, result.lng)
+          }
         }
         await new Promise(r => setTimeout(r, 150))
       }

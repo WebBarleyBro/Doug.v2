@@ -83,7 +83,7 @@ export function useV3Accounts() {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('accounts')
-        .select('id, name, address, account_type, priority, visit_frequency_days, last_visited, notes, website, instagram, phone')
+        .select('id, name, address, account_type, priority, visit_frequency_days, last_visited, notes, website, instagram, phone, lat, lng')
         .order('name')
         .limit(2000)
       if (error) throw error
