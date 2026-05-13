@@ -5,6 +5,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const isPublic = pathname.startsWith('/login') ||
+    pathname.startsWith('/reset-password') ||
     pathname.startsWith('/portal') ||
     pathname.startsWith('/taste') ||
     pathname.startsWith('/_next') ||

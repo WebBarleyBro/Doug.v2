@@ -129,11 +129,12 @@ export default function AccountsPage() {
       const res = await fetch('/api/geocode-accounts', { method: 'POST' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
-      const failNote = json.failed > 0
-        ? ` (${json.failed} failed${json.failures?.length ? ': ' + json.failures[0].split(': ').slice(-1)[0] : ''})`
-        : ''
-      setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${failNote}`)
       if (json.updated > 0) load()
+      if (json.failed > 0 && json.failures?.length) {
+        setGeocodeResult(`Geocoded ${json.updated}/${json.total} · ${json.failed} failed · ${json.failures[0]}`)
+      } else {
+        setGeocodeResult(`Geocoded ${json.updated} of ${json.total} accounts${!json.hasMapbox ? ' (no Mapbox token found)' : ''}`)
+      }
     } catch (e: any) {
       setGeocodeResult(`Error: ${e.message}`)
     } finally {
@@ -228,7 +229,7 @@ export default function AccountsPage() {
             </button>
           </div>
           {geocodeResult && (
-            <div style={{ fontSize: 12, color: geocodeResult.startsWith('Error') ? '#e85540' : '#5a9ea0', marginTop: 6, gridColumn: '1/-1' }}>
+            <div style={{ fontSize: 12, color: geocodeResult.includes('failed') || geocodeResult.startsWith('Error') ? '#e85540' : '#5a9ea0', marginTop: 6, gridColumn: '1/-1', maxWidth: 600 }}>
               {geocodeResult}
             </div>
           )}
