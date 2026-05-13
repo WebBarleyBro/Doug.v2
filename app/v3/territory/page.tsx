@@ -1,6 +1,5 @@
 'use client'
 import { useState, useMemo, useRef, useEffect } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, ChevronUp, ChevronDown, Plus, X, Check, Map, List, LocateFixed } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -174,7 +173,7 @@ function getHealth(lastVisited: string | null, freq: number | null) {
 
 // ── Territory Map ─────────────────────────────────────────────────────────────
 
-function TerritoryMap({ accounts, orderMap, clients }: {
+function TerritoryMap({ accounts, orderMap: _orderMap, clients: _clients }: {
   accounts: any[]
   orderMap: Record<string, { lastDate: string; revenue: number }>
   clients: Client[]
@@ -185,7 +184,7 @@ function TerritoryMap({ accounts, orderMap, clients }: {
   const mapInstance  = useRef<any>(null)
   const markersRef   = useRef<any[]>([])
   const [mapReady, setMapReady] = useState(false)
-  const [mbLoaded, setMbLoaded] = useState(false)
+  const [_mbLoaded, setMbLoaded] = useState(false)
 
   const geocoded = useMemo(() => accounts.filter(a => a.lat != null && a.lng != null), [accounts])
 
@@ -334,7 +333,7 @@ function AccountRow({ account, orderData, lastVisit, brandSlugs, clients, maxRev
 }) {
   const router = useRouter()
   const { open } = useOpenLogVisit()
-  const health = getHealth(account.last_visited, account.visit_frequency_days)
+  const _health = getHealth(account.last_visited, account.visit_frequency_days)
   const hColor = healthColor(account.last_visited, account.visit_frequency_days)
   const rev    = orderData?.revenue ?? 0
   const now    = Date.now()

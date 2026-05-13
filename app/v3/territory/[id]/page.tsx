@@ -1417,7 +1417,6 @@ export default function AccountDetailPage() {
                   const sc = PLAC_STATUS_COLOR[p.status] ?? v3.text.muted
                   const cl = clients.find(c => c.slug === p.client_slug)
                   const canAdvance = !!PLAC_STATUS_NEXT[p.status]
-                  const ageDays = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000)
                   return (
                     <div key={p.id} style={{ padding: '9px 11px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, borderLeft: `2px solid ${sc}` }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

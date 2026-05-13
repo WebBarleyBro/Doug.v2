@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ChevronRight, CheckCircle2, AlertTriangle, CheckSquare, Square, Pencil, Check, X, Plus, Zap, MapPin } from 'lucide-react'
+import { ChevronRight, CheckCircle2, Pencil, Check, X, Plus, Zap, MapPin } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { v3 } from '../lib/theme'
 import {
@@ -16,7 +16,7 @@ import { useOpenLogVisit, useV3Toast } from '../lib/context'
 import { clientLogoUrl } from '../../lib/constants'
 import { clearFollowUp, dismissFollowUp, completeTask, createTask } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
-import { buildGradeMap } from '../lib/grading'
+import { buildGradeMap, gradeOrder } from '../lib/grading'
 import type { GradeResult } from '../lib/grading'
 import { GradeBadge } from '../components/GradeBadge'
 
@@ -386,7 +386,7 @@ function GoalWidget({ todayCount, mtdCount, daily, monthly, setDaily, setMonthly
     setEditing(false)
   }
 
-  const dayPct  = Math.min((todayCount / daily)   * 100, 100)
+  const _dayPct  = Math.min((todayCount / daily)   * 100, 100)
   const mtdPct  = Math.min((mtdCount   / monthly) * 100, 100)
   const dayDone = todayCount >= daily
 
@@ -682,14 +682,12 @@ export default function TodayPage() {
     [allAccounts, allOrders, allRecentVisits, allPlacements],
   )
 
-  const GRADE_ORDER: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 }
-
   const dedupedFollowUps = useMemo(() => {
     const seen = new Set<string>()
     const deduped = followUps.filter(f => { if (seen.has(f.account_id)) return false; seen.add(f.account_id); return true })
     return deduped.sort((a, b) => {
-      const ga = GRADE_ORDER[gradeMap[a.account_id]?.grade ?? 'D'] ?? 4
-      const gb = GRADE_ORDER[gradeMap[b.account_id]?.grade ?? 'D'] ?? 4
+      const ga = gradeOrder(gradeMap[a.account_id]?.grade ?? 'D')
+      const gb = gradeOrder(gradeMap[b.account_id]?.grade ?? 'D')
       if (ga !== gb) return ga - gb
       const da = Math.floor((Date.now() - new Date(a.visited_at).getTime()) / 86400000)
       const db = Math.floor((Date.now() - new Date(b.visited_at).getTime()) / 86400000)
@@ -699,8 +697,8 @@ export default function TodayPage() {
 
   const sortedOverdue = useMemo(() => {
     return [...(overdue as any[])].sort((a, b) => {
-      const ga = GRADE_ORDER[gradeMap[a.id]?.grade ?? 'D'] ?? 4
-      const gb = GRADE_ORDER[gradeMap[b.id]?.grade ?? 'D'] ?? 4
+      const ga = gradeOrder(gradeMap[a.id]?.grade ?? 'D')
+      const gb = gradeOrder(gradeMap[b.id]?.grade ?? 'D')
       if (ga !== gb) return ga - gb
       return (b.overdueDays ?? 0) - (a.overdueDays ?? 0)
     })
