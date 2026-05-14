@@ -1,4 +1,5 @@
 'use client'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, ChevronUp, ChevronDown, Plus, X, Check, Map, List, LocateFixed } from 'lucide-react'
@@ -238,20 +239,23 @@ function TerritoryMap({ accounts, orderMap: _orderMap, clients: _clients }: {
       const label  = healthLabel(a.last_visited, a.visit_frequency_days)
 
       const el = document.createElement('div')
-      Object.assign(el.style, {
-        width: '10px', height: '10px', borderRadius: '50%',
-        background: hColor, cursor: 'pointer',
-        boxShadow: `0 0 8px ${hColor}80`,
-        transition: 'transform 130ms, box-shadow 130ms',
-        border: `1.5px solid rgba(0,0,0,0.4)`,
-      })
+      el.style.cssText = `
+        width:16px;height:16px;border-radius:50%;
+        background:${hColor};
+        border:2.5px solid rgba(10,10,10,0.7);
+        box-shadow:0 0 0 2px ${hColor}50, 0 2px 10px rgba(0,0,0,0.5);
+        cursor:pointer;
+        transition:transform 200ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 200ms;
+        transform-origin:50% 50%;
+        will-change:transform;
+      `
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(2)'
-        el.style.boxShadow = `0 0 14px ${hColor}`
+        el.style.transform = 'scale(1.75)'
+        el.style.boxShadow = `0 0 0 3px ${hColor}60, 0 0 20px ${hColor}, 0 4px 14px rgba(0,0,0,0.6)`
       })
       el.addEventListener('mouseleave', () => {
         el.style.transform = 'scale(1)'
-        el.style.boxShadow = `0 0 8px ${hColor}80`
+        el.style.boxShadow = `0 0 0 2px ${hColor}50, 0 2px 10px rgba(0,0,0,0.5)`
       })
       el.addEventListener('click', e => {
         e.stopPropagation()
@@ -262,14 +266,17 @@ function TerritoryMap({ accounts, orderMap: _orderMap, clients: _clients }: {
         offset: 14, closeButton: false, closeOnClick: false,
         className: 'v3-map-popup',
       }).setHTML(`
-        <div style="font-family:-apple-system,system-ui,sans-serif;padding:8px 11px;min-width:140px">
-          <div style="font-size:13px;font-weight:700;color:#eee;margin-bottom:3px;line-height:1.2">${a.name}</div>
-          ${a.address ? `<div style="font-size:10px;color:#666;margin-bottom:5px">${a.address}</div>` : ''}
-          <div style="font-size:10px;font-weight:600;color:${hColor}">${label}</div>
+        <div style="background:#111113;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;min-width:170px;box-shadow:0 12px 40px rgba(0,0,0,0.7)">
+          <div style="font-size:13px;font-weight:700;color:#f2f2f2;margin-bottom:3px;line-height:1.3">${a.name}</div>
+          ${a.address ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-bottom:7px;line-height:1.4">${a.address}</div>` : '<div style="margin-bottom:7px"></div>'}
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:7px;height:7px;border-radius:50%;background:${hColor};box-shadow:0 0 6px ${hColor};flex-shrink:0"></div>
+            <span style="font-size:10px;font-weight:700;color:${hColor};text-transform:uppercase;letter-spacing:0.07em">${label}</span>
+          </div>
         </div>
       `)
 
-      const marker = new mb.Marker({ element: el })
+      const marker = new mb.Marker({ element: el, anchor: 'center' })
         .setLngLat([a.lng, a.lat])
         .setPopup(popup)
         .addTo(map)

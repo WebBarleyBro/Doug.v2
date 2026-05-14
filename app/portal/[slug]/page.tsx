@@ -1,4 +1,5 @@
 'use client'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getSupabase } from '../../lib/supabase'
@@ -100,7 +101,7 @@ function Drawer({ title, count, onClose, accent, children }: {
     <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
       <div style={{ position: 'absolute', inset: 0 }} onClick={onClose} />
       <div style={{
-        position: 'absolute', top: 0, right: 0, bottom: 0, width: 480,
+        position: 'absolute', top: 0, right: 0, bottom: 0, width: 'min(480px, 100vw)',
         background: 'rgba(10,8,5,0.98)', backdropFilter: 'blur(24px)',
         borderLeft: `1px solid rgba(255,255,255,0.08)`,
         boxShadow: '-8px 0 48px rgba(0,0,0,0.7)',
@@ -218,9 +219,10 @@ export default function ClientPortalPage() {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
     if (!token || !mapRef.current || mapInstanceRef.current) return
     import('mapbox-gl').then(({ default: mb }) => {
+      if (mapInstanceRef.current || !mapRef.current) return
       mb.accessToken = token
       const map = new mb.Map({
-        container: mapRef.current!,
+        container: mapRef.current,
         style: 'mapbox://styles/mapbox/dark-v11',
         center: [-104.9903, 39.7392],
         zoom: 8,
@@ -230,44 +232,101 @@ export default function ClientPortalPage() {
       mapInstanceRef.current = map
       map.on('load', () => setMapReady(true))
     }).catch(() => {})
-    return () => { mapInstanceRef.current?.remove(); mapInstanceRef.current = null }
+    return () => {
+      setMapReady(false)
+      mapInstanceRef.current?.remove()
+      mapInstanceRef.current = null
+    }
   }, [data])
 
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !mapAccounts.length || !data) return
-    const accent  = data.client?.color || '#c4a46e'
-    const placed  = new Set((data.placements || []).map((p: any) => p.account_id))
+    const map    = mapInstanceRef.current
+    const accent = data.client?.color || '#c4a46e'
+    const placed = new Set((data.placements || []).map((p: any) => p.account_id))
     const coords: [number, number][] = []
+
     document.querySelectorAll('.portal-pin').forEach(el => el.remove())
-    mapAccounts.forEach((acc: any) => {
-      if (acc.lat == null || acc.lng == null || acc.lat === 0 || acc.lng === 0) return
-      coords.push([acc.lng, acc.lat])
-      const isPlaced = placed.has(acc.id)
-      const el = document.createElement('div')
-      el.className = 'portal-pin'
-      el.style.cssText = `
-        width:${isPlaced?'14px':'9px'};height:${isPlaced?'14px':'9px'};
-        border-radius:50%;cursor:pointer;
-        background:${isPlaced ? accent : 'rgba(255,255,255,0.5)'};
-        box-shadow:${isPlaced ? `0 0 18px ${accent}90,0 0 6px ${accent}` : 'none'};
-        border:2px solid ${isPlaced ? accent+'cc' : 'rgba(255,255,255,0.3)'};
-        transition:transform 150ms;
-      `
-      el.onmouseenter = () => { el.style.transform = 'scale(1.5)' }
-      el.onmouseleave = () => { el.style.transform = 'scale(1)' }
-      import('mapbox-gl').then(({ default: mb }) => {
-        new mb.Marker({ element: el }).setLngLat([acc.lng, acc.lat])
+
+    import('mapbox-gl').then(({ default: mb }) => {
+      if (mapInstanceRef.current !== map) return  // map was replaced, bail
+      mapAccounts.forEach((acc: any) => {
+        if (acc.lat == null || acc.lng == null || acc.lat === 0 || acc.lng === 0) return
+        coords.push([acc.lng, acc.lat])
+        const isPlaced = placed.has(acc.id)
+
+        // Wrapper: Mapbox positions this element via transform — don't animate it
+        const el = document.createElement('div')
+        el.className = 'portal-pin'
+        el.style.cssText = `width:${isPlaced ? 26 : 18}px;height:${isPlaced ? 26 : 18}px;cursor:pointer;display:flex;align-items:center;justify-content:center;`
+
+        // Inner dot: we animate this — Mapbox never touches it
+        const dot = document.createElement('div')
+
+        if (isPlaced) {
+          dot.style.cssText = `
+            width:18px;height:18px;border-radius:50%;
+            background:${accent};
+            border:2.5px solid rgba(10,10,10,0.6);
+            box-shadow:0 0 0 3px ${accent}45, 0 0 18px ${accent}80, 0 2px 10px rgba(0,0,0,0.5);
+            transition:transform 200ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 200ms;
+            transform-origin:50% 50%;
+            will-change:transform;
+          `
+          el.onmouseenter = () => {
+            dot.style.transform = 'scale(1.6)'
+            dot.style.boxShadow = `0 0 0 4px ${accent}60, 0 0 28px ${accent}, 0 4px 16px rgba(0,0,0,0.6)`
+          }
+          el.onmouseleave = () => {
+            dot.style.transform = 'scale(1)'
+            dot.style.boxShadow = `0 0 0 3px ${accent}45, 0 0 18px ${accent}80, 0 2px 10px rgba(0,0,0,0.5)`
+          }
+        } else {
+          dot.style.cssText = `
+            width:11px;height:11px;border-radius:50%;
+            background:rgba(255,255,255,0.55);
+            border:2px solid rgba(255,255,255,0.25);
+            box-shadow:0 0 0 1px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.4);
+            transition:transform 200ms cubic-bezier(0.34,1.56,0.64,1),background 150ms,box-shadow 150ms;
+            transform-origin:50% 50%;
+            will-change:transform;
+          `
+          el.onmouseenter = () => {
+            dot.style.transform = 'scale(1.8)'
+            dot.style.background = 'rgba(255,255,255,0.9)'
+            dot.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.3), 0 0 14px rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.5)'
+          }
+          el.onmouseleave = () => {
+            dot.style.transform = 'scale(1)'
+            dot.style.background = 'rgba(255,255,255,0.55)'
+            dot.style.boxShadow = '0 0 0 1px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.4)'
+          }
+        }
+        el.appendChild(dot)
+
+        const typeLabel = acc.account_type === 'on_premise' ? 'On-premise' : 'Off-premise'
+        new mb.Marker({ element: el, anchor: 'center' })
+          .setLngLat([acc.lng, acc.lat])
           .setPopup(new mb.Popup({ offset: 14, closeButton: false })
-            .setHTML(`<div style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:700;color:#fff">${acc.name}</div><div style="font-size:10px;color:#888;margin-top:3px">${isPlaced ? '● Active placement' : acc.account_type === 'on_premise' ? 'On-premise' : 'Off-premise'}</div>`))
-          .addTo(mapInstanceRef.current)
+            .setHTML(`
+              <div style="background:#111113;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;min-width:155px;box-shadow:0 12px 40px rgba(0,0,0,0.7)">
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#f2f2f2;margin-bottom:5px;line-height:1.3">${acc.name}</div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:7px;height:7px;border-radius:50%;background:${isPlaced ? accent : 'rgba(255,255,255,0.6)'};${isPlaced ? `box-shadow:0 0 6px ${accent};` : ''}flex-shrink:0"></div>
+                  <span style="font-size:10px;font-weight:${isPlaced ? '700' : '500'};color:${isPlaced ? accent : 'rgba(255,255,255,0.45)'}">${isPlaced ? 'Active placement' : typeLabel}</span>
+                </div>
+              </div>
+            `))
+          .addTo(map)
       })
+      if (coords.length > 0) {
+        const bounds = coords.reduce(
+          (b, c) => b.extend(c),
+          new mb.LngLatBounds(coords[0], coords[0]),
+        )
+        map.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 1000 })
+      }
     })
-    if (coords.length > 1) {
-      import('mapbox-gl').then(({ default: mb }) => {
-        const bounds = coords.reduce((b, c) => b.extend(c), new mb.LngLatBounds(coords[0], coords[0]))
-        mapInstanceRef.current.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 1000 })
-      })
-    }
   }, [mapReady, mapAccounts, data])
 
   // ── Google Places ────────────────────────────────────────────────────────────
@@ -506,7 +565,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: '100vh', overflow: 'hidden', background: '#070502', color: '#f0f0f0', fontFamily: F, position: 'relative' }}>
+    <div className="portal-root" style={{ height: '100vh', overflow: 'hidden', background: '#070502', color: '#f0f0f0', fontFamily: F, position: 'relative' }}>
 
       {/* Global styles */}
       <style>{`
@@ -523,30 +582,44 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         .quick-link:hover { background: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.12) !important; }
         .mapboxgl-popup-content { background: rgba(10,8,5,0.97) !important; backdrop-filter: blur(12px) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; padding: 10px 14px !important; color: #fff !important; box-shadow: 0 4px 24px rgba(0,0,0,0.7) !important; }
         .mapboxgl-popup-tip { border-top-color: rgba(10,8,5,0.97) !important; }
-        .portal-pin { transition: transform 150ms; }
         ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
         select { color-scheme: dark; } select option { background: #0d0b08 !important; color: #f0f0f0 !important; }
+        @media (max-width: 768px) {
+          .portal-root { height: auto !important; overflow: auto !important; padding-top: 54px; }
+          .portal-header { position: fixed !important; top: 0 !important; height: 54px !important; padding: 0 14px !important; z-index: 50 !important; }
+          .portal-preview-banner { display: none !important; }
+          .portal-map { position: relative !important; height: 240px !important; z-index: 1 !important; }
+          .portal-overlay { display: none !important; }
+          .portal-left { position: static !important; width: 100% !important; left: auto !important; top: auto !important; padding: 10px !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; z-index: auto !important; }
+          .portal-pipeline { margin-top: 0 !important; grid-column: 1 / -1; }
+          .portal-right { position: static !important; width: 100% !important; right: auto !important; top: auto !important; bottom: auto !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; height: auto !important; overflow: visible !important; }
+          .portal-right-scroll { flex: none !important; height: auto !important; overflow: visible !important; max-height: none !important; }
+          .portal-drawer { width: 100vw !important; max-width: 100vw !important; }
+          .portal-period-btns { display: none !important; }
+          .portal-report-btn { display: none !important; }
+          .kpi-hover:hover { transform: none !important; }
+        }
       `}</style>
 
       {/* MAP — full screen background */}
-      {hasMap && <div ref={mapRef} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />}
+      {hasMap && <div ref={mapRef} className="portal-map" style={{ position: 'absolute', inset: 0, zIndex: 0 }} />}
 
       {/* Dark overlay when no map */}
       {!hasMap && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #070502, #060c18)', zIndex: 0 }} />}
 
       {/* Gradient overlay over map for readability */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', background: `radial-gradient(ellipse 60% 80% at 30% 50%, transparent 20%, rgba(4,8,18,0.55) 100%), linear-gradient(180deg, rgba(4,8,18,0.7) 0%, rgba(4,8,18,0.2) 15%, rgba(4,8,18,0.2) 80%, rgba(4,8,18,0.7) 100%)` }} />
+      <div className="portal-overlay" style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', background: `radial-gradient(ellipse 60% 80% at 30% 50%, transparent 20%, rgba(4,8,18,0.55) 100%), linear-gradient(180deg, rgba(4,8,18,0.7) 0%, rgba(4,8,18,0.2) 15%, rgba(4,8,18,0.2) 80%, rgba(4,8,18,0.7) 100%)` }} />
 
       {/* ── STAFF PREVIEW BANNER ─────────────────────────────────────────── */}
       {isPreview && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, background: 'rgba(4,8,18,0.96)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${accent}30`, color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 500, padding: '5px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', letterSpacing: '0.02em' }}>
+        <div className="portal-preview-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, background: 'rgba(4,8,18,0.96)', backdropFilter: 'blur(8px)', borderBottom: `1px solid ${accent}30`, color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 500, padding: '5px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', letterSpacing: '0.02em' }}>
           <span>Staff preview — this is exactly what {client?.name} sees</span>
           <a href={`/v3/brands/${slug}`} style={{ color: accent, textDecoration: 'none', fontSize: 11, fontWeight: 600 }}>← Back to CRM</a>
         </div>
       )}
 
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-      <Glass style={{
+      <Glass className="portal-header" style={{
         position: 'absolute', top: isPreview ? 26 : 0, left: 0, right: 0, zIndex: 10,
         height: 54, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', borderTop: 'none', borderLeft: 'none', borderRight: 'none',
@@ -571,7 +644,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         {/* Period + actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Period selector */}
-          <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '2px', border: `1px solid rgba(255,255,255,0.06)` }}>
+          <div className="portal-period-btns" style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '2px', border: `1px solid rgba(255,255,255,0.06)` }}>
             {([['7d','7D'],['30d','30D'],['90d','90D'],['all','All']] as const).map(([k,lbl]) => (
               <button key={k} onClick={() => { setDateRange(k); setFeedLimit(20) }} style={{
                 padding: '5px 11px', borderRadius: 5, fontSize: 11, fontWeight: dateRange===k?700:400,
@@ -581,7 +654,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
               }}>{lbl}</button>
             ))}
           </div>
-          <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 11, fontFamily: F }}>
+          <button className="portal-report-btn" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 11, fontFamily: F }}>
             <FileDown size={11} /> Report
           </button>
           <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ background: 'none', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: '5px 8px', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
@@ -591,7 +664,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
       </Glass>
 
       {/* ── LEFT PANEL: KPIs ────────────────────────────────────────────────── */}
-      <div style={{ position: 'absolute', top: (isPreview ? 26 : 0) + 64, left: 16, zIndex: 10, width: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="portal-left" style={{ position: 'absolute', top: (isPreview ? 26 : 0) + 64, left: 16, zIndex: 10, width: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
 
         {/* KPI cards */}
         {kpis.map(({ label, value, color }) => (
@@ -605,7 +678,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
 
         {/* Pipeline mini */}
         {placBreakdown.length > 0 && (
-          <Glass style={{ padding: '12px 16px', borderRadius: 10, marginTop: 4 }}>
+          <Glass className="portal-pipeline" style={{ padding: '12px 16px', borderRadius: 10, marginTop: 4 }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 10 }}>Pipeline</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {placBreakdown.map(({ s, l, c, n }) => {
@@ -631,7 +704,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
       </div>
 
       {/* ── RIGHT PANEL: Activity feed (floating) ────────────────────────────── */}
-      <Glass style={{
+      <Glass className="portal-right" style={{
         position: 'absolute',
         top: (isPreview ? 26 : 0) + 68,
         right: 14,
@@ -685,7 +758,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
         </div>
 
         {/* Visit rows — scrollable */}
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <div className="portal-right-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {filteredVisits.length === 0 ? (
             <div style={{ padding: '28px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.22)', fontSize: 12 }}>No visits in this period.</div>
           ) : (
