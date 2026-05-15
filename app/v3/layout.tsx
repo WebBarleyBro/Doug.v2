@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
+import type { ErrorInfo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { CalendarDays, MapPin, TrendingUp, Briefcase, BarChart2, LogOut, Plus, Home, Users, BookUser, Route, ClipboardList, Megaphone } from 'lucide-react'
@@ -8,6 +9,47 @@ import { v3 } from './lib/theme'
 import LogVisitModal from './components/LogVisitModal'
 import { ToastCtx, LogVisitCtx, WinMomentCtx } from './lib/context'
 import type { Toast, WinMoment } from './lib/context'
+
+// ── Error boundary — catches page render crashes, shows a recovery screen ─────
+class V3ErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[V3 ErrorBoundary]', error, info.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      const msg = (this.state.error as Error).message
+      return (
+        <div style={{
+          minHeight: '100vh', background: v3.bg.page, display: 'flex',
+          alignItems: 'center', justifyContent: 'center', padding: 32,
+        }}>
+          <div style={{ maxWidth: 480, textAlign: 'center' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: v3.status.danger, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 12 }}>
+              Something went wrong
+            </div>
+            <div style={{ fontSize: '13px', color: v3.text.secondary, marginBottom: 8, fontFamily: 'monospace', background: v3.bg.card, padding: '10px 14px', borderRadius: v3.radius.md, textAlign: 'left', wordBreak: 'break-word' }}>
+              {msg}
+            </div>
+            <div style={{ marginTop: 20, display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={() => this.setState({ error: null })} style={{ padding: '9px 18px', background: v3.bg.sheet, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.secondary, fontSize: '13px', cursor: 'pointer' }}>
+                Try again
+              </button>
+              <a href="/v3/today" style={{ padding: '9px 18px', background: v3.amber, borderRadius: v3.radius.md, color: '#000', fontSize: '13px', fontWeight: 700, textDecoration: 'none' }}>
+                Go to Today
+              </a>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function WinMomentOverlay({ data, onDone }: { data: WinMoment | null; onDone: () => void }) {
   useEffect(() => {
@@ -425,8 +467,10 @@ function V3Shell({ children }: { children: React.ReactNode }) {
 
 export default function V3Layout({ children }: { children: React.ReactNode }) {
   return (
-    <V3QueryProvider>
-      <V3Shell>{children}</V3Shell>
-    </V3QueryProvider>
+    <V3ErrorBoundary>
+      <V3QueryProvider>
+        <V3Shell>{children}</V3Shell>
+      </V3QueryProvider>
+    </V3ErrorBoundary>
   )
 }

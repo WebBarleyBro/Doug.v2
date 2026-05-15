@@ -8,7 +8,7 @@ import { useOpenLogVisit } from '../lib/context'
 import { getSupabase } from '../../lib/supabase'
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
 }
 
 function addDays(dateStr: string, n: number) {

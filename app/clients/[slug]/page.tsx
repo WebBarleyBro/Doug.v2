@@ -66,7 +66,7 @@ export default function ClientDetailPage() {
   const [editErr, setEditErr] = useState('')
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any | null>(null)
-  const [productForm, setProductForm] = useState({ name: '', sku: '', category: '', active: true })
+  const [productForm, setProductForm] = useState({ name: '', sku: '', category: '', price: '', bottle_price: '', case_count: '', active: true })
   const [productSaving, setProductSaving] = useState(false)
   const [deleteProductTarget, setDeleteProductTarget] = useState<any>(null)
   const [userRole, setUserRole] = useState<string>('owner')
@@ -473,7 +473,7 @@ export default function ClientDetailPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <p style={{ fontSize: '13px', color: t.text.muted }}>Products appear in the visit log tasting section and placement forms.</p>
-              <button onClick={() => { setProductForm({ name: '', sku: '', category: '', active: true }); setEditingProduct(null); setShowAddProduct(true) }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: '12px' }}>
+              <button onClick={() => { setProductForm({ name: '', sku: '', category: '', price: '', bottle_price: '', case_count: '', active: true }); setEditingProduct(null); setShowAddProduct(true) }} style={{ ...btnPrimary, padding: '8px 14px', fontSize: '12px' }}>
                 <Plus size={13} /> Add Product
               </button>
             </div>
@@ -488,15 +488,18 @@ export default function ClientDetailPage() {
                   <div key={p.id} style={{ ...card, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '14px', fontWeight: '600', color: t.text.primary }}>{p.name}</div>
-                      <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px' }}>
+                      <div style={{ fontSize: '12px', color: t.text.muted, marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                         {p.category && <span>{p.category}</span>}
-                        {p.sku && <span style={{ marginLeft: p.category ? '8px' : 0 }}>SKU: {p.sku}</span>}
+                        {p.sku && <span>SKU: {p.sku}</span>}
+                        {p.price != null && <span>${p.price.toFixed(2)}/case</span>}
+                        {p.bottle_price != null && <span>${p.bottle_price.toFixed(2)}/btl</span>}
+                        {p.case_count != null && <span>{p.case_count} btl/case</span>}
                       </div>
                     </div>
                     <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '8px', backgroundColor: p.active ? 'rgba(61,186,120,0.12)' : 'rgba(107,105,102,0.12)', color: p.active ? '#3dba78' : '#6b6966', fontWeight: '700' }}>
                       {p.active ? 'Active' : 'Inactive'}
                     </span>
-                    <button onClick={() => { setEditingProduct(p); setProductForm({ name: p.name, sku: p.sku || '', category: p.category || '', active: p.active }); setShowAddProduct(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '4px', display: 'flex' }}>
+                    <button onClick={() => { setEditingProduct(p); setProductForm({ name: p.name, sku: p.sku || '', category: p.category || '', price: p.price != null ? String(p.price) : '', bottle_price: p.bottle_price != null ? String(p.bottle_price) : '', case_count: p.case_count != null ? String(p.case_count) : '', active: p.active }); setShowAddProduct(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.text.muted, padding: '4px', display: 'flex' }}>
                       <Pencil size={14} />
                     </button>
                     <button onClick={() => setDeleteProductTarget(p)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e05252', padding: '4px', display: 'flex' }}>
@@ -531,6 +534,20 @@ export default function ClientDetailPage() {
                         <input value={productForm.category} onChange={e => setProductForm(f => ({ ...f, category: e.target.value }))} placeholder="Whiskey, Vodka..." style={{ ...inputStyle, marginTop: '4px' }} />
                       </div>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '10px' }}>
+                      <div>
+                        <label style={labelStyle}>Case Price ($)</label>
+                        <input type="number" min="0" step="0.01" value={productForm.price} onChange={e => setProductForm(f => ({ ...f, price: e.target.value }))} placeholder="59.88" style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Bottle Price ($)</label>
+                        <input type="number" min="0" step="0.01" value={productForm.bottle_price} onChange={e => setProductForm(f => ({ ...f, bottle_price: e.target.value }))} placeholder="4.99" style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Btl / Case</label>
+                        <input type="number" min="1" step="1" value={productForm.case_count} onChange={e => setProductForm(f => ({ ...f, case_count: e.target.value }))} placeholder="12" style={{ ...inputStyle, marginTop: '4px' }} />
+                      </div>
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <input type="checkbox" id="prod-active" checked={productForm.active} onChange={e => setProductForm(f => ({ ...f, active: e.target.checked }))} />
                       <label htmlFor="prod-active" style={{ fontSize: '13px', color: t.text.secondary, cursor: 'pointer' }}>Active (shows in visit log)</label>
@@ -542,11 +559,16 @@ export default function ClientDetailPage() {
                       if (!productForm.name.trim()) return
                       setProductSaving(true)
                       try {
+                        const priceFields = {
+                          price:        productForm.price       ? parseFloat(productForm.price)       : undefined,
+                          bottle_price: productForm.bottle_price ? parseFloat(productForm.bottle_price) : undefined,
+                          case_count:   productForm.case_count   ? parseInt(productForm.case_count)    : undefined,
+                        }
                         if (editingProduct) {
-                          await updateProduct(editingProduct.id, { name: productForm.name.trim(), sku: productForm.sku || undefined, category: productForm.category || undefined, active: productForm.active })
-                          setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...productForm, name: productForm.name.trim() } : p))
+                          await updateProduct(editingProduct.id, { name: productForm.name.trim(), sku: productForm.sku || undefined, category: productForm.category || undefined, active: productForm.active, ...priceFields })
+                          setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, name: productForm.name.trim(), sku: productForm.sku || undefined, category: productForm.category || undefined, active: productForm.active, ...priceFields } : p))
                         } else {
-                          const created = await createProduct({ client_slug: slug, name: productForm.name.trim(), sku: productForm.sku || undefined, category: productForm.category || undefined, active: productForm.active })
+                          const created = await createProduct({ client_slug: slug, name: productForm.name.trim(), sku: productForm.sku || undefined, category: productForm.category || undefined, active: productForm.active, ...priceFields })
                           setProducts(prev => [...prev, created])
                         }
                         setShowAddProduct(false)

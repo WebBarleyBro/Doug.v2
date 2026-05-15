@@ -427,16 +427,35 @@ export default function ClientPortalPage() {
     const nonDraft = ords.filter((o: any) => o.status !== 'draft')
     const dateStr  = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const name     = (cl?.name || slug).replace(/</g, '&lt;')
+    const rptVisitedIds = new Set(vs.map((v: any) => v.account_id).filter(Boolean))
+    const rptOrderedIds = new Set(ords.filter((o: any) => ['sent','fulfilled'].includes(o.status)).map((o: any) => o.account_id).filter(Boolean))
+    const rptOnShelfIds = new Set(pls.filter((p: any) => !p.lost_at && ['on_shelf','reordering'].includes(p.status)).map((p: any) => p.account_id).filter(Boolean))
+    const rptBuyingIds  = new Set([...rptOrderedIds, ...rptOnShelfIds])
+    const rptReach      = rptVisitedIds.size > 0 ? Math.round((rptBuyingIds.size / rptVisitedIds.size) * 100) : null
+    const rpt90str      = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+    const rpt90OrdAccts = new Set(ords.filter((o: any) => ['sent','fulfilled'].includes(o.status) && String(o.sent_at||o.created_at||'').slice(0,10) >= rpt90str).map((o: any) => o.account_id).filter(Boolean))
+    const rptRetaining  = [...rptOnShelfIds].filter(id => rpt90OrdAccts.has(id)).length
+    const rptRetention  = rptOnShelfIds.size > 0 ? Math.round((rptRetaining / rptOnShelfIds.size) * 100) : null
+    const rpt90Ords     = ords.filter((o: any) => ['sent','fulfilled'].includes(o.status) && String(o.sent_at||o.created_at||'').slice(0,10) >= rpt90str)
+    const rptOrdAccts   = new Set(rpt90Ords.map((o: any) => o.account_id).filter(Boolean)).size
+    const rptVelocity   = rptOrdAccts > 0 ? (rpt90Ords.length / rptOrdAccts / 3).toFixed(1) : null
+    const rptWins       = vs.filter((v: any) => WIN.has(v.status))
+    const rptWinRate    = vs.length > 0 ? Math.round((rptWins.length / vs.length) * 100) : 0
+
     const html = `<!DOCTYPE html><html><head><title>${name} — Field Report</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-body{font-family:'Space Grotesk',sans-serif;color:#111;max-width:860px;margin:0 auto;padding:40px;background:#fff}
+body{font-family:'Space Grotesk',sans-serif;color:#111;max-width:900px;margin:0 auto;padding:40px;background:#fff}
 .brand{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:800;letter-spacing:-0.04em;margin:0 0 4px}
 .meta{color:#888;font-size:13px;margin-bottom:28px}
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.perf-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px}
 .kpi{border:1px solid #eee;border-radius:8px;padding:14px 16px}
 .kpi-n{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:800;color:#111;letter-spacing:-0.04em;line-height:1}
 .kpi-l{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px}
+.kpi-sub{font-size:10px;color:#bbb;margin-top:4px}
+.bar-wrap{background:#f0f0f0;border-radius:2px;height:3px;margin-top:8px}
+.bar-fill{height:3px;border-radius:2px;background:#111}
 h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#888;border-bottom:1px solid #eee;padding-bottom:8px;margin:28px 0 12px}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #f0f0f0;font-size:12px}
 th{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#aaa}
@@ -449,7 +468,13 @@ th{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#aaa}
   <div class="kpi"><div class="kpi-l">Visits This Month</div><div class="kpi-n">${mVisits}</div></div>
   <div class="kpi"><div class="kpi-l">Active Placements</div><div class="kpi-n">${actPlac.length}</div></div>
   <div class="kpi"><div class="kpi-l">${cl?.order_type === 'distributor' ? 'Inquiries' : 'Orders'}</div><div class="kpi-n">${nonDraft.length}</div></div>
-  <div class="kpi"><div class="kpi-l">Wins (90d)</div><div class="kpi-n">${vs.filter((v: any) => WIN.has(v.status)).length}</div></div>
+  <div class="kpi"><div class="kpi-l">Field Wins (90d)</div><div class="kpi-n">${rptWins.length}</div></div>
+</div>
+<div class="perf-row">
+  ${rptReach !== null ? `<div class="kpi"><div class="kpi-l">Reach</div><div class="kpi-n">${rptReach}%</div><div class="kpi-sub">${rptBuyingIds.size} of ${rptVisitedIds.size} accounts buying</div><div class="bar-wrap"><div class="bar-fill" style="width:${rptReach}%"></div></div></div>` : ''}
+  ${rptRetention !== null ? `<div class="kpi"><div class="kpi-l">Retention</div><div class="kpi-n">${rptRetention}%</div><div class="kpi-sub">${rptRetaining} of ${rptOnShelfIds.size} placed accounts reordering (90d)</div><div class="bar-wrap"><div class="bar-fill" style="width:${rptRetention}%"></div></div></div>` : ''}
+  <div class="kpi"><div class="kpi-l">Win Rate</div><div class="kpi-n">${rptWinRate}%</div><div class="kpi-sub">${rptWins.length} wins from ${vs.length} total visits</div><div class="bar-wrap"><div class="bar-fill" style="width:${rptWinRate}%"></div></div></div>
+  ${rptVelocity !== null ? `<div class="kpi"><div class="kpi-l">Velocity</div><div class="kpi-n">${rptVelocity}×</div><div class="kpi-sub">orders per buying account per month (90d)</div></div>` : ''}
 </div>
 ${vs.length > 0 ? `<h2>Field Activity</h2><table><thead><tr><th>Account</th><th>Outcome</th><th>Date</th><th>Notes</th></tr></thead><tbody>${vs.slice(0,30).map((v: any) => `<tr><td>${v.accounts?.name||''}</td><td>${v.status}</td><td>${formatShortDateMT(v.visited_at)}</td><td>${v.notes||''}</td></tr>`).join('')}</tbody></table>` : ''}
 ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account</th><th>Product</th><th>Status</th></tr></thead><tbody>${actPlac.map((p: any) => `<tr><td>${p.accounts?.name||''}</td><td>${p.product_name}</td><td>${p.status}</td></tr>`).join('')}</tbody></table>` : ''}
@@ -490,7 +515,7 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
   const drDays   = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : null
   const drStart  = drDays ? new Date(Date.now() - drDays * 86400000).toISOString().slice(0, 10) : null
   const drVisits = drStart ? visits.filter((v: any) => String(v.visited_at).slice(0,10) >= drStart) : visits
-  const drOrders = (drStart ? orders.filter((o: any) => String(o.created_at||'').slice(0,10) >= drStart) : orders).filter((o: any) => o.status !== 'draft')
+  const drOrders = (drStart ? orders.filter((o: any) => String(o.sent_at || o.created_at || '').slice(0,10) >= drStart) : orders).filter((o: any) => o.status !== 'draft')
 
   const activePlac     = placements.filter((p: any) => !p.lost_at)
   const onShelf        = activePlac.filter((p: any) => p.status === 'on_shelf' || p.status === 'reordering')
@@ -537,6 +562,39 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
   const maxOutcome = Math.max(1, ...outcomeCounts.map(o => o.n))
 
   const recentWins = drVisits.filter((v: any) => WIN.has(v.status)).slice(0, 12)
+
+  // ── Reach, Retention, Velocity ───────────────────────────────────────────
+  const visitedAcctIds   = new Set(visits.map((v: any) => v.account_id).filter(Boolean))
+  const orderedAcctIds   = new Set(
+    orders.filter((o: any) => ['sent', 'fulfilled'].includes(o.status))
+      .map((o: any) => o.account_id).filter(Boolean)
+  )
+  const onShelfAcctIds   = new Set(
+    placements.filter((p: any) => !p.lost_at && ['on_shelf', 'reordering'].includes(p.status))
+      .map((p: any) => p.account_id).filter(Boolean)
+  )
+  const buyingAcctIds    = new Set([...orderedAcctIds, ...onShelfAcctIds])
+  const reach = visitedAcctIds.size > 0
+    ? Math.round((buyingAcctIds.size / visitedAcctIds.size) * 100) : null
+
+  const since90str       = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+  const recent90OrdAccts = new Set(
+    orders.filter((o: any) =>
+      ['sent', 'fulfilled'].includes(o.status) &&
+      String(o.sent_at || o.created_at || '').slice(0, 10) >= since90str
+    ).map((o: any) => o.account_id).filter(Boolean)
+  )
+  const retainingCount   = [...onShelfAcctIds].filter(id => recent90OrdAccts.has(id)).length
+  const retention = onShelfAcctIds.size > 0
+    ? Math.round((retainingCount / onShelfAcctIds.size) * 100) : null
+
+  const recent90Orders    = orders.filter((o: any) =>
+    ['sent', 'fulfilled'].includes(o.status) &&
+    String(o.sent_at || o.created_at || '').slice(0, 10) >= since90str
+  )
+  const orderingAcctCount = new Set(recent90Orders.map((o: any) => o.account_id).filter(Boolean)).size
+  const velocity = orderingAcctCount > 0
+    ? (recent90Orders.length / orderingAcctCount / 3).toFixed(1) : null
 
   // 12-week wins trend (for expanded chart)
   const winChartData = Array.from({ length: 12 }, (_, i) => {
@@ -675,6 +733,52 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
             </div>
           </Glass>
         ))}
+
+        {/* Reach + Retention + Velocity */}
+        {(reach !== null || retention !== null) && (
+          <Glass style={{ padding: '12px 16px', borderRadius: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 10 }}>Performance</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {reach !== null && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.60)', fontWeight: 700 }}>Reach</div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>{buyingAcctIds.size} of {visitedAcctIds.size} accounts buying</div>
+                    </div>
+                    <span style={{ fontSize: 22, fontWeight: 900, color: reach >= 40 ? '#5a9ea0' : reach >= 20 ? '#a08440' : 'rgba(255,255,255,0.38)', fontFamily: MONO, lineHeight: 1 }}>{reach}%</span>
+                  </div>
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                    <div style={{ height: '100%', width: `${reach}%`, background: reach >= 40 ? '#5a9ea0' : reach >= 20 ? '#a08440' : 'rgba(255,255,255,0.22)', borderRadius: 2, boxShadow: reach >= 20 ? '0 0 6px #5a9ea055' : 'none', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+                  </div>
+                </div>
+              )}
+              {retention !== null && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.60)', fontWeight: 700 }}>Retention</div>
+                      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>{retainingCount} of {onShelfAcctIds.size} placed · reordering 90d</div>
+                    </div>
+                    <span style={{ fontSize: 22, fontWeight: 900, color: retention >= 60 ? '#5a9ea0' : retention >= 30 ? '#a08440' : 'rgba(255,255,255,0.38)', fontFamily: MONO, lineHeight: 1 }}>{retention}%</span>
+                  </div>
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                    <div style={{ height: '100%', width: `${retention}%`, background: retention >= 60 ? '#5a9ea0' : retention >= 30 ? '#a08440' : 'rgba(255,255,255,0.22)', borderRadius: 2, boxShadow: retention >= 30 ? '0 0 6px #c4a46e55' : 'none', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+                  </div>
+                </div>
+              )}
+              {velocity !== null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 2, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.60)', fontWeight: 700 }}>Velocity</div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>orders / account / mo (90d)</div>
+                  </div>
+                  <span style={{ fontSize: 22, fontWeight: 900, color: Number(velocity) >= 1 ? '#c4a46e' : 'rgba(255,255,255,0.38)', fontFamily: MONO, lineHeight: 1 }}>{velocity}</span>
+                </div>
+              )}
+            </div>
+          </Glass>
+        )}
 
         {/* Pipeline mini */}
         {placBreakdown.length > 0 && (
@@ -878,11 +982,14 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
                 {/* KPI strip */}
                 <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                   {[
-                    { label: 'Total Visits',    value: drVisits.length,   color: accent },
-                    { label: 'Unique Accounts', value: uniqueAccts,       color: '#a08440' },
-                    { label: 'Field Wins',      value: drWins.length,     color: '#5a9ea0' },
-                    { label: 'On Shelf',        value: onShelf.length,    color: '#c4a46e' },
-                    { label: 'Win Rate',        value: `${winRate}%`,     color: winRate >= 20 ? '#5a9ea0' : winRate >= 10 ? '#a08440' : 'rgba(255,255,255,0.40)' },
+                    { label: 'Total Visits',    value: drVisits.length,                                    color: accent },
+                    { label: 'Unique Accounts', value: uniqueAccts,                                        color: '#a08440' },
+                    { label: 'Field Wins',      value: drWins.length,                                      color: '#5a9ea0' },
+                    { label: 'Win Rate',        value: `${winRate}%`,                                      color: winRate >= 20 ? '#5a9ea0' : winRate >= 10 ? '#a08440' : 'rgba(255,255,255,0.40)' },
+                    { label: 'Reach',           value: reach !== null ? `${reach}%` : '—',                 color: reach !== null && reach >= 40 ? '#5a9ea0' : reach !== null && reach >= 20 ? '#a08440' : 'rgba(255,255,255,0.40)' },
+                    { label: 'Retention',       value: retention !== null ? `${retention}%` : '—',         color: retention !== null && retention >= 60 ? '#5a9ea0' : retention !== null && retention >= 30 ? '#a08440' : 'rgba(255,255,255,0.40)' },
+                    { label: 'Velocity',        value: velocity !== null ? `${velocity}×` : '—',           color: velocity !== null && Number(velocity) >= 1 ? '#c4a46e' : 'rgba(255,255,255,0.40)' },
+                    { label: 'On Shelf',        value: onShelf.length,                                     color: '#c4a46e' },
                   ].map((k, ki, arr) => (
                     <div key={k.label} style={{ textAlign: 'center', padding: '10px 22px', borderRight: ki < arr.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
                       <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.36)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 5, whiteSpace: 'nowrap' }}>{k.label}</div>
@@ -967,12 +1074,14 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
                   <div style={{ ...CARD, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                     <span style={SEC}>Field Intelligence</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      {[
-                        { label: 'Accounts Reached',  value: uniqueAccts,    sub: `of ${totalAccts} total`,                              bar: totalAccts > 0 ? uniqueAccts / totalAccts : 0,     color: accent },
-                        { label: 'Avg Visits / Week', value: visitsPerWk,    sub: `over ${drDays ? Math.round(drDays/7) : 12} weeks`,    bar: null,                                              color: '#a08440' },
-                        { label: 'Showing Interest',  value: drInProgress,   sub: 'accounts with warm outcomes',                          bar: uniqueAccts > 0 ? drInProgress / uniqueAccts : 0,  color: '#bf7850' },
-                        { label: 'Win Rate',          value: `${winRate}%`,  sub: `${drWins.length} wins from ${drVisits.length} visits`, bar: winRate / 100,                                     color: '#5a9ea0' },
-                      ].map(({ label, value, sub, bar, color }) => (
+                      {([
+                        { label: 'Reach',             value: reach !== null ? `${reach}%` : '—',           sub: `${buyingAcctIds.size} of ${visitedAcctIds.size} accounts converted to buyers`,    bar: reach !== null ? reach / 100 : null,           color: '#5a9ea0' },
+                        { label: 'Retention',         value: retention !== null ? `${retention}%` : '—',   sub: `${retainingCount} of ${onShelfAcctIds.size} placed accounts reordering (90d)`,   bar: retention !== null ? retention / 100 : null,   color: '#c4a46e' },
+                        { label: 'Velocity',          value: velocity !== null ? `${velocity}×/mo` : '—',  sub: 'avg orders per buying account per month',                                         bar: velocity !== null ? Math.min(Number(velocity) / 3, 1) : null, color: accent },
+                        { label: 'Win Rate',          value: `${winRate}%`,                                sub: `${drWins.length} wins from ${drVisits.length} visits`,                            bar: winRate / 100,                                 color: '#5a9ea0' },
+                        { label: 'Avg Visits / Week', value: visitsPerWk,                                  sub: `over ${drDays ? Math.round(drDays/7) : 12} weeks`,                                bar: null,                                          color: '#a08440' },
+                        { label: 'Showing Interest',  value: drInProgress,                                 sub: 'accounts with warm outcomes',                                                     bar: uniqueAccts > 0 ? drInProgress / uniqueAccts : 0, color: '#bf7850' },
+                      ] as { label: string; value: string|number; sub: string; bar: number|null; color: string }[]).map(({ label, value, sub, bar, color }) => (
                         <div key={label} style={{ background: 'rgba(255,255,255,0.025)', borderRadius: 8, padding: '11px 13px', border: '1px solid rgba(255,255,255,0.06)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: bar !== null ? 6 : 0 }}>
                             <div>

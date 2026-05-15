@@ -186,19 +186,39 @@ export function buildGradeMap(
   allVisits:    any[],
   allPlacements: any[],
 ): Record<string, GradeResult> {
-  // Max revenue across all accounts for log normalization
-  const revByAccount: Record<string, number> = {}
+  // Single-pass grouping by account_id — avoids O(accounts × data) filter scans
+  const ordersByAcct:  Record<string, any[]> = {}
+  const visitsByAcct:  Record<string, any[]> = {}
+  const placsByAcct:   Record<string, any[]> = {}
+  const revByAccount:  Record<string, number> = {}
+
   for (const o of allOrders) {
-    if (!o.account_id || !['sent', 'fulfilled'].includes(o.status)) continue
-    const lineTotal = (o.po_line_items ?? []).reduce((s: number, li: any) => s + (Number(li.total) || 0), 0)
-    const amount = lineTotal || Number(o.total_amount) || 0
-    revByAccount[o.account_id] = (revByAccount[o.account_id] ?? 0) + amount
+    if (!o.account_id) continue
+    ;(ordersByAcct[o.account_id] ??= []).push(o)
+    if (['sent', 'fulfilled'].includes(o.status)) {
+      const lineTotal = (o.po_line_items ?? []).reduce((s: number, li: any) => s + (Number(li.total) || 0), 0)
+      const amount = lineTotal || Number(o.total_amount) || 0
+      revByAccount[o.account_id] = (revByAccount[o.account_id] ?? 0) + amount
+    }
   }
+  for (const v of allVisits) {
+    if (v.account_id) (visitsByAcct[v.account_id] ??= []).push(v)
+  }
+  for (const p of allPlacements) {
+    if (p.account_id) (placsByAcct[p.account_id] ??= []).push(p)
+  }
+
   const maxRevenue = Math.max(...Object.values(revByAccount), 1)
 
   const map: Record<string, GradeResult> = {}
   for (const a of accounts) {
-    map[a.id] = computeGrade(a.id, allOrders, allVisits, allPlacements, maxRevenue)
+    map[a.id] = computeGrade(
+      a.id,
+      ordersByAcct[a.id]  ?? [],
+      visitsByAcct[a.id]  ?? [],
+      placsByAcct[a.id]   ?? [],
+      maxRevenue,
+    )
   }
   return map
 }

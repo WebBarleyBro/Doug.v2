@@ -40,7 +40,13 @@ function useVisitsLog(days: number, clientSlug: string, status: string, repUserI
       if (days === 0) {
         const now = new Date()
         const mtDate = now.toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
-        q = q.gte('visited_at', mtDate + 'T00:00:00-07:00').lt('visited_at', mtDate + 'T23:59:59-06:00')
+        // Detect current MT offset (MDT=UTC-6, MST=UTC-7) to compute correct UTC boundaries
+        const mtHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hour12: false }).format(now))
+        const mtOffset = (now.getUTCHours() - mtHour + 24) % 24 // 6 for MDT, 7 for MST
+        const [y, mo, d] = mtDate.split('-').map(Number)
+        const dayStart = new Date(Date.UTC(y, mo - 1, d, mtOffset, 0, 0))
+        const dayEnd   = new Date(Date.UTC(y, mo - 1, d, mtOffset + 23, 59, 59))
+        q = q.gte('visited_at', dayStart.toISOString()).lte('visited_at', dayEnd.toISOString())
       } else if (days > 0) {
         const since = new Date(Date.now() - days * 86400000).toISOString()
         q = q.gte('visited_at', since)

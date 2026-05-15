@@ -450,6 +450,7 @@ export default function TerritoryPage() {
 
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [viewMode, setViewMode]           = useState<'list' | 'map'>('list')
+  const [searchInput, setSearchInput]     = useState('')
   const [search, setSearch]               = useState('')
   const [brandFilter, setBrandFilter]     = useState('all')
   const [typeFilter, setTypeFilter]       = useState<'all' | 'on_premise' | 'off_premise'>('all')
@@ -460,6 +461,11 @@ export default function TerritoryPage() {
   const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('asc')
   const [geocoding, setGeocoding]         = useState(false)
   const [geocodeMsg, setGeocodeMsg]       = useState<string | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 200)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   async function handleGeocodeAll() {
     const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
@@ -744,7 +750,7 @@ export default function TerritoryPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
           <Search size={13} color={v3.text.muted} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search accounts…"
+          <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search accounts…"
             style={{ background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, color: v3.text.primary, fontSize: '13px', padding: '8px 10px 8px 30px', outline: 'none', width: '100%', boxSizing: 'border-box' as any, fontFamily: v3.font.ui }} />
         </div>
 

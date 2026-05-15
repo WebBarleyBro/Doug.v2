@@ -1381,12 +1381,12 @@ export async function getPortalData(clientSlug: string) {
       .order('visited_at', { ascending: false })
       .limit(150),
     sb.from('placements')
-      .select('id, product_name, placement_type, status, price_point, created_at, updated_at, accounts(id, name, address)')
+      .select('id, account_id, product_name, placement_type, status, price_point, created_at, updated_at, accounts(id, name, address)')
       .eq('client_slug', clientSlug)
       .is('lost_at', null)
       .order('created_at', { ascending: false }),
     sb.from('purchase_orders')
-      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, account_id, accounts(id, name), distributor_email, distributor_rep_name, deliver_to_address, distributor_status, distributor_contacted_at')
+      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, sent_at, account_id, accounts(id, name), distributor_email, distributor_rep_name, deliver_to_address, distributor_status, distributor_contacted_at')
       .eq('client_slug', clientSlug)
       .order('created_at', { ascending: false }),
     sb.from('events')

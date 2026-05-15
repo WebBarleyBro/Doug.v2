@@ -296,8 +296,9 @@ export interface Product {
   name: string
   category?: string
   sku?: string
-  price?: number
-  bottle_price?: number
+  price?: number        // case price
+  bottle_price?: number // per-bottle price
+  case_count?: number   // bottles per case
   active: boolean
 }
 

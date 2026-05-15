@@ -10,6 +10,26 @@ import {
 import { getSupabase } from '../../lib/supabase'
 import type { Client, Account, Visit, Placement, PurchaseOrder } from '../../lib/types'
 
+// ── Request timeout helper ────────────────────────────────────────────────────
+// Supabase requests can hang indefinitely. Fail fast so React Query shows
+// isError instead of stuck isLoading.
+const TIMEOUT_MS = 12_000
+
+async function timed<T>(fn: () => Promise<T>): Promise<T> {
+  let tid: ReturnType<typeof setTimeout>
+  const race = new Promise<never>((_, rej) => {
+    tid = setTimeout(() => rej(new Error('Request timed out — check your Supabase connection')), TIMEOUT_MS)
+  })
+  try {
+    const result = await Promise.race([fn(), race])
+    clearTimeout(tid!)
+    return result
+  } catch (e) {
+    clearTimeout(tid!)
+    throw e
+  }
+}
+
 // ── Query Client ─────────────────────────────────────────────────────────────
 
 function makeQueryClient() {
@@ -43,12 +63,11 @@ export function V3QueryProvider({ children }: { children: React.ReactNode }) {
 export function useV3Profile() {
   return useQuery({
     queryKey: ['v3', 'profile'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return null
       const { data } = await sb.from('user_profiles').select('*').eq('id', user.id).single()
-      // Resolve display name: DB row → auth metadata → email prefix
       const authName = (user.user_metadata?.full_name || user.user_metadata?.name || null) as string | null
       const emailPrefix = user.email
         ? user.email.split('@')[0].replace(/[._-]/g, ' ')
@@ -59,7 +78,7 @@ export function useV3Profile() {
         name:      (base as any).name      || authName || null,
         full_name: (base as any).full_name || authName || emailPrefix,
       }
-    },
+    }),
     staleTime: 10 * 60_000,
   })
 }
@@ -69,7 +88,7 @@ export function useV3Profile() {
 export function useV3Clients() {
   return useQuery({
     queryKey: ['v3', 'clients'],
-    queryFn: () => getClients(),
+    queryFn: () => timed(() => getClients()),
     staleTime: 5 * 60_000,
   })
 }
@@ -79,17 +98,18 @@ export function useV3Clients() {
 export function useV3Accounts() {
   return useQuery({
     queryKey: ['v3', 'accounts'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('accounts')
-        .select('*')
+        .select('id, name, address, phone, account_type, priority, visit_frequency_days, last_visited, lat, lng, best_days, best_time, notes, website, instagram')
         .order('name')
         .limit(2000)
       if (error) throw error
       return (data ?? []) as Account[]
-    },
+    }),
     staleTime: 10 * 60_000,
+    gcTime: 60 * 60_000,
   })
 }
 
@@ -98,7 +118,7 @@ export function useV3Accounts() {
 export function useV3RecentVisits(days = 30) {
   return useQuery({
     queryKey: ['v3', 'visits', 'recent', days],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const since = new Date(Date.now() - days * 86400000).toISOString()
       const { data, error } = await sb
@@ -109,7 +129,9 @@ export function useV3RecentVisits(days = 30) {
         .limit(500)
       if (error) throw error
       return (data ?? []) as (Visit & { accounts: { id: string; name: string } | null })[]
-    },
+    }),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   })
 }
 
@@ -118,7 +140,7 @@ export function useV3RecentVisits(days = 30) {
 export function useV3FollowUps() {
   return useQuery({
     queryKey: ['v3', 'followups'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const cutoff = new Date(Date.now() - 60 * 86400000).toISOString()
       const { data, error } = await sb
@@ -130,7 +152,8 @@ export function useV3FollowUps() {
         .limit(200)
       if (error) throw error
       return (data ?? []) as any[]
-    },
+    }),
+    staleTime: 3 * 60_000,
   })
 }
 
@@ -163,7 +186,7 @@ export function useV3OverdueAccounts() {
 export function useV3OverdueQuery() {
   return useQuery({
     queryKey: ['v3', 'overdue', 'targeted'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('accounts')
@@ -186,7 +209,7 @@ export function useV3OverdueQuery() {
           return { ...a, daysAgo, overdueDays, neverVisited }
         })
         .sort((a: any, b: any) => (b.overdueDays ?? 9999) - (a.overdueDays ?? 9999))
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -196,7 +219,7 @@ export function useV3OverdueQuery() {
 export function useV3CommissionMTD() {
   return useQuery({
     queryKey: ['v3', 'commission', 'mtd'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -208,7 +231,7 @@ export function useV3CommissionMTD() {
         .limit(200)
       if (error) throw error
       return (data ?? []).reduce((sum, o) => sum + (Number(o.commission_amount) || 0), 0)
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -218,16 +241,18 @@ export function useV3CommissionMTD() {
 export function useV3Placements() {
   return useQuery({
     queryKey: ['v3', 'placements'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('placements')
-        .select('*, accounts(id, name)')
+        .select('id, account_id, client_slug, product_name, placement_type, status, created_at, updated_at, lost_at, lost_reason, accounts(id, name)')
         .order('created_at', { ascending: false })
         .limit(1000)
       if (error) throw error
       return (data ?? []) as (Placement & { accounts: { id: string; name: string } | null })[]
-    },
+    }),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   })
 }
 
@@ -236,7 +261,7 @@ export function useV3Placements() {
 export function useV3Orders() {
   return useQuery({
     queryKey: ['v3', 'orders'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       // No po_line_items join — total_amount is stored on creation and is accurate.
       // The nested join was causing query timeouts due to RLS row scans on each order.
@@ -248,7 +273,7 @@ export function useV3Orders() {
         .limit(300)
       if (error) throw error
       return (data ?? []) as (PurchaseOrder & { accounts: any })[]
-    },
+    }),
     staleTime: 2 * 60_000,
   })
 }
@@ -278,15 +303,15 @@ export function useV3OrdersWithItems(orderId: string) {
 export function useV3TerritoryCoverage() {
   return useQuery({
     queryKey: ['v3', 'coverage'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return { visited: 0, total: 0, pct: 0 }
       const now = new Date()
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       const [accountsRes, visitsRes] = await Promise.all([
-        sb.from('accounts').select('id').not('visit_frequency_days', 'is', null),
-        sb.from('visits').select('account_id').eq('user_id', user.id).gte('visited_at', monthStart).limit(5000),
+        sb.from('accounts').select('id').not('visit_frequency_days', 'is', null).limit(2000),
+        sb.from('visits').select('account_id').eq('user_id', user.id).gte('visited_at', monthStart).limit(1000),
       ])
       if (accountsRes.error) throw accountsRes.error
       if (visitsRes.error) throw visitsRes.error
@@ -294,7 +319,7 @@ export function useV3TerritoryCoverage() {
       const visitedIds = new Set((visitsRes.data ?? []).map(v => v.account_id))
       const visited = (accountsRes.data ?? []).filter(a => visitedIds.has(a.id)).length
       return { visited, total, pct: total > 0 ? Math.round((visited / total) * 100) : 0 }
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -304,7 +329,7 @@ export function useV3TerritoryCoverage() {
 export function useV3AllProfiles() {
   return useQuery({
     queryKey: ['v3', 'profiles', 'all'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('user_profiles')
@@ -313,7 +338,7 @@ export function useV3AllProfiles() {
         .order('name')
       if (error) throw error
       return (data ?? []) as { id: string; name: string | null; full_name: string | null; role: string }[]
-    },
+    }),
     staleTime: 10 * 60_000,
   })
 }
@@ -323,7 +348,7 @@ export function useV3AllProfiles() {
 export function useV3TeamLeaderboard() {
   return useQuery({
     queryKey: ['v3', 'leaderboard'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const since = new Date(Date.now() - 7 * 86400000).toISOString()
       const [visitsRes, profilesRes] = await Promise.all([
@@ -342,7 +367,7 @@ export function useV3TeamLeaderboard() {
         .filter(p => p.count > 0)
         .sort((a, b) => b.count - a.count)
         .slice(0, 6)
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -378,7 +403,7 @@ export function useAdvancePlacement() {
 export function useV3MyTasks() {
   return useQuery({
     queryKey: ['v3', 'tasks', 'mine'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return []
@@ -391,7 +416,7 @@ export function useV3MyTasks() {
         .limit(20)
       if (error) throw error
       return (data ?? []) as any[]
-    },
+    }),
     staleTime: 2 * 60_000,
   })
 }
@@ -401,7 +426,7 @@ export function useV3MyTasks() {
 export function useV3AtRiskPlacements() {
   return useQuery({
     queryKey: ['v3', 'placements', 'atrisk'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const committedCutoff = new Date(Date.now() - 30 * 86400000).toISOString()
       const orderedCutoff   = new Date(Date.now() - 14 * 86400000).toISOString()
@@ -414,7 +439,7 @@ export function useV3AtRiskPlacements() {
         .limit(10)
       if (error) throw error
       return (data ?? []) as any[]
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -450,7 +475,7 @@ export function useV3TodayStops() {
   const date = todayStr()
   return useQuery({
     queryKey: ['v3', 'planner', date],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return []
@@ -462,7 +487,7 @@ export function useV3TodayStops() {
         .order('stop_order', { ascending: true })
       if (error) throw error
       return (data ?? []) as any[]
-    },
+    }),
     staleTime: 60_000,
   })
 }
@@ -472,7 +497,7 @@ export function useV3TodayStops() {
 export function useV3WinRate() {
   return useQuery({
     queryKey: ['v3', 'winrate'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return { rate: null as number | null, hotHand: false, recent: 0, wins: 0 }
@@ -487,10 +512,9 @@ export function useV3WinRate() {
       const WIN = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
       const wins = data.filter(v => WIN.has(v.status)).length
       const rate = Math.round((wins / data.length) * 100)
-      // Hot hand: 3+ wins in last 7 days
       const hotHand = wins >= 3
       return { rate, hotHand, recent: data.length, wins }
-    },
+    }),
     staleTime: 5 * 60_000,
   })
 }
@@ -501,7 +525,7 @@ export function useV3WinRate() {
 export function useV3PotentialToday() {
   return useQuery({
     queryKey: ['v3', 'potential-today'],
-    queryFn: async () => {
+    queryFn: () => timed(async () => {
       const sb = getSupabase()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return null
@@ -520,7 +544,7 @@ export function useV3PotentialToday() {
       if (!orders.length) return null
       const avgCommission = orders.reduce((s, o) => s + (o.commission_amount ?? 0), 0) / orders.length
       return { stops: stopCount, potential: Math.round(stopCount * avgCommission) }
-    },
+    }),
     staleTime: 2 * 60_000,
   })
 }

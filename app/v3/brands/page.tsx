@@ -183,9 +183,9 @@ function BrandTile({ client, visitCount30d }: { client: Client; visitCount30d: n
 }
 
 export default function BrandsPage() {
-  const { data: clients = [], isLoading } = useV3Clients()
-  const { data: visits = [] }             = useV3RecentVisits(30)
-  const [showAddBrand, setShowAddBrand]   = useState(false)
+  const { data: clients = [], isLoading, isError } = useV3Clients()
+  const { data: visits = [] }                      = useV3RecentVisits(30)
+  const [showAddBrand, setShowAddBrand]             = useState(false)
 
   const visitsByBrand = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -201,7 +201,7 @@ export default function BrandsPage() {
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0 }}>Brands</h1>
           <div style={{ fontSize: '13px', color: v3.text.muted, marginTop: 4 }}>
-            {clients.length} brand{clients.length !== 1 ? 's' : ''} in portfolio
+            {isLoading ? '…' : `${clients.length} brand${clients.length !== 1 ? 's' : ''} in portfolio`}
           </div>
         </div>
         <button onClick={() => setShowAddBrand(true)} style={{
@@ -218,6 +218,10 @@ export default function BrandsPage() {
 
       {isLoading
         ? <div style={{ color: v3.text.muted, fontSize: '13px' }}>Loading…</div>
+        : isError
+        ? <div style={{ color: v3.status.danger, fontSize: '13px', padding: '40px 0', textAlign: 'center' }}>
+            Failed to load brands. Check your connection and refresh.
+          </div>
         : clients.length === 0
         ? <div style={{ color: v3.text.muted, fontSize: '13px', padding: '40px 0', textAlign: 'center' }}>No brands yet.</div>
         : (

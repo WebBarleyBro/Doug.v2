@@ -4,9 +4,9 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, MapPin, Phone, Mail, ShoppingCart, User, Navigation,
-  Clock, CalendarDays, Settings, Plus, X, Check, Pencil, Trash2,
-  AlertTriangle, GlassWater, StickyNote, Globe, Instagram,
+  ArrowLeft, MapPin, Phone, Mail, Navigation,
+  CalendarDays, Settings, Plus, X, Check, Pencil, Trash2,
+  AlertTriangle, StickyNote, Globe, Instagram,
 } from 'lucide-react'
 import { v3, v3input, v3label, healthColor, healthLabel } from '../../lib/theme'
 import { useV3Clients, useAdvancePlacement } from '../../lib/query'
@@ -17,7 +17,6 @@ import { relativeTimeStr, formatShortDateMT } from '../../../lib/formatters'
 import { createPlacement } from '../../../lib/data'
 import type { Client } from '../../../lib/types'
 import { computeGrade, GRADE_CONFIG } from '../../lib/grading'
-import { GradeBadge, GradeDetail } from '../../components/GradeBadge'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -73,13 +72,15 @@ function useAccount(id: string) {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('accounts')
-        .select('*, account_clients(client_slug)')
+        .select('id, name, address, phone, account_type, priority, visit_frequency_days, last_visited, lat, lng, best_days, best_time, notes, website, instagram, account_clients(client_slug)')
         .eq('id', id)
         .single()
       if (error) throw error
       return data as any
     },
     enabled: !!id,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   })
 }
 
@@ -98,6 +99,7 @@ function useAccountVisits(id: string) {
       return (data ?? []) as any[]
     },
     enabled: !!id,
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -108,13 +110,14 @@ function useAccountPlacements(id: string) {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('placements')
-        .select('*')
+        .select('id, account_id, client_slug, product_name, placement_type, status, price_point, shelf_count, notes, created_at, updated_at, lost_at, lost_reason')
         .eq('account_id', id)
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as any[]
     },
     enabled: !!id,
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -125,13 +128,14 @@ function useAccountContacts(id: string) {
       const sb = getSupabase()
       const { data, error } = await sb
         .from('contacts')
-        .select('*')
+        .select('id, account_id, client_slug, name, role, category, email, phone, is_decision_maker, notes')
         .eq('account_id', id)
         .order('is_decision_maker', { ascending: false })
       if (error) throw error
       return (data ?? []) as any[]
     },
     enabled: !!id,
+    staleTime: 10 * 60_000,
   })
 }
 
@@ -150,6 +154,7 @@ function useAccountOrders(id: string) {
       return (data ?? []) as any[]
     },
     enabled: !!id,
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -942,18 +947,29 @@ function CreateOrderModal({ accountId, accountName, linkedClients, onClose }: {
   )
 }
 
-// ── Section label ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function SectionLabel({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+function SectionHdr({ label, action }: { label: string; action?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-      <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.18em', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 0, width: 16, height: 1, background: v3.border.subtle }} />
-        {children}
-        <div style={{ width: 16, height: 1, background: v3.border.subtle }} />
-      </div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em' }}>{label}</span>
       {action}
     </div>
+  )
+}
+
+function AddBtn({ onClick, label = 'Add' }: { onClick: () => void; label?: string }) {
+  return (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
+      background: 'transparent', border: `1px solid rgba(196,164,110,0.22)`,
+      borderRadius: '3px', fontSize: '10px', fontWeight: 700,
+      color: 'rgba(196,164,110,0.60)', cursor: 'pointer', letterSpacing: '0.04em',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(196,164,110,0.07)'; e.currentTarget.style.borderColor = 'rgba(196,164,110,0.45)'; e.currentTarget.style.color = '#d4b47e' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(196,164,110,0.22)'; e.currentTarget.style.color = 'rgba(196,164,110,0.60)' }}>
+      <Plus size={10} strokeWidth={2.5} />{label}
+    </button>
   )
 }
 
@@ -965,7 +981,7 @@ export default function AccountDetailPage() {
   const { show: toast } = useV3Toast()
 
   const { data: account, isLoading: acctLoading } = useAccount(id)
-  const { data: visits = [], isLoading: visitsLoading } = useAccountVisits(id)
+  const { data: visits = [] } = useAccountVisits(id)
   const { data: placements = [] } = useAccountPlacements(id)
   const { data: contacts = [] } = useAccountContacts(id)
   const { data: orders = [] } = useAccountOrders(id)
@@ -974,7 +990,6 @@ export default function AccountDetailPage() {
   const { trigger: triggerWin } = useWinMoment()
   const advancePlacement = useAdvancePlacement()
 
-  // Modal state
   const [showEdit, setShowEdit]             = useState(false)
   const [showAddPlacement, setShowAddPlacement] = useState(false)
   const [editPlacement, setEditPlacement]   = useState<any | null>(null)
@@ -987,7 +1002,6 @@ export default function AccountDetailPage() {
   const [showAllVisits, setShowAllVisits]     = useState(false)
   const [showAllOrders, setShowAllOrders]     = useState(false)
   const [briefNoteExpanded, setBriefNoteExpanded] = useState(false)
-  const [showGradeDetail, setShowGradeDetail] = useState(false)
 
   const deleteContact = useMutation({
     mutationFn: async (contactId: string) => {
@@ -995,11 +1009,7 @@ export default function AccountDetailPage() {
       const { error } = await sb.from('contacts').delete().eq('id', contactId)
       if (error) throw error
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['v3', 'account', id, 'contacts'] })
-      setConfirmDeleteId(null)
-      toast('Contact removed')
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'account', id, 'contacts'] }); setConfirmDeleteId(null); toast('Contact removed') },
     onError: (e: any) => toast(e?.message ?? 'Failed to delete', 'error'),
   })
 
@@ -1009,42 +1019,31 @@ export default function AccountDetailPage() {
       const { error } = await sb.from('visits').delete().eq('id', visitId)
       if (error) throw error
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['v3', 'account', id, 'visits'] })
-      qc.invalidateQueries({ queryKey: ['v3', 'visits'] })
-      setConfirmDeleteVisitId(null)
-      toast('Visit deleted')
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'account', id, 'visits'] }); qc.invalidateQueries({ queryKey: ['v3', 'visits'] }); setConfirmDeleteVisitId(null); toast('Visit deleted') },
     onError: (e: any) => toast(e?.message ?? 'Failed to delete visit', 'error'),
   })
 
-  if (acctLoading) {
-    return (
-      <div style={{ padding: '24px', color: v3.text.muted, fontSize: '13px' }}>
-        <Link href="/v3/territory" style={{ color: v3.text.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 16, fontSize: '12px' }}>
-          <ArrowLeft size={12} /> Territory
-        </Link>
-        <div>Loading…</div>
-      </div>
-    )
-  }
+  if (acctLoading) return (
+    <div style={{ padding: '24px', color: v3.text.muted, fontSize: '13px' }}>
+      <Link href="/v3/territory" style={{ color: v3.text.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 16, fontSize: '12px' }}>
+        <ArrowLeft size={12} /> Territory
+      </Link>
+      <div>Loading…</div>
+    </div>
+  )
 
-  if (!account) {
-    return (
-      <div style={{ padding: '24px', color: v3.text.muted, fontSize: '13px' }}>
-        <Link href="/v3/territory" style={{ color: v3.amberLight, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 16, fontSize: '12px' }}>
-          <ArrowLeft size={12} /> Territory
-        </Link>
-        <div>Account not found.</div>
-      </div>
-    )
-  }
+  if (!account) return (
+    <div style={{ padding: '24px', color: v3.text.muted, fontSize: '13px' }}>
+      <Link href="/v3/territory" style={{ color: v3.amberLight, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 16, fontSize: '12px' }}>
+        <ArrowLeft size={12} /> Territory
+      </Link>
+      <div>Account not found.</div>
+    </div>
+  )
 
   const hc = healthColor(account.last_visited, account.visit_frequency_days)
   const hl = healthLabel(account.last_visited, account.visit_frequency_days)
 
-  // Grade — computed from this account's actual data.
-  // maxRevenue: use $50k as the normalization ceiling (top-tier account benchmark).
   const gradeResult = computeGrade(
     account.id,
     orders.map((o: any) => ({ ...o, account_id: account.id })),
@@ -1055,526 +1054,619 @@ export default function AccountDetailPage() {
   const gradeCfg = GRADE_CONFIG[gradeResult.grade]
 
   const clientSlugs: string[] = (account.account_clients ?? []).map((ac: any) => ac.client_slug).filter(Boolean)
-  const linkedClients = clients.filter(c => clientSlugs.includes(c.slug))
+  const linkedClients = clients.filter((c: any) => clientSlugs.includes(c.slug))
   const latestVisit = visits[0] ?? null
-  const activePlacements = placements.filter(p => !p.lost_at)
-  const lostPlacements = placements.filter(p => p.lost_at)
-  const primaryContact = contacts.find(c => c.is_decision_maker) ?? contacts[0] ?? null
-  const openFollowUps = visits.filter(v =>
+  const activePlacements = placements.filter((p: any) => !p.lost_at)
+  const lostPlacements = placements.filter((p: any) => p.lost_at)
+  const primaryContact = contacts.find((c: any) => c.is_decision_maker) ?? contacts[0] ?? null
+  const openFollowUps = visits.filter((v: any) =>
     (v.status === 'Will Order Soon' || v.status === 'Needs Follow Up') &&
     !v.follow_up_cleared_at && !v.follow_up_dismissed_at
   )
   const lastVisitedStr = account.last_visited
     ? relativeTimeStr(account.last_visited) ?? formatShortDateMT(account.last_visited)
-    : 'Never visited'
+    : 'Never'
 
-  // At-risk placements: committed >30d or ordered >14d
-  const atRisk = activePlacements.filter(p => {
+  const atRisk = activePlacements.filter((p: any) => {
     const ageDays = (Date.now() - new Date(p.created_at).getTime()) / 86400000
-    const updatedDays = (Date.now() - new Date(p.updated_at || p.created_at).getTime()) / 86400000
+    const updatedDays = (Date.now() - new Date((p.updated_at || p.created_at)).getTime()) / 86400000
     return (p.status === 'committed' && ageDays > 30) || (p.status === 'ordered' && updatedDays > 14)
   })
 
-  // Visit frequency display
   const freqLabel = account.visit_frequency_days ? `Every ${account.visit_frequency_days}d` : '—'
   const daysOverdue = account.last_visited && account.visit_frequency_days
     ? Math.floor((Date.now() - new Date(account.last_visited).getTime()) / 86400000) - account.visit_frequency_days
     : null
+  const typeLabel = account.account_type === 'on_premise' ? 'On-Premise' : 'Off-Premise'
 
-  const typeLabel = account.account_type === 'on_premise' ? 'On-Premise' : account.account_type === 'off_premise' ? 'Off-Premise' : '—'
+  const WIN_SET = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
+  const wins = visits.filter((v: any) => WIN_SET.has(v.status)).length
+  const winRate = visits.length > 0 ? Math.round((wins / visits.length) * 100) : null
+
+  const totalRevenue = orders
+    .filter((o: any) => ['sent', 'fulfilled'].includes(o.status))
+    .reduce((s: number, o: any) => {
+      const lineTotal = (o.po_line_items ?? []).reduce((ls: number, li: any) => ls + (Number(li.total) || 0), 0)
+      return s + (lineTotal || Number(o.total_amount) || 0)
+    }, 0)
+
+  const now30 = Date.now() - 30 * 86400000
+  const visits30 = visits.filter((v: any) => new Date(v.visited_at).getTime() >= now30).length
+
+  const visibleVisits = showAllVisits ? visits : visits.slice(0, 5)
+  const visibleOrders = showAllOrders ? orders : orders.slice(0, 4)
 
   return (
-    <div style={{ padding: '20px 24px 64px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ minHeight: '100vh', background: v3.bg.page }}>
 
-      {/* ── Back ──────────────────────────────────────────────────── */}
-      <Link href="/v3/territory" style={{ color: v3.text.muted, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 14, fontSize: '12px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.02em' }}>
-        <ArrowLeft size={11} /> Territory
-      </Link>
+      {/* ── Back nav ──────────────────────────────────────────────── */}
+      <div style={{ padding: '16px 28px 0' }}>
+        <Link href="/v3/territory" style={{ color: 'rgba(255,255,255,0.38)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.amberLight}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.38)'}>
+          <ArrowLeft size={11} strokeWidth={2.5} /> Territory
+        </Link>
+      </div>
 
-      {/* ── Account Header ──────────────────────────────────────── */}
-      <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderTop: `2px solid ${hc}`, borderRadius: v3.radius.md, padding: '18px 20px', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-          <div style={{ marginTop: 6, flexShrink: 0 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: hc, boxShadow: `0 0 10px ${hc}80` }} />
-          </div>
+      {/* ── Hero header ───────────────────────────────────────────── */}
+      <div style={{ padding: '16px 28px 20px', borderTop: `2px solid ${hc}`, marginTop: 12, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 160, background: `radial-gradient(ellipse at 0% 0%, ${hc}08 0%, transparent 60%)`, pointerEvents: 'none' }} />
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, position: 'relative' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h1 style={{ fontSize: '20px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0, lineHeight: 1.1 }}>{account.name}</h1>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, background: v3.bg.elevated, padding: '2px 7px', borderRadius: v3.radius.sm, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{typeLabel}</span>
-              <button
-                onClick={() => setShowGradeDetail(s => !s)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
-                title={`${gradeResult.grade}-tier · ${gradeCfg.label} · Score ${gradeResult.score}/100 — click for breakdown`}
-              >
-                <GradeBadge grade={gradeResult.grade} size="md" showMomentum momentum={gradeResult.momentum} />
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <div style={{ width: 9, height: 9, borderRadius: '50%', background: hc, boxShadow: `0 0 12px ${hc}90`, flexShrink: 0 }} />
+              <h1 style={{ fontSize: '28px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.04em', margin: 0, lineHeight: 1 }}>
+                {account.name}
+              </h1>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, background: 'rgba(255,255,255,0.06)', padding: '3px 8px', borderRadius: '3px', letterSpacing: '0.08em', textTransform: 'uppercase', flexShrink: 0 }}>
+                {typeLabel}
+              </span>
+              {account.priority && (
+                <span style={{
+                  fontSize: '11px', fontWeight: 900, letterSpacing: '0.04em', flexShrink: 0,
+                  color: account.priority === 'A' ? v3.amberLight : account.priority === 'B' ? v3.status.warning : v3.text.muted,
+                }}>
+                  {account.priority}-Priority
+                </span>
+              )}
             </div>
-            {showGradeDetail && (
-              <div style={{
-                marginBottom: 10, padding: '14px 16px',
-                background: gradeCfg.bg, border: `1px solid ${gradeCfg.border}`,
-                borderRadius: v3.radius.lg, maxWidth: 340,
-              }}>
-                <GradeDetail result={gradeResult} />
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
               {account.address && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '12px', color: v3.text.secondary }}>
-                  <MapPin size={10} />{account.address}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', color: v3.text.secondary }}>
+                  <MapPin size={10} color={v3.text.muted} />{account.address}
                 </span>
               )}
               {account.phone && (
-                <a href={`tel:${account.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
+                <a href={`tel:${account.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
                   <Phone size={10} />{account.phone}
                 </a>
               )}
               {account.website && (
-                <a href={account.website.startsWith('http') ? account.website : `https://${account.website}`} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
+                <a href={account.website.startsWith('http') ? account.website : `https://${account.website}`} target="_blank" rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
                   <Globe size={10} />Website
                 </a>
               )}
               {account.instagram && (
-                <a href={`https://instagram.com/${account.instagram.replace('@', '')}`} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
+                <a href={`https://instagram.com/${account.instagram.replace('@','')}`} target="_blank" rel="noreferrer"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
                   <Instagram size={10} />{account.instagram.startsWith('@') ? account.instagram : `@${account.instagram}`}
                 </a>
               )}
             </div>
+
+            {(account.best_days?.length > 0 || account.best_time || account.notes) && (
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                {account.best_days?.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '11px', color: v3.text.secondary }}>
+                    <CalendarDays size={10} color={v3.text.muted} />
+                    <span style={{ color: v3.text.muted, fontWeight: 700 }}>Best:</span>
+                    {account.best_days.join(', ')}
+                    {account.best_time && <span style={{ color: v3.text.muted }}> · {account.best_time}</span>}
+                  </div>
+                )}
+                {account.notes && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '11px', color: v3.text.secondary }}>
+                    <StickyNote size={10} color={v3.text.muted} />
+                    {account.notes}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {linkedClients.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {linkedClients.map((c: any) => {
+                  const logo = clientLogoUrl(c)
+                  const ac = c.color || v3.amber
+                  return (
+                    <Link key={c.slug} href={`/v3/brands/${c.slug}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: ac + '0e', border: `1px solid ${ac}22`, borderRadius: '3px', textDecoration: 'none' }}>
+                      {logo ? <img src={logo} alt="" style={{ width: 12, height: 12, objectFit: 'contain' }} /> : <span style={{ fontSize: '9px', fontWeight: 900, color: ac }}>{c.name[0]}</span>}
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: ac }}>{c.name}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'flex-start' }}>
-            <button onClick={() => setShowEdit(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', background: 'transparent', border: `1px solid ${v3.border.strong}`, borderRadius: v3.radius.md, fontSize: '12px', fontWeight: 600, color: v3.text.muted, cursor: 'pointer', letterSpacing: '0.02em' }}
+            <button onClick={() => setShowEdit(true)} title="Edit account" style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34,
+              background: 'transparent', border: `1px solid ${v3.border.strong}`, borderRadius: v3.radius.md,
+              color: v3.text.muted, cursor: 'pointer',
+            }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(196,164,110,0.40)'; e.currentTarget.style.color = v3.text.secondary }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = v3.border.strong; e.currentTarget.style.color = v3.text.muted }}>
-              <Settings size={12} />
+              <Settings size={13} />
             </button>
             {account.address && (
               <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(account.address)}`}
                 target="_blank" rel="noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', background: 'transparent', border: `1px solid ${v3.border.strong}`, borderRadius: v3.radius.md, fontSize: '12px', fontWeight: 700, color: v3.text.secondary, textDecoration: 'none', letterSpacing: '0.02em' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 14px', height: 34, background: 'transparent', border: `1px solid ${v3.border.strong}`, borderRadius: v3.radius.md, fontSize: '12px', fontWeight: 700, color: v3.text.secondary, textDecoration: 'none', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
                 <Navigation size={12} />Directions
               </a>
             )}
             <button onClick={() => openLogVisit({ id: account.id, name: account.name })}
-              style={{ padding: '8px 16px', background: v3.amber, color: v3.text.inverse, border: 'none', borderRadius: v3.radius.md, fontSize: '13px', fontWeight: 800, cursor: 'pointer', letterSpacing: '0.02em', boxShadow: `0 0 14px ${v3.amber}40` }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 18px', height: 34, background: v3.amber, color: '#000', border: 'none', borderRadius: v3.radius.md, fontSize: '12px', fontWeight: 800, cursor: 'pointer', letterSpacing: '0.03em', whiteSpace: 'nowrap', boxShadow: `0 0 18px ${v3.amber}35` }}>
               Log Visit
             </button>
           </div>
         </div>
-
-        {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-          {[
-            { label: 'Health',      value: hl,         color: hc },
-            { label: 'Last Visit',  value: lastVisitedStr, color: v3.text.secondary },
-            { label: 'Priority',    value: account.priority?.toUpperCase() ?? '—', color: account.priority === 'A' ? v3.amberLight : account.priority === 'B' ? v3.status.warning : v3.text.secondary },
-            { label: 'Visit Every', value: freqLabel,  color: v3.text.secondary },
-            { label: 'Placements',  value: `${activePlacements.length} active`, color: activePlacements.length > 0 ? v3.amberLight : v3.text.muted },
-          ].map(s => (
-            <div key={s.label} style={{ padding: '8px 12px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}` }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 3 }}>{s.label}</div>
-              <div style={{ fontSize: '13px', fontWeight: 800, color: s.color }}>{s.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Visit hints */}
-        {(account.best_days?.length > 0 || account.best_time || account.notes) && (
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTop: `1px solid ${v3.border.subtle}` }}>
-            {account.best_days?.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: v3.text.secondary }}>
-                <CalendarDays size={10} color={v3.text.muted} />
-                <span style={{ color: v3.text.muted, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>Best days</span>
-                {account.best_days.join(', ')}
-              </div>
-            )}
-            {account.best_time && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: v3.text.secondary }}>
-                <Clock size={10} color={v3.text.muted} />
-                <span style={{ color: v3.text.muted, fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>Best time</span>
-                {account.best_time}
-              </div>
-            )}
-            {account.notes && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, fontSize: '12px', color: v3.text.secondary, flex: 1 }}>
-                <StickyNote size={10} color={v3.text.muted} style={{ marginTop: 2, flexShrink: 0 }} />
-                <span>{account.notes}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Brand chips */}
-        {linkedClients.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-            {linkedClients.map(c => {
-              const logo = clientLogoUrl(c)
-              const ac = c.color || v3.amber
-              return (
-                <Link key={c.slug} href={`/v3/brands/${c.slug}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', background: ac + '0e', border: `1px solid ${ac}22`, borderRadius: v3.radius.sm, textDecoration: 'none' }}>
-                  {logo
-                    ? <img src={logo} alt="" style={{ width: 12, height: 12, objectFit: 'contain' }} />
-                    : <span style={{ fontSize: '9px', fontWeight: 900, color: ac }}>{c.name[0]}</span>
-                  }
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: ac }}>{c.name}</span>
-                </Link>
-              )
-            })}
-          </div>
-        )}
       </div>
 
-      {/* ── PRE-VISIT BRIEF ─────────────────────────────────────────── */}
-      <div style={{
-        background: v3.bg.card,
-        borderLeft: `3px solid ${v3.amber}`,
-        borderTop: `1px solid ${v3.border.subtle}`,
-        borderRight: `1px solid ${v3.border.subtle}`,
-        borderBottom: `1px solid ${v3.border.subtle}`,
-        borderRadius: `0 ${v3.radius.md} ${v3.radius.md} 0`,
-        marginBottom: 10,
-        overflow: 'hidden',
-      }}>
-        <div style={{ padding: '10px 16px 6px', borderBottom: `1px solid ${v3.border.subtle}` }}>
-          <span style={{ fontSize: '9px', fontWeight: 700, color: v3.amber, textTransform: 'uppercase', letterSpacing: '0.22em' }}>Pre-Visit Brief</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
-
-          {/* Last visit */}
-          <div style={{ padding: '14px 16px', borderRight: `1px solid ${v3.border.subtle}` }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Last Visit</div>
-            {latestVisit ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.muted, boxShadow: `0 0 6px ${VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.muted}80`, flexShrink: 0 }} />
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.primary }}>{latestVisit.status}</span>
-                </div>
-                <div style={{ fontSize: '10px', color: v3.text.muted, marginBottom: 6 }}>
-                  {relativeTimeStr(latestVisit.visited_at) ?? formatShortDateMT(latestVisit.visited_at)}
-                </div>
-                {latestVisit.notes && (
-                  <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.45, fontStyle: 'italic', borderLeft: `2px solid ${v3.border.default}`, paddingLeft: 8 }}>
-                    "{briefNoteExpanded ? latestVisit.notes : latestVisit.notes.slice(0, 120)}{!briefNoteExpanded && latestVisit.notes.length > 120 ? '…' : ''}"
-                    {latestVisit.notes.length > 120 && (
-                      <button onClick={() => setBriefNoteExpanded(e => !e)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '10px', padding: '0 0 0 4px', fontStyle: 'normal' }}>
-                        {briefNoteExpanded ? 'less' : 'more'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ fontSize: '13px', color: v3.text.muted, fontStyle: 'italic' }}>No visits logged yet</div>
-            )}
+      {/* ── KPI strip ─────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', borderTop: `1px solid ${v3.border.subtle}`, borderBottom: `1px solid ${v3.border.subtle}`, marginBottom: 20 }}>
+        {[
+          { label: 'Health',      value: hl,      color: hc,                              sub: account.visit_frequency_days ? freqLabel : null },
+          { label: 'Last Visit',  value: lastVisitedStr, color: daysOverdue !== null && daysOverdue > 0 ? v3.status.danger : v3.text.secondary, sub: daysOverdue !== null && daysOverdue > 0 ? `${daysOverdue}d overdue` : null },
+          { label: 'Visits 30d',  value: String(visits30), color: visits30 > 0 ? v3.amberLight : v3.text.muted, sub: `${visits.length} all time` },
+          { label: 'Win Rate',    value: winRate !== null ? `${winRate}%` : '—', color: winRate !== null && winRate >= 50 ? v3.status.success : winRate !== null ? v3.status.warning : v3.text.muted, sub: wins > 0 ? `${wins} wins` : 'no wins yet' },
+          { label: 'Placements',  value: String(activePlacements.length), color: activePlacements.length > 0 ? v3.status.success : v3.text.muted, sub: atRisk.length > 0 ? `${atRisk.length} at risk` : lostPlacements.length > 0 ? `${lostPlacements.length} lost` : 'active' },
+          { label: 'Revenue',     value: totalRevenue > 0 ? `$${totalRevenue >= 1000 ? (totalRevenue / 1000).toFixed(1) + 'k' : Math.round(totalRevenue)}` : '—', color: totalRevenue > 0 ? v3.amberLight : v3.text.muted, sub: `${orders.filter((o: any) => ['sent','fulfilled'].includes(o.status)).length} orders` },
+        ].map((k, i) => (
+          <div key={k.label} style={{
+            padding: '12px 16px',
+            borderRight: i < 5 ? `1px solid ${v3.border.subtle}` : 'none',
+            background: 'transparent',
+          }}>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: 5 }}>{k.label}</div>
+            <div style={{ fontSize: '18px', fontWeight: 900, color: k.color, letterSpacing: '-0.03em', lineHeight: 1, marginBottom: 3 }}>{k.value}</div>
+            {k.sub && <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.30)', fontWeight: 500 }}>{k.sub}</div>}
           </div>
+        ))}
+      </div>
 
-          {/* Key contact */}
-          <div style={{ padding: '14px 16px', borderRight: `1px solid ${v3.border.subtle}` }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Talk To</div>
-            {primaryContact ? (
-              <>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: v3.text.primary, marginBottom: 2 }}>{primaryContact.name}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  {primaryContact.role && <span style={{ fontSize: '10px', color: v3.text.muted }}>{primaryContact.role}</span>}
-                  {primaryContact.category && CATEGORY_META[primaryContact.category] && (
-                    <span style={{ fontSize: '9px', fontWeight: 700, color: CATEGORY_META[primaryContact.category].color, background: CATEGORY_META[primaryContact.category].color + '16', padding: '1px 6px', borderRadius: v3.radius.sm, letterSpacing: '0.04em' }}>
-                      {CATEGORY_META[primaryContact.category].label}
-                    </span>
-                  )}
-                </div>
-                {primaryContact.phone && (
-                  <a href={`tel:${primaryContact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: v3.text.link, textDecoration: 'none', marginBottom: 3 }}>
-                    <Phone size={10} />{primaryContact.phone}
-                  </a>
-                )}
-                {primaryContact.email && (
-                  <a href={`mailto:${primaryContact.email}`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: v3.text.link, textDecoration: 'none' }}>
-                    <Mail size={10} />{primaryContact.email}
-                  </a>
-                )}
-              </>
-            ) : (
-              <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>
-                No contacts yet —{' '}
-                <button onClick={() => setContactModal({ mode: 'add' })} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}>add one</button>
-              </div>
-            )}
-          </div>
+      {/* ── Main layout ──────────────────────────────────────────── */}
+      <div style={{ padding: '0 28px 64px', display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
 
-          {/* Open items */}
-          <div style={{ padding: '14px 16px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Open Items</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* LEFT COLUMN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+          {/* Pre-visit brief */}
+          <div style={{ borderLeft: `2px solid ${v3.amber}40`, overflow: 'hidden', marginBottom: 20 }}>
+            <div style={{ padding: '6px 16px 6px', borderBottom: `1px solid ${v3.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: `${v3.amber}90`, textTransform: 'uppercase', letterSpacing: '0.22em' }}>Pre-Visit Brief</span>
               {openFollowUps.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.warning, flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', color: v3.status.warning, fontWeight: 600 }}>{openFollowUps.length} follow-up{openFollowUps.length !== 1 ? 's' : ''} pending</span>
-                </div>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: v3.status.warning, background: 'rgba(160,132,64,0.12)', padding: '2px 7px', borderRadius: '3px', letterSpacing: '0.04em' }}>
+                  {openFollowUps.length} OPEN FOLLOW-UP{openFollowUps.length !== 1 ? 'S' : ''}
+                </span>
               )}
               {atRisk.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.amber, flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', color: v3.amber, fontWeight: 600 }}>{atRisk.length} placement{atRisk.length !== 1 ? 's' : ''} at risk</span>
-                </div>
-              )}
-              {activePlacements.length > 0 && atRisk.length === 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.success, flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', color: v3.status.success, fontWeight: 600 }}>{activePlacements.length} active placement{activePlacements.length !== 1 ? 's' : ''}</span>
-                </div>
-              )}
-              {daysOverdue !== null && daysOverdue > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.danger, flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', color: v3.status.danger, fontWeight: 600 }}>{daysOverdue}d overdue</span>
-                </div>
-              )}
-              {openFollowUps.length === 0 && atRisk.length === 0 && (daysOverdue === null || daysOverdue <= 0) && (
-                <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>All clear</div>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: v3.amber, background: 'rgba(196,164,110,0.10)', padding: '2px 7px', borderRadius: '3px', letterSpacing: '0.04em' }}>
+                  {atRisk.length} AT RISK
+                </span>
               )}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── At-risk placements banner ────────────────────────────── */}
-      {atRisk.length > 0 && (
-        <div style={{ background: v3.amberDim, border: `1px solid ${v3.amber}28`, borderLeft: `3px solid ${v3.amber}`, borderRadius: v3.radius.md, padding: '10px 14px', marginBottom: 10 }}>
-          <div style={{ fontSize: '9px', fontWeight: 700, color: v3.amber, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 6 }}>
-            <AlertTriangle size={9} style={{ display: 'inline', marginRight: 5, verticalAlign: 'middle' }} />
-            {atRisk.length} Placement{atRisk.length !== 1 ? 's' : ''} Need Attention
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {atRisk.map(p => {
-              const ageDays = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000)
-              const cl = clients.find(c => c.slug === p.client_slug)
-              const nextStatus = PLAC_STATUS_NEXT[p.status]
-              const nextLabel = nextStatus ? PLAC_STATUS_LABEL[nextStatus] : null
-              return (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
-                  <div style={{ fontSize: '12px', color: v3.text.secondary, flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, color: v3.text.primary }}>{p.product_name}</span>
-                    {cl && <span style={{ color: v3.amberLight }}> · {cl.name}</span>}
-                    <span style={{ color: v3.text.muted }}> — {p.status} for {ageDays}d</span>
-                  </div>
-                  {nextLabel && (
-                    <button
-                      onClick={async () => {
-                        const next = await advancePlacement.mutateAsync({ id: p.id, status: p.status })
-                        if (next === 'on_shelf') triggerWin({ product: p.product_name, account: account.name, title: 'ON SHELF' })
-                        else toast(`Placement → ${PLAC_STATUS_LABEL[next] ?? next}`)
-                      }}
-                      disabled={advancePlacement.isPending}
-                      style={{ flexShrink: 0, padding: '3px 9px', background: 'rgba(196,164,110,0.12)', border: `1px solid rgba(196,164,110,0.35)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}
-                    >
-                      Mark {nextLabel}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Open follow-ups banner ─────────────────────────────── */}
-      {openFollowUps.length > 0 && (
-        <div style={{ background: v3.status.warningDim, border: `1px solid ${v3.status.warning}28`, borderLeft: `3px solid ${v3.status.warning}`, borderRadius: v3.radius.md, padding: '10px 14px', marginBottom: 10 }}>
-          <div style={{ fontSize: '9px', fontWeight: 700, color: v3.status.warning, textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 6 }}>
-            {openFollowUps.length} open follow-up{openFollowUps.length !== 1 ? 's' : ''}
-          </div>
-          {openFollowUps.map(v => (
-            <div key={v.id} style={{ fontSize: '12px', color: v3.text.secondary, paddingLeft: 8, paddingBottom: 2 }}>
-              <span style={{ color: v3.status.warning, fontWeight: 600 }}>{v.status}</span>
-              {v.notes ? ` — ${v.notes.slice(0, 90)}` : ''}
-              <span style={{ color: v3.text.muted, fontSize: '10px', marginLeft: 8 }}>{relativeTimeStr(v.visited_at) ?? ''}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Main two-column grid ────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-
-        {/* LEFT — Placements + Orders */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          {/* Placements */}
-          <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, padding: '14px 16px' }}>
-            <SectionLabel action={
-              <button onClick={() => setShowAddPlacement(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: 'rgba(196,164,110,0.07)', border: `1px solid rgba(196,164,110,0.25)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.04em' }}>
-                <Plus size={10} />Add
-              </button>
-            }>
-              Placements {activePlacements.length > 0 && `· ${activePlacements.length} active`}
-            </SectionLabel>
-
-            {activePlacements.length === 0 ? (
-              <div style={{ fontSize: '13px', color: v3.text.muted, paddingTop: 4 }}>No active placements — <button onClick={() => setShowAddPlacement(true)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '13px', padding: 0, textDecoration: 'underline' }}>add one</button></div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {activePlacements.map(p => {
-                  const sc = PLAC_STATUS_COLOR[p.status] ?? v3.text.muted
-                  const cl = clients.find(c => c.slug === p.client_slug)
-                  const canAdvance = !!PLAC_STATUS_NEXT[p.status]
-                  return (
-                    <div key={p.id} style={{ padding: '9px 11px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, borderLeft: `2px solid ${sc}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.product_name}</div>
-                          <div style={{ fontSize: '10px', color: v3.text.muted, marginTop: 1, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {cl && <span style={{ color: cl.color || v3.amber, fontWeight: 600 }}>{cl.name}</span>}
-                            {p.placement_type && <span>{p.placement_type}</span>}
-                            {p.shelf_count && <span>{p.shelf_count} facing{p.shelf_count !== 1 ? 's' : ''}</span>}
-                            {p.price_point && <span>${p.price_point}</span>}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                          <span style={{ fontSize: '9px', fontWeight: 700, color: sc, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{PLAC_STATUS_LABEL[p.status] ?? p.status}</span>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 5, marginTop: 7 }}>
-                        {canAdvance && (
-                          <button disabled={advancePlacement.isPending}
-                            onClick={async () => {
-                              const next = await advancePlacement.mutateAsync({ id: p.id, status: p.status })
-                              if (next === 'on_shelf') triggerWin({ product: p.product_name, account: account.name, title: 'ON SHELF' })
-                              else toast(`Placement → ${PLAC_STATUS_LABEL[next] ?? next}`)
-                            }}
-                            style={{ flex: 1, padding: '5px 8px', background: sc + '16', border: `1px solid ${sc}35`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: sc, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            → {PLAC_STATUS_LABEL[PLAC_STATUS_NEXT[p.status]]}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
+              {/* Last visit */}
+              <div style={{ padding: '12px 16px', borderRight: `1px solid ${v3.border.subtle}` }}>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Last Visit</div>
+                {latestVisit ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.muted, boxShadow: `0 0 6px ${VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.muted}80`, flexShrink: 0 }} />
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: VISIT_STATUS_COLOR[latestVisit.status] ?? v3.text.primary }}>{latestVisit.status}</span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: v3.text.muted, marginBottom: latestVisit.notes ? 8 : 0 }}>
+                      {relativeTimeStr(latestVisit.visited_at) ?? formatShortDateMT(latestVisit.visited_at)}
+                    </div>
+                    {latestVisit.notes && (
+                      <div style={{ fontSize: '11px', color: v3.text.secondary, lineHeight: 1.5, fontStyle: 'italic', borderLeft: `2px solid ${v3.border.default}`, paddingLeft: 8 }}>
+                        "{briefNoteExpanded ? latestVisit.notes : latestVisit.notes.slice(0, 100)}{!briefNoteExpanded && latestVisit.notes.length > 100 ? '…' : ''}"
+                        {latestVisit.notes.length > 100 && (
+                          <button onClick={() => setBriefNoteExpanded((e: boolean) => !e)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '10px', padding: '0 0 0 4px', fontStyle: 'normal' }}>
+                            {briefNoteExpanded ? 'less' : 'more'}
                           </button>
                         )}
-                        <button onClick={() => setEditPlacement(p)} style={{ padding: '5px 7px', background: 'transparent', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: v3.radius.sm, color: v3.text.muted, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(196,164,110,0.35)'; e.currentTarget.style.color = v3.amberLight }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = v3.text.muted }}>
-                          <Pencil size={11} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>No visits logged yet</div>
+                )}
+              </div>
+
+              {/* Talk to */}
+              <div style={{ padding: '12px 16px', borderRight: `1px solid ${v3.border.subtle}` }}>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Talk To</div>
+                {primaryContact ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, background: (CATEGORY_META[primaryContact.category]?.color || v3.amber) + '18', border: `1px solid ${(CATEGORY_META[primaryContact.category]?.color || v3.amber)}30`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: CATEGORY_META[primaryContact.category]?.color || v3.amberLight }}>
+                          {primaryContact.name[0].toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary, lineHeight: 1.2 }}>{primaryContact.name}</div>
+                        {primaryContact.role && <div style={{ fontSize: '10px', color: v3.text.muted }}>{primaryContact.role}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {primaryContact.phone && (
+                        <a href={`tel:${primaryContact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '11px', color: v3.text.link, textDecoration: 'none' }}>
+                          <Phone size={9} />{primaryContact.phone}
+                        </a>
+                      )}
+                      {primaryContact.email && (
+                        <a href={`mailto:${primaryContact.email}`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '11px', color: v3.text.link, textDecoration: 'none' }}>
+                          <Mail size={9} />{primaryContact.email}
+                        </a>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: '12px', color: v3.text.muted }}>
+                    No contacts yet —{' '}
+                    <button onClick={() => setContactModal({ mode: 'add' })} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}>add one</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Open items */}
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Open Items</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {openFollowUps.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.warning, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: v3.status.warning, fontWeight: 600 }}>{openFollowUps.length} follow-up{openFollowUps.length !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  {atRisk.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.amber, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: v3.amber, fontWeight: 600 }}>{atRisk.length} placement{atRisk.length !== 1 ? 's' : ''} at risk</span>
+                    </div>
+                  )}
+                  {daysOverdue !== null && daysOverdue > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.danger, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: v3.status.danger, fontWeight: 600 }}>{daysOverdue}d overdue</span>
+                    </div>
+                  )}
+                  {openFollowUps.length === 0 && atRisk.length === 0 && (daysOverdue === null || daysOverdue <= 0) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: v3.status.success, flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: v3.status.success, fontWeight: 600 }}>All clear</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Placements */}
+          <div style={{ borderTop: `1px solid ${v3.border.subtle}`, padding: '20px 0' }}>
+            <SectionHdr label={`Placements · ${activePlacements.length} active`} action={<AddBtn onClick={() => setShowAddPlacement(true)} />} />
+
+            {activePlacements.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {activePlacements.map((p: any) => {
+                  const sc = PLAC_STATUS_COLOR[p.status] ?? v3.text.muted
+                  const nextStatus = PLAC_STATUS_NEXT[p.status]
+                  const isAtRisk = atRisk.find((r: any) => r.id === p.id)
+                  return (
+                    <div key={p.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
+                      borderBottom: `1px solid ${isAtRisk ? v3.amber + '20' : v3.border.subtle}`,
+                    }}>
+                      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                        {(['committed', 'ordered', 'on_shelf', 'reordering'] as const).map(s => (
+                          <div key={s} style={{
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: s === p.status ? PLAC_STATUS_COLOR[s] : 'rgba(255,255,255,0.10)',
+                            boxShadow: s === p.status ? `0 0 6px ${PLAC_STATUS_COLOR[s]}80` : 'none',
+                          }} />
+                        ))}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.product_name}</span>
+                          {isAtRisk && <AlertTriangle size={10} color={v3.amber} />}
+                        </div>
+                        <div style={{ fontSize: '10px', color: v3.text.muted }}>
+                          {PLAC_STATUS_LABEL[p.status]}
+                          {p.placement_type && ` · ${p.placement_type.replace('_', ' ')}`}
+                          {p.price_point && ` · $${p.price_point}`}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                        {nextStatus && (
+                          <button onClick={() => advancePlacement.mutate({ id: p.id, status: p.status })} title={`Advance to ${PLAC_STATUS_LABEL[nextStatus]}`}
+                            style={{ padding: '4px 8px', background: sc + '14', border: `1px solid ${sc}30`, borderRadius: '3px', fontSize: '10px', fontWeight: 700, color: sc, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            → {PLAC_STATUS_LABEL[nextStatus]}
+                          </button>
+                        )}
+                        <button onClick={() => setEditPlacement(p)} style={{ padding: '4px 7px', background: 'transparent', border: `1px solid ${v3.border.default}`, borderRadius: '3px', color: v3.text.muted, cursor: 'pointer' }}>
+                          <Pencil size={10} />
                         </button>
-                        <button onClick={() => setLostModal(p)} style={{ padding: '5px 8px', background: 'transparent', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 600, color: v3.text.muted, cursor: 'pointer' }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = v3.status.danger + '40'; e.currentTarget.style.color = v3.status.danger }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = v3.text.muted }}>
-                          Lost
+                        <button onClick={() => setLostModal(p)} title="Mark lost" style={{ padding: '4px 7px', background: 'transparent', border: `1px solid rgba(191,120,80,0.20)`, borderRadius: '3px', color: v3.status.danger, cursor: 'pointer' }}>
+                          <X size={10} />
                         </button>
                       </div>
                     </div>
                   )
                 })}
-                {lostPlacements.length > 0 && (
-                  <div style={{ fontSize: '10px', color: v3.text.muted, paddingTop: 2, paddingLeft: 2 }}>{lostPlacements.length} lost placement{lostPlacements.length !== 1 ? 's' : ''} (hidden)</div>
-                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>
+                No active placements —{' '}
+                <button onClick={() => setShowAddPlacement(true)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}>add one</button>
+              </div>
+            )}
+
+            {lostPlacements.length > 0 && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${v3.border.subtle}` }}>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 8 }}>Lost</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {lostPlacements.map((p: any) => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', color: 'rgba(255,255,255,0.28)' }}>
+                      <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.20)', flexShrink: 0 }} />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.product_name}</span>
+                      {p.lost_reason && <span style={{ fontSize: '10px', fontStyle: 'italic' }}>{p.lost_reason}</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
           {/* Orders */}
-          <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, padding: '14px 16px' }}>
-            <SectionLabel action={
-              <button onClick={() => setShowCreateOrder(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: 'rgba(196,164,110,0.07)', border: `1px solid rgba(196,164,110,0.25)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.04em' }}>
-                <Plus size={10} />Add
-              </button>
-            }>
-              Orders {orders.length > 0 && `· ${orders.length}`}</SectionLabel>
-            {orders.length === 0
-              ? <div style={{ fontSize: '13px', color: v3.text.muted }}>No orders yet</div>
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {(showAllOrders ? orders : orders.slice(0, 5)).map(o => {
-                    const total = o.po_line_items?.reduce((s: number, li: any) => s + (Number(li.total) || 0), 0) || Number(o.total_amount) || 0
-                    const cl = clients.find(c => c.slug === o.client_slug)
-                    const statusColor = o.status === 'fulfilled' ? v3.status.success : o.status === 'sent' ? v3.status.warning : v3.text.muted
+          <div style={{ borderTop: `1px solid ${v3.border.subtle}`, padding: '20px 0' }}>
+            <SectionHdr label="Orders & Inquiries" action={<AddBtn onClick={() => setShowCreateOrder(true)} />} />
+            {orders.length === 0 ? (
+              <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>
+                No orders yet —{' '}
+                <button onClick={() => setShowCreateOrder(true)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}>create one</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {visibleOrders.map((o: any) => {
+                    const lineTotal = (o.po_line_items ?? []).reduce((s: number, li: any) => s + (Number(li.total) || 0), 0)
+                    const amount = lineTotal || Number(o.total_amount) || 0
+                    const statusColor: Record<string, string> = { draft: v3.text.muted, sent: v3.status.warning, fulfilled: v3.status.success, cancelled: v3.status.danger }
+                    const sc = statusColor[o.status] ?? v3.text.muted
                     return (
-                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}` }}>
-                        <ShoppingCart size={10} color={statusColor} style={{ flexShrink: 0 }} />
+                      <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${v3.border.subtle}` }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: sc, flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '12px', fontWeight: 700, color: v3.text.primary }}>{o.po_number ?? 'No PO#'}{cl ? ` · ${cl.name}` : ''}</div>
-                          <div style={{ fontSize: '10px', color: v3.text.muted, marginTop: 1 }}>
-                            {relativeTimeStr(o.sent_at || o.created_at) ?? '—'} · {o.order_type === 'distributor' ? 'Distributor' : 'Direct'}
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: v3.text.secondary }}>
+                            {o.po_number || (o.order_type === 'distributor' ? 'Distributor Inquiry' : 'Direct Order')}
                           </div>
+                          <div style={{ fontSize: '10px', color: v3.text.muted }}>{formatShortDateMT(o.sent_at || o.created_at)}</div>
                         </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          {total > 0 && <div style={{ fontSize: '12px', fontWeight: 800, color: v3.amberLight, fontFamily: 'monospace' }}>${total.toLocaleString()}</div>}
-                          <div style={{ fontSize: '9px', fontWeight: 700, color: statusColor, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 1 }}>{o.status}</div>
-                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: sc, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>{o.status}</div>
+                        {amount > 0 && <div style={{ fontSize: '13px', fontWeight: 800, color: v3.amberLight, fontFamily: 'monospace', flexShrink: 0 }}>${amount.toLocaleString()}</div>}
                       </div>
                     )
                   })}
-                  {orders.length > 5 && (
-                    <button onClick={() => setShowAllOrders(s => !s)} style={{ background: 'none', border: 'none', color: v3.text.muted, fontSize: '10px', fontWeight: 600, cursor: 'pointer', padding: '4px 0', textAlign: 'left', letterSpacing: '0.02em' }}>
-                      {showAllOrders ? '↑ Show less' : `+ ${orders.length - 5} more order${orders.length - 5 !== 1 ? 's' : ''}`}
-                    </button>
-                  )}
                 </div>
-              )
-            }
+                {orders.length > 4 && (
+                  <button onClick={() => setShowAllOrders((v: boolean) => !v)} style={{ marginTop: 8, background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '11px', padding: '4px 0' }}>
+                    {showAllOrders ? 'Show less' : `Show all ${orders.length} orders`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Visit history timeline */}
+          <div style={{ borderTop: `1px solid ${v3.border.subtle}`, padding: '20px 0' }}>
+            <SectionHdr label={`Visit History · ${visits.length}`} />
+            {visits.length === 0 ? (
+              <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>No visit history yet.</div>
+            ) : (
+              <>
+                <div style={{ position: 'relative', paddingLeft: 20 }}>
+                  <div style={{ position: 'absolute', left: 6, top: 8, bottom: 8, width: 1, background: v3.border.subtle }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {visibleVisits.map((v: any) => {
+                      const sc = VISIT_STATUS_COLOR[v.status] ?? v3.text.muted
+                      const isWin = WIN_SET.has(v.status)
+                      return (
+                        <div key={v.id} style={{ display: 'flex', gap: 12, paddingBottom: 14, position: 'relative' }}>
+                          <div style={{
+                            position: 'absolute', left: -14, top: 3,
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: sc, border: `1.5px solid ${v3.bg.card}`,
+                            boxShadow: `0 0 ${isWin ? '8px' : '4px'} ${sc}${isWin ? '90' : '50'}`,
+                            flexShrink: 0,
+                          }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: v.notes ? 4 : 0 }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: sc }}>{v.status}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                <span style={{ fontSize: '10px', color: v3.text.muted }}>{relativeTimeStr(v.visited_at) ?? formatShortDateMT(v.visited_at)}</span>
+                                <button onClick={() => setEditVisit(v)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.20)', cursor: 'pointer', padding: 0 }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.amberLight}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.20)'}>
+                                  <Pencil size={10} />
+                                </button>
+                                {confirmDeleteVisitId === v.id ? (
+                                  <div style={{ display: 'flex', gap: 4 }}>
+                                    <button onClick={() => deleteVisit.mutate(v.id)} style={{ background: 'none', border: 'none', color: v3.status.danger, cursor: 'pointer', fontSize: '10px', padding: 0, fontWeight: 700 }}>Delete</button>
+                                    <button onClick={() => setConfirmDeleteVisitId(null)} style={{ background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', fontSize: '10px', padding: 0 }}>Cancel</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setConfirmDeleteVisitId(v.id)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.15)', cursor: 'pointer', padding: 0 }}
+                                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.status.danger}
+                                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.15)'}>
+                                    <Trash2 size={10} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {v.notes && <div style={{ fontSize: '11px', color: v3.text.muted, lineHeight: 1.45, fontStyle: 'italic' }}>"{v.notes}"</div>}
+                            {v.feedback && <div style={{ fontSize: '10px', color: v3.text.muted, marginTop: 2 }}>Feedback: {v.feedback}</div>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+                {visits.length > 5 && (
+                  <button onClick={() => setShowAllVisits((v: boolean) => !v)} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '11px', padding: '4px 0' }}>
+                    {showAllVisits ? 'Show less' : `Show all ${visits.length} visits`}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
 
-        {/* RIGHT — Contacts */}
-        <div>
-          <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, padding: '14px 16px' }}>
-            <SectionLabel action={
-              <button onClick={() => setContactModal({ mode: 'add' })} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', background: 'rgba(196,164,110,0.07)', border: `1px solid rgba(196,164,110,0.25)`, borderRadius: v3.radius.sm, fontSize: '10px', fontWeight: 700, color: v3.amberLight, cursor: 'pointer', letterSpacing: '0.04em' }}>
-                <Plus size={10} />Add
-              </button>
-            }>
-              Contacts {contacts.length > 0 && `· ${contacts.length}`}
-            </SectionLabel>
+        {/* RIGHT COLUMN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+          {/* Grade section */}
+          <div style={{ padding: '0 0 24px' }}>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', marginBottom: 14 }}>Account Grade</div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: '8px', flexShrink: 0,
+                background: gradeCfg.bg, border: `1.5px solid ${gradeCfg.border}`,
+                boxShadow: gradeCfg.glow !== 'none' ? gradeCfg.glow : undefined,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ fontSize: '26px', fontWeight: 900, color: gradeCfg.color, letterSpacing: '-0.03em', lineHeight: 1, userSelect: 'none' }}>
+                  {gradeResult.grade}
+                </span>
+              </div>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 800, color: gradeCfg.color, letterSpacing: '-0.01em' }}>{gradeCfg.label}</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.40)', marginTop: 2, fontFamily: 'monospace' }}>
+                  {gradeResult.score} / 100 points
+                </div>
+                {gradeResult.momentum !== 'flat' && (
+                  <div style={{ fontSize: '10px', fontWeight: 700, marginTop: 4, color: gradeResult.momentum === 'up' ? v3.status.success : 'rgba(191,120,80,0.85)' }}>
+                    {gradeResult.momentum === 'up' ? '↑ Trending up' : '↓ Activity declining'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${gradeResult.score}%`, background: gradeCfg.color, borderRadius: 2, transition: 'width 800ms cubic-bezier(0.4,0,0.2,1)' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              {([
+                { key: 'revenue',   label: 'Revenue',      weight: '35%', desc: 'Lifetime order value' },
+                { key: 'velocity',  label: 'Order Freq.',  weight: '20%', desc: 'Orders last 90 days' },
+                { key: 'placement', label: 'Placements',   weight: '20%', desc: 'Active placement health' },
+                { key: 'winRate',   label: 'Win Rate',     weight: '15%', desc: 'Visits with wins' },
+                { key: 'recency',   label: 'Recency',      weight: '10%', desc: 'Days since last visit' },
+              ] as const).map(({ key, label, weight }) => {
+                const val = gradeResult.scores[key]
+                const barColor = val >= 70 ? gradeCfg.color : val >= 40 ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'
+                return (
+                  <div key={key}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)' }}>{weight}</span>
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.45)', fontFamily: 'monospace', width: 22, textAlign: 'right' }}>{val}</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${val}%`, background: barColor, borderRadius: 2, transition: 'width 600ms cubic-bezier(0.4,0,0.2,1)' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${v3.border.subtle}`, paddingTop: 12 }}>
+              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.30)', lineHeight: 1.7 }}>
+                <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.40)', marginBottom: 4 }}>How grades are calculated</div>
+                Revenue (35%) + order frequency (20%) + active placements (20%) + win rate (15%) + visit recency (10%)
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {([['S', '#e8d48a', '82+'], ['A', '#5a9ea0', '65+'], ['B', '#6878b4', '45+'], ['C', '#a08440', '22+'], ['D', 'rgba(255,255,255,0.32)', '<22']] as const).map(([g, c, range]) => (
+                  <div key={g} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: c }}>{g}</span>
+                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)' }}>{range}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Contacts */}
+          <div style={{ borderTop: `1px solid ${v3.border.subtle}`, paddingTop: 20 }}>
+            <SectionHdr label="Contacts" action={<AddBtn onClick={() => setContactModal({ mode: 'add' })} />} />
 
             {contacts.length === 0 ? (
-              <div style={{ fontSize: '13px', color: v3.text.muted }}>No contacts — <button onClick={() => setContactModal({ mode: 'add' })} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '13px', padding: 0, textDecoration: 'underline' }}>add a key contact</button></div>
+              <div style={{ fontSize: '12px', color: v3.text.muted, fontStyle: 'italic' }}>
+                No contacts —{' '}
+                <button onClick={() => setContactModal({ mode: 'add' })} style={{ background: 'none', border: 'none', color: v3.amberLight, cursor: 'pointer', fontSize: '12px', padding: 0, textDecoration: 'underline' }}>add a key contact</button>
+              </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {contacts.map(contact => {
-                  const catMeta = CATEGORY_META[contact.category] ?? CATEGORY_META.general
-                  const isDeletingThis = confirmDeleteId === contact.id
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {contacts.map((c: any) => {
+                  const catMeta = CATEGORY_META[c.category] ?? CATEGORY_META.general
                   return (
-                    <div key={contact.id} style={{ padding: '9px 11px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, borderLeft: contact.is_decision_maker ? `2px solid ${v3.amber}` : `2px solid transparent` }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <User size={11} color={contact.is_decision_maker ? v3.amberLight : v3.text.muted} style={{ marginTop: 2, flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary }}>{contact.name}</span>
-                            {contact.is_decision_maker && (
-                              <span style={{ fontSize: '9px', fontWeight: 800, color: v3.amberLight, background: v3.amberDim, padding: '1px 5px', borderRadius: v3.radius.sm, letterSpacing: '0.06em' }}>KEY</span>
-                            )}
-                            <span style={{ fontSize: '9px', fontWeight: 700, color: catMeta.color, background: catMeta.color + '16', padding: '1px 6px', borderRadius: v3.radius.sm, letterSpacing: '0.04em' }}>{catMeta.label}</span>
-                          </div>
-                          {contact.role && <div style={{ fontSize: '10px', color: v3.text.muted, marginBottom: 4 }}>{contact.role}</div>}
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                            {contact.phone && (
-                              <a href={`tel:${contact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '10px', color: v3.text.link, textDecoration: 'none' }}>
-                                <Phone size={9} />{contact.phone}
-                              </a>
-                            )}
-                            {contact.email && (
-                              <a href={`mailto:${contact.email}`} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '10px', color: v3.text.link, textDecoration: 'none' }}>
-                                <Mail size={9} />{contact.email}
-                              </a>
-                            )}
-                          </div>
-                          {contact.notes && (
-                            <div style={{ fontSize: '10px', color: v3.text.muted, marginTop: 4, fontStyle: 'italic' }}>{contact.notes}</div>
-                          )}
+                    <div key={c.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: `1px solid ${v3.border.subtle}`, alignItems: 'flex-start' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: catMeta.color + '18', border: `1px solid ${catMeta.color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: catMeta.color }}>{c.name[0].toUpperCase()}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary }}>{c.name}</span>
+                          {c.is_decision_maker && <span style={{ fontSize: '8px', fontWeight: 700, color: v3.amberLight, background: 'rgba(196,164,110,0.12)', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.06em' }}>KEY</span>}
                         </div>
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          <button onClick={() => setContactModal({ mode: 'edit', contact })} style={{ padding: '4px', background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', display: 'flex', borderRadius: v3.radius.sm, transition: 'color 100ms' }}
-                            onMouseEnter={e => e.currentTarget.style.color = v3.text.secondary}
-                            onMouseLeave={e => e.currentTarget.style.color = v3.text.muted}>
-                            <Pencil size={12} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                          {c.role && <span style={{ fontSize: '10px', color: v3.text.muted }}>{c.role}</span>}
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: catMeta.color, background: catMeta.color + '14', padding: '1px 5px', borderRadius: '2px' }}>{catMeta.label}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          {c.phone && <a href={`tel:${c.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '11px', color: v3.text.link, textDecoration: 'none' }}><Phone size={9} />{c.phone}</a>}
+                          {c.email && <a href={`mailto:${c.email}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '11px', color: v3.text.link, textDecoration: 'none' }}><Mail size={9} />{c.email}</a>}
+                        </div>
+                        {c.notes && <div style={{ fontSize: '10px', color: v3.text.muted, marginTop: 4, fontStyle: 'italic' }}>{c.notes}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => setContactModal({ mode: 'edit', contact: c })} style={{ background: 'none', border: `1px solid ${v3.border.default}`, borderRadius: '3px', color: v3.text.muted, cursor: 'pointer', padding: '4px 6px' }}>
+                          <Pencil size={10} />
+                        </button>
+                        {confirmDeleteId === c.id ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button onClick={() => deleteContact.mutate(c.id)} style={{ background: 'none', border: 'none', color: v3.status.danger, cursor: 'pointer', fontSize: '10px', fontWeight: 700, padding: 0 }}>Delete</button>
+                            <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', fontSize: '10px', padding: 0 }}>Cancel</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteId(c.id)} style={{ background: 'none', border: `1px solid rgba(191,120,80,0.20)`, borderRadius: '3px', color: v3.status.danger, cursor: 'pointer', padding: '4px 6px' }}>
+                            <Trash2 size={10} />
                           </button>
-                          {isDeletingThis ? (
-                            <div style={{ display: 'flex', gap: 4 }}>
-                              <button onClick={() => setConfirmDeleteId(null)} style={{ padding: '3px 7px', background: 'none', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.sm, fontSize: '10px', color: v3.text.muted, cursor: 'pointer' }}>Cancel</button>
-                              <button onClick={() => deleteContact.mutate(contact.id)} style={{ padding: '3px 7px', background: v3.status.danger + '20', border: `1px solid ${v3.status.danger}40`, borderRadius: v3.radius.sm, fontSize: '10px', color: v3.status.danger, cursor: 'pointer', fontWeight: 700 }}>Delete</button>
-                            </div>
-                          ) : (
-                            <button onClick={() => setConfirmDeleteId(contact.id)} style={{ padding: '4px', background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', display: 'flex', borderRadius: v3.radius.sm, transition: 'color 100ms' }}
-                              onMouseEnter={e => e.currentTarget.style.color = v3.status.danger}
-                              onMouseLeave={e => e.currentTarget.style.color = v3.text.muted}>
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1582,86 +1674,16 @@ export default function AccountDetailPage() {
               </div>
             )}
           </div>
+
         </div>
       </div>
 
-      {/* ── Visit History ───────────────────────────────────────── */}
-      <div style={{ marginTop: 10, background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.md, padding: '14px 16px' }}>
-        <SectionLabel>Visit History {visits.length > 0 && `· ${visits.length}`}</SectionLabel>
-        {visitsLoading
-          ? <div style={{ color: v3.text.muted, fontSize: '13px' }}>Loading…</div>
-          : visits.length === 0
-          ? <div style={{ color: v3.text.muted, fontSize: '13px' }}>No visit history yet</div>
-          : (
-            <div>
-              {(showAllVisits ? visits : visits.slice(0, 12)).map((v, i) => {
-                const displayedCount = showAllVisits ? visits.length : Math.min(visits.length, 12)
-                const sc = VISIT_STATUS_COLOR[v.status] ?? v3.text.muted
-                const repName = Array.isArray(v.user_profiles) ? v.user_profiles[0]?.name : v.user_profiles?.name
-                const cl = v.client_slug ? clients.find(c => c.slug === v.client_slug) : null
-                return (
-                  <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: i < displayedCount - 1 ? `1px solid ${v3.border.subtle}` : 'none' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4, flexShrink: 0 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: sc, boxShadow: `0 0 5px ${sc}70` }} />
-                      {i < displayedCount - 1 && <div style={{ width: 1, height: 18, background: v3.border.subtle, marginTop: 3 }} />}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: sc }}>{v.status}</span>
-                        <span style={{ fontSize: '10px', color: v3.text.muted }}>{relativeTimeStr(v.visited_at) ?? formatShortDateMT(v.visited_at)}</span>
-                        {cl && <span style={{ fontSize: '9px', color: cl.color || v3.amber, background: (cl.color || v3.amber) + '14', padding: '1px 6px', borderRadius: v3.radius.sm, fontWeight: 600 }}>{cl.name}</span>}
-                        {repName && <span style={{ fontSize: '9px', color: v3.text.muted }}>· {repName}</span>}
-                      </div>
-                      {v.notes && <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.45, marginBottom: v.tasting_notes ? 4 : 0 }}>{v.notes}</div>}
-                      {v.tasting_notes && (
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4, padding: '5px 9px', background: 'rgba(196,164,110,0.06)', borderLeft: `2px solid rgba(196,164,110,0.25)`, borderRadius: `0 ${v3.radius.sm} ${v3.radius.sm} 0` }}>
-                          <GlassWater size={9} color={v3.amber} style={{ marginTop: 2, flexShrink: 0 }} />
-                          <span style={{ fontSize: '10px', color: 'rgba(196,164,110,0.75)', lineHeight: 1.4 }}>{v.tasting_notes}</span>
-                        </div>
-                      )}
-                      {v.feedback && (
-                        <div style={{ marginTop: 4, fontSize: '10px', color: v3.text.muted, fontStyle: 'italic', lineHeight: 1.4 }}>
-                          Feedback: {v.feedback}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flexShrink: 0, paddingLeft: 4, display: 'flex', gap: 3 }}>
-                      {confirmDeleteVisitId === v.id ? (
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => setConfirmDeleteVisitId(null)} style={{ padding: '3px 7px', background: 'none', border: `1px solid ${v3.border.default}`, borderRadius: v3.radius.sm, fontSize: '10px', color: v3.text.muted, cursor: 'pointer' }}>No</button>
-                          <button onClick={() => deleteVisit.mutate(v.id)} disabled={deleteVisit.isPending} style={{ padding: '3px 7px', background: v3.status.danger + '20', border: `1px solid ${v3.status.danger}40`, borderRadius: v3.radius.sm, fontSize: '10px', color: v3.status.danger, cursor: 'pointer', fontWeight: 700 }}>Delete</button>
-                        </div>
-                      ) : (
-                        <>
-                          <button onClick={() => setEditVisit(v)} style={{ padding: '4px', background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', display: 'flex', opacity: 0.4 }}
-                            onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = v3.amberLight }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; e.currentTarget.style.color = v3.text.muted }}>
-                            <Pencil size={11} />
-                          </button>
-                          <button onClick={() => setConfirmDeleteVisitId(v.id)} style={{ padding: '4px', background: 'none', border: 'none', color: v3.text.muted, cursor: 'pointer', display: 'flex', opacity: 0.4 }}
-                            onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = v3.status.danger }}
-                            onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; e.currentTarget.style.color = v3.text.muted }}>
-                            <Trash2 size={11} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-              {visits.length > 12 && (
-                <button onClick={() => setShowAllVisits(s => !s)} style={{ background: 'none', border: 'none', color: v3.text.muted, fontSize: '10px', fontWeight: 600, cursor: 'pointer', padding: '6px 0', width: '100%', textAlign: 'center', letterSpacing: '0.02em' }}>
-                  {showAllVisits ? '↑ Show fewer visits' : `+ ${visits.length - 12} more visit${visits.length - 12 !== 1 ? 's' : ''}`}
-                </button>
-              )}
-            </div>
-          )
-        }
-      </div>
-
-      {/* ── Modals ───────────────────────────────────────────────── */}
+      {/* ── Modals ────────────────────────────────────────────────── */}
       {showEdit && <EditAccountModal account={account} onClose={() => setShowEdit(false)} />}
       {showAddPlacement && <AddPlacementModal accountId={id} linkedClients={linkedClients} onClose={() => setShowAddPlacement(false)} />}
+      {editPlacement && <EditPlacementModal placement={editPlacement} accountId={id} onClose={() => setEditPlacement(null)} />}
+      {lostModal && <MarkLostModal placement={lostModal} accountId={id} onClose={() => setLostModal(null)} />}
+      {editVisit && <EditVisitModal visit={editVisit} accountId={id} onClose={() => setEditVisit(null)} />}
       {showCreateOrder && <CreateOrderModal accountId={id} accountName={account.name} linkedClients={linkedClients} onClose={() => setShowCreateOrder(false)} />}
       {contactModal && (
         <ContactFormModal
@@ -1671,9 +1693,6 @@ export default function AccountDetailPage() {
           onClose={() => setContactModal(null)}
         />
       )}
-      {lostModal && <MarkLostModal placement={lostModal} accountId={id} onClose={() => setLostModal(null)} />}
-      {editPlacement && <EditPlacementModal placement={editPlacement} accountId={id} onClose={() => setEditPlacement(null)} />}
-      {editVisit && <EditVisitModal visit={editVisit} accountId={id} onClose={() => setEditVisit(null)} />}
     </div>
   )
 }

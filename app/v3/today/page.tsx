@@ -68,13 +68,12 @@ function fmtCurrency(n: number) {
 }
 
 function todayDateStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
 }
 
 function monthStartStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  const mt = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+  return mt.slice(0, 7) + '-01'
 }
 
 // ── Progress ring ─────────────────────────────────────────────────────────────
@@ -661,7 +660,8 @@ export default function TodayPage() {
   const todayVisits = useMemo(() => {
     const seen = new Set<string>()
     return allRecentVisits.filter(v => {
-      if (v.visited_at.slice(0, 10) !== TODAY_STR) return false
+      const mtDate = new Date(v.visited_at).toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      if (mtDate !== TODAY_STR) return false
       if (myUserId && v.user_id !== myUserId) return false
       const key = `${v.account_id}|${TODAY_STR}`
       if (seen.has(key)) return false
@@ -671,10 +671,10 @@ export default function TodayPage() {
 
   // MTD visits — current user's only, from calendar month start
   const mtdVisits = useMemo(() => {
-    return allRecentVisits.filter(v =>
-      v.visited_at.slice(0, 10) >= MONTH_START_STR &&
-      (!myUserId || v.user_id === myUserId)
-    )
+    return allRecentVisits.filter(v => {
+      const mtDate = new Date(v.visited_at).toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      return mtDate >= MONTH_START_STR && (!myUserId || v.user_id === myUserId)
+    })
   }, [allRecentVisits, MONTH_START_STR, myUserId])
 
   const gradeMap = useMemo(
