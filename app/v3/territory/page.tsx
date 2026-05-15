@@ -238,24 +238,28 @@ function TerritoryMap({ accounts, orderMap: _orderMap, clients: _clients }: {
       const hColor = healthColor(a.last_visited, a.visit_frequency_days)
       const label  = healthLabel(a.last_visited, a.visit_frequency_days)
 
+      // Wrapper: Mapbox owns this element's transform for positioning — never set transform on it
       const el = document.createElement('div')
-      el.style.cssText = `
+      el.style.cssText = `width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;`
+
+      // Inner dot: only we animate this, Mapbox never touches it
+      const dot = document.createElement('div')
+      dot.style.cssText = `
         width:16px;height:16px;border-radius:50%;
         background:${hColor};
         border:2.5px solid rgba(10,10,10,0.7);
         box-shadow:0 0 0 2px ${hColor}50, 0 2px 10px rgba(0,0,0,0.5);
-        cursor:pointer;
         transition:transform 200ms cubic-bezier(0.34,1.56,0.64,1),box-shadow 200ms;
         transform-origin:50% 50%;
-        will-change:transform;
       `
+      el.appendChild(dot)
       el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.75)'
-        el.style.boxShadow = `0 0 0 3px ${hColor}60, 0 0 20px ${hColor}, 0 4px 14px rgba(0,0,0,0.6)`
+        dot.style.transform = 'scale(1.75)'
+        dot.style.boxShadow = `0 0 0 3px ${hColor}60, 0 0 20px ${hColor}, 0 4px 14px rgba(0,0,0,0.6)`
       })
       el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)'
-        el.style.boxShadow = `0 0 0 2px ${hColor}50, 0 2px 10px rgba(0,0,0,0.5)`
+        dot.style.transform = 'scale(1)'
+        dot.style.boxShadow = `0 0 0 2px ${hColor}50, 0 2px 10px rgba(0,0,0,0.5)`
       })
       el.addEventListener('click', e => {
         e.stopPropagation()
@@ -263,7 +267,7 @@ function TerritoryMap({ accounts, orderMap: _orderMap, clients: _clients }: {
       })
 
       const popup = new mb.Popup({
-        offset: 14, closeButton: false, closeOnClick: false,
+        offset: [0, -14], anchor: 'bottom', closeButton: false, closeOnClick: false,
         className: 'v3-map-popup',
       }).setHTML(`
         <div style="background:#111113;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;min-width:170px;box-shadow:0 12px 40px rgba(0,0,0,0.7)">

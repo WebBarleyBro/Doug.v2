@@ -307,7 +307,7 @@ export default function ClientPortalPage() {
         const typeLabel = acc.account_type === 'on_premise' ? 'On-premise' : 'Off-premise'
         new mb.Marker({ element: el, anchor: 'center' })
           .setLngLat([acc.lng, acc.lat])
-          .setPopup(new mb.Popup({ offset: 14, closeButton: false })
+          .setPopup(new mb.Popup({ offset: [0, -14], anchor: 'bottom', closeButton: false })
             .setHTML(`
               <div style="background:#111113;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;min-width:155px;box-shadow:0 12px 40px rgba(0,0,0,0.7)">
                 <div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#f2f2f2;margin-bottom:5px;line-height:1.3">${acc.name}</div>
