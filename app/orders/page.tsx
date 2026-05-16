@@ -23,6 +23,13 @@ import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from
 import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client, Contact } from '../lib/types'
+import { getSupabase } from '../lib/supabase'
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const { data: { session } } = await getSupabase().auth.getSession()
+  if (!session?.access_token) return {}
+  return { Authorization: `Bearer ${session.access_token}` }
+}
 
 // ─── Account Search Dropdown ──────────────────────────────────────────────
 
@@ -1010,7 +1017,8 @@ export default function OrdersPage() {
                       const html = `<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto"><h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${o.po_number}</h2><p style="font-size:13px;color:#9a9790;margin:0 0 20px">${o.deliver_to_name} · ${new Date(o.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p><table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px"><thead><tr style="background:#202020"><th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754">Product</th><th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754">Qty</th><th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754">Total</th></tr></thead><tbody>${htmlRows}</tbody></table><div style="text-align:right;font-size:18px;font-weight:700;color:#eceae4">$${total.toFixed(2)}</div>${o.notes ? `<p style="font-size:13px;color:#9a9790;margin-top:16px">${o.notes}</p>` : ''}<p style="font-size:12px;color:#5a5754;margin-top:24px">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p><p style="margin-top:16px;font-size:13px;color:#bfb5a1">— Barley Bros</p></div>`
                       try {
                         const res = await fetch('/api/send-email', {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', ...await getAuthHeader() },
                           body: JSON.stringify({ to: email.trim(), subject, text, html, ...(isInquiry ? { orderId: o.id } : {}) }),
                         })
                         if (res.ok) { await updateOrder(o.id, { status: 'sent' }); load(); setResendState('sent'); setResendTo('') }
@@ -1429,7 +1437,7 @@ export default function OrdersPage() {
                       const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
                       const emailRes = await fetch('/api/send-email', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...await getAuthHeader() },
                         body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody, replyTo }),
                       })
                       if (!emailRes.ok) {

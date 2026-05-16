@@ -1,7 +1,6 @@
 import { Resend } from 'resend'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { getSupabaseAdmin } from '../../lib/supabase-server'
+import { getAuthUserFromRequest, getSupabaseAdmin } from '../../lib/supabase-server'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -24,17 +23,10 @@ function checkRateLimit(userId: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check via session cookie
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => request.cookies.getAll() } }
-    )
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const { data: profile } = await supabase.from('user_profiles').select('role').eq('id', user.id).single()
-    if (profile?.role === 'portal') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    if (!checkRateLimit(user.id)) {
+    const profile = await getAuthUserFromRequest(request)
+    if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (profile.role === 'portal') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!checkRateLimit(profile.id)) {
       return NextResponse.json({ error: 'Rate limit exceeded — max 10 emails per hour' }, { status: 429 })
     }
 
@@ -69,8 +61,8 @@ export async function POST(request: NextRequest) {
       const due = new Date()
       due.setDate(due.getDate() + 3)
       await admin.from('tasks').insert({
-        user_id: user.id,
-        assigned_to: user.id,
+        user_id: profile.id,
+        assigned_to: profile.id,
         title: 'Follow up on order inquiry',
         description: `Check on inquiry sent to ${toArray.join(', ')}`,
         due_date: due.toISOString().slice(0, 10),
