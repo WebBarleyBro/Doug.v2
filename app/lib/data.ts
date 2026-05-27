@@ -1197,13 +1197,11 @@ export function getTodaySchedule(userId: string) {
 export function getPendingDistributorInquiries() {
   return cached('pending-distributor-inquiries', 60_000, async () => {
     const sb = getSupabase()
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const { data, error } = await sb
       .from('purchase_orders')
-      .select('id, deliver_to_name, client_slug, status, order_type, created_at, distributor_status, distributor_contacted_at')
+      .select('id, deliver_to_name, client_slug, status, order_type, created_at')
       .eq('order_type', 'distributor')
-      .in('status', ['draft', 'sent'])
-      .or(`distributor_status.eq.not_contacted,and(distributor_status.eq.contacted,distributor_contacted_at.lte.${sevenDaysAgo})`)
+      .eq('status', 'draft')
       .order('created_at', { ascending: false })
     if (error) throw error
     return data || []

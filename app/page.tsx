@@ -358,26 +358,20 @@ function DesktopDashboard({ profile }: { profile: UserProfile }) {
               View all <ChevronRight size={11} />
             </Link>
           </div>
-          {pendingInquiries.slice(0, 5).map((o: any, i: number) => {
-            const isOverdue = o.distributor_status === 'contacted'
-            const daysAgo = o.distributor_contacted_at
-              ? Math.floor((Date.now() - new Date(o.distributor_contacted_at).getTime()) / 86400_000)
-              : null
-            return (
-              <div key={o.id} style={{
-                display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
-                borderBottom: i < Math.min(pendingInquiries.length, 5) - 1 ? `1px solid ${t.border.subtle}` : 'none',
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{o.deliver_to_name}</span>
-                  {o.client_slug && <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '8px' }}>{o.client_slug}</span>}
-                </div>
-                <span style={{ fontSize: '11px', color: isOverdue ? t.status.danger : t.text.muted, flexShrink: 0 }}>
-                  {isOverdue && daysAgo !== null ? `⚠ ${daysAgo}d ago — no response` : 'Not contacted'}
-                </span>
+          {pendingInquiries.slice(0, 5).map((o: any, i: number) => (
+            <div key={o.id} style={{
+              display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
+              borderBottom: i < Math.min(pendingInquiries.length, 5) - 1 ? `1px solid ${t.border.subtle}` : 'none',
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: t.text.primary }}>{o.deliver_to_name}</span>
+                {o.client_slug && <span style={{ fontSize: '12px', color: t.text.muted, marginLeft: '8px' }}>{o.client_slug}</span>}
               </div>
-            )
-          })}
+              <span style={{ fontSize: '11px', color: t.text.muted, flexShrink: 0 }}>
+                Draft — not sent
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
