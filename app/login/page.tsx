@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { signIn } from '../lib/auth'
+import { signIn, getCurrentUserWithProfile } from '../lib/auth'
 import { t, inputStyle, labelStyle } from '../lib/theme'
 
 export default function LoginPage() {
@@ -25,7 +25,12 @@ export default function LoginPage() {
     try {
       const { error: err } = await signIn(email, password)
       if (err) { setError(err.message); return }
-      router.push(redirectTo)
+      const result = await getCurrentUserWithProfile()
+      if (result?.profile?.role === 'portal' && result.profile.client_slug) {
+        router.push(`/portal/${result.profile.client_slug}`)
+      } else {
+        router.push(redirectTo)
+      }
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {
@@ -57,7 +62,7 @@ export default function LoginPage() {
             Doug
           </h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '4px' }}>
-            Barley Bros CRM
+            Western Peak
           </p>
         </div>
 
@@ -74,7 +79,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="you@barley-bros.com"
+              placeholder="you@westernpeak.org"
               required
               autoComplete="email"
               style={inputStyle}
@@ -130,7 +135,7 @@ export default function LoginPage() {
         </form>
 
         <p style={{ textAlign: 'center', fontSize: '12px', color: t.text.muted, marginTop: '24px' }}>
-          Barley Bros spirits rep agency · Fort Collins, CO
+          Western Peak · Fort Collins, CO
         </p>
       </div>
     </div>

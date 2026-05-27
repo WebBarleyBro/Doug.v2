@@ -31,6 +31,109 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${session.access_token}` }
 }
 
+function buildOrderHtml(params: {
+  poNumber: string
+  clientName: string
+  date: string
+  isInquiry: boolean
+  deliverToName: string
+  deliverToAddress?: string
+  deliverToPhone?: string
+  rows: Array<{ name: string; qty: string; price: string; total: string }>
+  grossTotal: number
+  discountAmt: number
+  total: number
+  notes?: string
+}): string {
+  const { poNumber, clientName, date, isInquiry, deliverToName, deliverToAddress, deliverToPhone, rows, grossTotal, discountAmt, total, notes } = params
+
+  const tableRows = rows.map(r =>
+    `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;color:#1a1a18">${r.name}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;color:#444;text-align:center">${r.qty}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:13px;color:#666;text-align:right">${r.price}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;font-weight:700;color:#1a1a18;text-align:right">${r.total}</td>
+    </tr>`
+  ).join('')
+
+  const discountRows = discountAmt > 0 ? `
+    <tr>
+      <td colspan="3" style="padding:8px 0 2px;font-size:13px;color:#666">Subtotal</td>
+      <td style="padding:8px 0 2px;font-size:13px;color:#666;text-align:right">$${grossTotal.toFixed(2)}</td>
+    </tr>
+    <tr>
+      <td colspan="3" style="padding:2px 0;font-size:13px;color:#c0392b">Discount</td>
+      <td style="padding:2px 0;font-size:13px;color:#c0392b;text-align:right">−$${discountAmt.toFixed(2)}</td>
+    </tr>` : ''
+
+  const notesHtml = notes ? `
+  <tr>
+    <td style="padding:0 32px 20px">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f7f5f2">
+        <tr><td style="padding:14px 16px;font-size:13px;color:#555;line-height:1.6">${notes}</td></tr>
+      </table>
+    </td>
+  </tr>` : ''
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f0ede8;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0ede8">
+<tr><td align="center" style="padding:32px 16px">
+<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:#ffffff;border:1px solid #dedad4">
+  <tr>
+    <td style="padding:28px 32px 24px;border-bottom:1px solid #e8e6e2">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#999999">Barley Bros</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#b8860b;margin-top:18px">${isInquiry ? 'Order Inquiry' : 'Purchase Order'}</div>
+      <div style="font-size:26px;font-weight:700;color:#1a1a18;margin:4px 0 0;letter-spacing:-0.02em">${poNumber}</div>
+      <div style="font-size:13px;color:#888888;margin-top:6px">${clientName} &nbsp;&middot;&nbsp; ${date}</div>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:20px 32px;border-bottom:1px solid #e8e6e2;background-color:#faf8f5">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#aaaaaa;margin-bottom:8px">Deliver To</div>
+      <div style="font-size:15px;font-weight:700;color:#1a1a18">${deliverToName}</div>
+      ${deliverToAddress ? `<div style="font-size:13px;color:#666666;margin-top:3px">${deliverToAddress}</div>` : ''}
+      ${deliverToPhone ? `<div style="font-size:13px;color:#666666;margin-top:2px">${deliverToPhone}</div>` : ''}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 32px">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0">
+        <tr style="border-bottom:2px solid #1a1a18">
+          <th style="padding:0 0 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999">Product</th>
+          <th style="padding:0 0 8px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:80px">Qty</th>
+          <th style="padding:0 0 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:110px">Price</th>
+          <th style="padding:0 0 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:90px">Total</th>
+        </tr>
+        ${tableRows}
+        ${discountRows}
+        <tr>
+          <td colspan="3" style="padding:12px 0 0;font-size:16px;font-weight:700;color:#1a1a18;border-top:2px solid #1a1a18">Total</td>
+          <td style="padding:12px 0 0;text-align:right;font-size:20px;font-weight:700;color:#1a1a18;border-top:2px solid #1a1a18">$${total.toFixed(2)}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  ${notesHtml}
+  <tr>
+    <td style="padding:4px 32px 28px">
+      <p style="font-size:14px;color:#555555;line-height:1.7;margin:0">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:18px 32px;border-top:1px solid #e8e6e2;background-color:#faf8f5">
+      <div style="font-size:12px;color:#aaaaaa">Barley Bros &nbsp;&middot;&nbsp; Fort Collins, CO &nbsp;&middot;&nbsp; sara@barley-bros.com</div>
+    </td>
+  </tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`
+}
+
 // ─── Account Search Dropdown ──────────────────────────────────────────────
 
 function AccountSearch({
@@ -501,41 +604,25 @@ export default function OrdersPage() {
         bottles > 0 ? `${bottles} btl` : '',
       ].filter(Boolean).join(' + ') || String(li.quantity)
       const lineTotal = resolveLineTotal(li)
-      return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qtyLabel}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right">$${casePrice.toFixed(2)}/cs${bottlePrice > 0 ? ` · $${bottlePrice.toFixed(2)}/btl` : ''}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td></tr>`
-    }).join('')
+      const priceLabel = casePrice > 0
+        ? `$${casePrice.toFixed(2)}/cs${bottlePrice > 0 ? ` · $${bottlePrice.toFixed(2)}/btl` : ''}`
+        : '—'
+      return { name: li.product_name, qty: qtyLabel, price: priceLabel, total: `$${lineTotal.toFixed(2)}` }
+    })
 
-    const html = `
-<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto">
-  <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#5a5754;margin-bottom:6px">Barley Bros</div>
-  <h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${form.po_number}</h2>
-  <p style="font-size:13px;color:#9a9790;margin:0 0 24px">${client?.name || form.client_slug} &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-  <div style="background:#161614;border-radius:8px;padding:16px 18px;margin-bottom:18px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#5a5754;margin-bottom:6px">Deliver To</div>
-    <div style="font-size:15px;font-weight:700;color:#eceae4">${form.deliver_to_name}</div>
-    ${form.deliver_to_address ? `<div style="font-size:13px;color:#9a9790;margin-top:3px">${form.deliver_to_address}</div>` : ''}
-  </div>
-  <table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px">
-    <thead><tr style="background:#202020">
-      <th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Product</th>
-      <th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Qty</th>
-      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Price</th>
-      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754;font-weight:700;text-transform:uppercase">Total</th>
-    </tr></thead>
-    <tbody>${htmlRows}</tbody>
-  </table>
-  <div style="background:#161614;border-radius:8px;padding:14px 18px;margin-bottom:24px">
-    ${discountAmt > 0 ? `<div style="display:flex;justify-content:space-between;padding-bottom:6px"><span style="font-size:13px;color:#5a5754">Subtotal</span><span style="font-size:13px;color:#9a9790">$${grossTotal.toFixed(2)}</span></div><div style="display:flex;justify-content:space-between;padding-bottom:6px"><span style="font-size:13px;color:#5a5754">Discount</span><span style="font-size:13px;color:#e05252">−$${discountAmt.toFixed(2)}</span></div>` : ''}
-    <div style="display:flex;justify-content:space-between;border-top:1px solid #2a2a26;padding-top:8px">
-      <span style="font-size:15px;font-weight:700;color:#d4a843">Total</span>
-      <span style="font-size:18px;font-weight:800;color:#eceae4">$${total.toFixed(2)}</span>
-    </div>
-  </div>
-  ${form.notes ? `<div style="background:#111110;border-radius:6px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#9a9790">${form.notes}</div>` : ''}
-  <p style="font-size:12px;color:#5a5754;margin-top:24px">${isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
-  <div style="margin-top:20px;padding-top:16px;border-top:1px solid #2a2a26">
-    <div style="font-size:13px;font-weight:600;color:#eceae4">Barley Bros</div>
-  </div>
-</div>`
+    const html = buildOrderHtml({
+      poNumber: form.po_number,
+      clientName: client?.name || form.client_slug,
+      date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      isInquiry: isOI,
+      deliverToName: form.deliver_to_name,
+      deliverToAddress: form.deliver_to_address || undefined,
+      rows: htmlRows,
+      grossTotal,
+      discountAmt,
+      total,
+      notes: form.notes || undefined,
+    })
 
     const replyTo = contactEmail.split(',')[0].trim() || undefined
     return { subject, text, html, replyTo }
@@ -1007,14 +1094,31 @@ export default function OrdersPage() {
                         isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
                         '', '— Barley Bros',
                       ].filter(l => l !== null).join('\n')
-                      const htmlRows = items.length > 0
+                      const resendRows = items.length > 0
                         ? items.map((li: any) => {
                             const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
                             const price = Number(li.unit_price||li.price||0)
-                            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #2a2a26">${li.product_name}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:center">${qty}</td><td style="padding:8px 12px;border-bottom:1px solid #2a2a26;text-align:right;font-weight:600">$${(qty*price).toFixed(2)}</td></tr>`
-                          }).join('')
-                        : `<tr><td colspan="3" style="padding:12px;text-align:center;color:#5a5754;font-style:italic">Product details not available</td></tr>`
-                      const html = `<div style="font-family:sans-serif;background:#0c0c0a;color:#eceae4;padding:32px;max-width:580px;margin:0 auto"><h2 style="font-size:20px;margin:0 0 4px;color:#d4a843">${o.po_number}</h2><p style="font-size:13px;color:#9a9790;margin:0 0 20px">${o.deliver_to_name} · ${new Date(o.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p><table style="width:100%;border-collapse:collapse;background:#161614;border-radius:8px;overflow:hidden;margin-bottom:18px"><thead><tr style="background:#202020"><th style="padding:8px 12px;text-align:left;font-size:11px;color:#5a5754">Product</th><th style="padding:8px 12px;text-align:center;font-size:11px;color:#5a5754">Qty</th><th style="padding:8px 12px;text-align:right;font-size:11px;color:#5a5754">Total</th></tr></thead><tbody>${htmlRows}</tbody></table><div style="text-align:right;font-size:18px;font-weight:700;color:#eceae4">$${total.toFixed(2)}</div>${o.notes ? `<p style="font-size:13px;color:#9a9790;margin-top:16px">${o.notes}</p>` : ''}<p style="font-size:12px;color:#5a5754;margin-top:24px">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p><p style="margin-top:16px;font-size:13px;color:#bfb5a1">— Barley Bros</p></div>`
+                            const qtyLabel = [
+                              li.cases > 0 ? `${li.cases} case${li.cases !== 1 ? 's' : ''}` : '',
+                              li.bottles > 0 ? `${li.bottles} btl` : '',
+                            ].filter(Boolean).join(' + ') || String(qty)
+                            return { name: li.product_name, qty: qtyLabel, price: price > 0 ? `$${price.toFixed(2)}/cs` : '—', total: `$${(qty*price).toFixed(2)}` }
+                          })
+                        : [{ name: 'See notes', qty: '—', price: '—', total: `$${total.toFixed(2)}` }]
+                      const html = buildOrderHtml({
+                        poNumber: o.po_number,
+                        clientName: o.client_name || o.client_slug || '',
+                        date: new Date(o.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                        isInquiry,
+                        deliverToName: o.deliver_to_name,
+                        deliverToAddress: o.deliver_to_address || undefined,
+                        deliverToPhone: o.deliver_to_phone || undefined,
+                        rows: resendRows,
+                        grossTotal: total,
+                        discountAmt: 0,
+                        total,
+                        notes: o.notes || undefined,
+                      })
                       try {
                         const res = await fetch('/api/send-email', {
                           method: 'POST',
