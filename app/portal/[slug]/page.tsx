@@ -8,7 +8,7 @@ import { formatShortDateMT, startOfMonthMT } from '../../lib/formatters'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ComposedChart, Area } from 'recharts'
 import {
   MapPin, LogOut, ChevronRight, CheckCircle,
-  Upload, FileDown, Download, X, PanelRightOpen,
+  Upload, FileDown, Download, X, PanelRightOpen, KeyRound,
 } from 'lucide-react'
 import type { ClientFile, ClientFileType } from '../../lib/types'
 import { clientLogoUrl } from '../../lib/constants'
@@ -138,6 +138,12 @@ export default function ClientPortalPage() {
   const [drawer, setDrawer] = useState<string|null>(null)
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [winsExpanded,  setWinsExpanded]  = useState(false)
+  const [showChangePw,  setShowChangePw]  = useState(false)
+  const [newPw,         setNewPw]         = useState('')
+  const [confirmPw,     setConfirmPw]     = useState('')
+  const [pwError,       setPwError]       = useState('')
+  const [pwSuccess,     setPwSuccess]     = useState(false)
+  const [pwLoading,     setPwLoading]     = useState(false)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') { setDrawer(null); setAnalyticsOpen(false) } }
@@ -715,7 +721,10 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
           <button className="portal-report-btn" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 6, padding: '5px 10px', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 11, fontFamily: F }}>
             <FileDown size={11} /> Report
           </button>
-          <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ background: 'none', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: '5px 8px', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button onClick={() => { setShowChangePw(true); setPwError(''); setPwSuccess(false); setNewPw(''); setConfirmPw('') }} style={{ background: 'none', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: '5px 8px', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Change password">
+            <KeyRound size={11} />
+          </button>
+          <button onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ background: 'none', border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 6, padding: '5px 8px', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Sign out">
             <LogOut size={11} />
           </button>
         </div>
@@ -1472,6 +1481,52 @@ ${actPlac.length > 0 ? `<h2>Active Placements</h2><table><thead><tr><th>Account<
           </Drawer>
         )
       })()}
+
+      {/* ── Change Password Modal ── */}
+      {showChangePw && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
+          <div style={{ backgroundColor: '#161614', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: 28, width: '100%', maxWidth: 360 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#eceae4' }}>Change Password</div>
+              <button onClick={() => setShowChangePw(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
+            </div>
+            {pwSuccess ? (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <CheckCircle size={32} color="#3dba78" style={{ marginBottom: 10 }} />
+                <div style={{ fontSize: 14, color: '#3dba78', fontWeight: 600 }}>Password updated</div>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>New Password</label>
+                  <input type="password" value={newPw} onChange={e => { setNewPw(e.target.value); setPwError('') }} placeholder="••••••••" style={{ width: '100%', backgroundColor: '#0f0f0d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 12px', color: '#eceae4', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>Confirm Password</label>
+                  <input type="password" value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setPwError('') }} placeholder="••••••••" style={{ width: '100%', backgroundColor: '#0f0f0d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 12px', color: '#eceae4', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                {pwError && <div style={{ fontSize: 12, color: '#e05252', marginBottom: 12 }}>{pwError}</div>}
+                <button
+                  disabled={pwLoading}
+                  onClick={async () => {
+                    if (newPw.length < 8) { setPwError('Password must be at least 8 characters'); return }
+                    if (newPw !== confirmPw) { setPwError('Passwords do not match'); return }
+                    setPwLoading(true)
+                    const { error: err } = await getSupabase().auth.updateUser({ password: newPw })
+                    setPwLoading(false)
+                    if (err) { setPwError(err.message); return }
+                    setPwSuccess(true)
+                    setTimeout(() => setShowChangePw(false), 2000)
+                  }}
+                  style={{ width: '100%', padding: '11px', backgroundColor: pwLoading ? 'rgba(196,164,110,0.5)' : '#c4a46e', color: '#0f0f0d', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: pwLoading ? 'not-allowed' : 'pointer' }}
+                >
+                  {pwLoading ? 'Saving...' : 'Update Password'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
