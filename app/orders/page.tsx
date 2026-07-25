@@ -1267,10 +1267,19 @@ export default function OrdersPage() {
                   return (
                     <div key={i} style={{ marginBottom: '10px', padding: '12px', borderRadius: '8px', backgroundColor: t.bg.card, border: `1px solid ${t.border.default}` }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        {clientProducts.length > 0 ? (
+                        {clientProducts.length > 0 && !(li as any).openItem ? (
                           <select
                             value={li.product_name}
                             onChange={e => {
+                              if (e.target.value === '__open_item__') {
+                                setForm(f => ({
+                                  ...f,
+                                  line_items: f.line_items.map((item, idx) =>
+                                    idx !== i ? item : { ...item, openItem: true, product_name: '', price: 0 }
+                                  ),
+                                }))
+                                return
+                              }
                               const p = clientProducts.find(p => p.name === e.target.value)
                               setForm(f => ({
                                 ...f,
@@ -1282,8 +1291,9 @@ export default function OrdersPage() {
                             style={{ ...selectStyle, fontSize: '13px', flex: 1 }}
                           >
                             <option value="">Select product…</option>
+                            <option value="__open_item__">+ Open Item (custom)</option>
                             {clientProducts.map(p => (
-                              <option key={p.id} value={p.name}>{p.name}{p.price ? ` — ${formatCurrency(p.price)}` : ''}</option>
+                              <option key={p.id} value={p.name}>{p.name}{p.price ? ` — ${formatCurrency(p.price)}/cs` : p.bottle_price ? ` — ${formatCurrency(p.bottle_price)}/btl` : ''}</option>
                             ))}
                           </select>
                         ) : (
@@ -1295,11 +1305,25 @@ export default function OrdersPage() {
                                 ? 'Select a brand above to load products'
                                 : clientProductsLoading
                                   ? 'Loading products…'
-                                  : 'Type product name (no catalog for this brand)'
+                                  : (li as any).openItem
+                                    ? 'Open item name'
+                                    : 'Type product name (no catalog for this brand)'
                             }
                             disabled={clientProductsLoading}
                             style={{ ...inputStyle, fontSize: '13px', flex: 1, opacity: clientProductsLoading ? 0.5 : 1 }}
                           />
+                        )}
+                        {clientProducts.length > 0 && (li as any).openItem && (
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({
+                              ...f,
+                              line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, openItem: false, product_name: '' }),
+                            }))}
+                            style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', fontSize: '11px', whiteSpace: 'nowrap', padding: '4px', flexShrink: 0 }}
+                          >
+                            ← catalog
+                          </button>
                         )}
                         {form.line_items.length > 1 && (
                           <button onClick={() => removeLineItem(i)} style={{ background: 'none', border: 'none', color: t.text.muted, cursor: 'pointer', padding: '4px', flexShrink: 0 }}><X size={16} /></button>
