@@ -120,6 +120,35 @@ export function endOfMonthMT(): string {
   return new Date(new Date(mtMidnightUTC(lastDayStr)).getTime() + 86399000).toISOString()
 }
 
+// MT-aware [start, end] ISO bounds for an arbitrary calendar month (1-12) — unlike
+// startOfMonthMT/endOfMonthMT this isn't locked to the current month.
+export function getMonthRangeMT(year: number, month: number): { start: string; end: string } {
+  const mm = String(month).padStart(2, '0')
+  const startStr = `${year}-${mm}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const endStr = `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
+  return {
+    start: mtMidnightUTC(startStr),
+    end: new Date(new Date(mtMidnightUTC(endStr)).getTime() + 86399000).toISOString(),
+  }
+}
+
+// MT-aware [start, end] ISO bounds for an arbitrary custom date range (both days inclusive).
+export function getDateRangeMT(startDateStr: string, endDateStr: string): { start: string; end: string } {
+  return {
+    start: mtMidnightUTC(startDateStr),
+    end: new Date(new Date(mtMidnightUTC(endDateStr)).getTime() + 86399000).toISOString(),
+  }
+}
+
+// "YYYY-MM" bucket key computed in Mountain Time — use this instead of raw
+// `dateStr.slice(0, 7)`, which slices the UTC string and can misbucket records
+// near midnight MT (e.g. 11pm MT on the 31st is already the 1st in UTC).
+export function monthKeyMT(dateStr: string | null | undefined): string {
+  if (!dateStr) return ''
+  return parseDB(dateStr).toLocaleDateString('en-CA', { timeZone: TZ }).slice(0, 7)
+}
+
 export function startOfWeekMT(): string {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
   const noonUTC = new Date(`${today}T12:00:00Z`)

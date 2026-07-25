@@ -135,6 +135,30 @@ export function useV3RecentVisits(days = 30) {
   })
 }
 
+// ── Visits within an explicit date range (for Reports — month/custom views) ──
+// Unlike useV3RecentVisits (which fetches "last N days from now" and can silently
+// truncate older periods under its row limit), this queries the exact window needed.
+export function useV3VisitsInRange(startISO: string, endISO: string) {
+  return useQuery({
+    queryKey: ['v3', 'visits', 'range', startISO, endISO],
+    queryFn: () => timed(async () => {
+      const sb = getSupabase()
+      const { data, error } = await sb
+        .from('visits')
+        .select('id, account_id, user_id, client_slug, visited_at, status, notes, accounts(id, name)')
+        .gte('visited_at', startISO)
+        .lte('visited_at', endISO)
+        .order('visited_at', { ascending: false })
+        .limit(1000)
+      if (error) throw error
+      return (data ?? []) as (Visit & { accounts: { id: string; name: string } | null })[]
+    }),
+    enabled: !!startISO && !!endISO,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+  })
+}
+
 // ── Follow-up queue (accounts with open follow-ups) ──────────────────────────
 
 export function useV3FollowUps() {

@@ -2,15 +2,11 @@
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { v3, WIN_STATUSES } from '../lib/theme'
-import { useV3Clients, useV3RecentVisits, useV3Placements, useV3Orders, useV3AllProfiles, useV3Accounts } from '../lib/query'
-import { formatCurrency, resolveTotal, relativeTimeStr } from '../../lib/formatters'
+import { useV3Clients, useV3Placements, useV3Orders, useV3AllProfiles, useV3Accounts, useV3VisitsInRange } from '../lib/query'
+import { formatCurrency, resolveTotal, relativeTimeStr, formatShortDateMT, formatMonthYear, getMonthRangeMT, getDateRangeMT, monthKeyMT, todayMT } from '../../lib/formatters'
+import { getCommissionAmount } from '../../lib/commission'
 import type { Client } from '../../lib/types'
-import { buildGradeMap, GRADE_CONFIG } from '../lib/grading'
-import type { Grade } from '../lib/grading'
-
 // ── Constants ────────────────────────────────────────────────────────────────
-
-const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D']
 
 const PLAC_STATUS_LABEL: Record<string, string> = {
   committed: 'Committed', ordered: 'Ordered', on_shelf: 'On Shelf', reordering: 'Reordering',
@@ -389,8 +385,8 @@ function TeamView({ visits, priorVisits, profiles }: { visits: any[]; priorVisit
 
 // ── Revenue Deep Dive ─────────────────────────────────────────────────────────
 
-function RevenueDeep({ orders, clients, revenueChart, brandBreakdown }: {
-  orders: any[]; clients: any[]; revenueChart: any[]; brandBreakdown: any[]
+function RevenueDeep({ orders, clients, revenueChart, brandBreakdown, rateMap }: {
+  orders: any[]; clients: any[]; revenueChart: any[]; brandBreakdown: any[]; rateMap: Record<string, number>
 }) {
   const sorted = useMemo(() =>
     [...orders].sort((a, b) => new Date(b.sent_at || b.created_at).getTime() - new Date(a.sent_at || a.created_at).getTime()),
@@ -501,7 +497,7 @@ function RevenueDeep({ orders, clients, revenueChart, brandBreakdown }: {
           : sorted.map((o: any) => {
             const total = resolveTotal(o)
             const cl = clients.find((c: any) => c.slug === o.client_slug)
-            const comm = total * (cl?.commission_rate ?? 0)
+            const comm = getCommissionAmount(o, rateMap)
             return (
               <div key={o.id} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 12, padding: '11px 16px', borderTop: `1px solid ${v3.border.subtle}`, alignItems: 'center' }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: o.status === 'fulfilled' ? v3.status.success : v3.status.warning, boxShadow: `0 0 4px ${o.status === 'fulfilled' ? v3.status.success : v3.status.warning}` }} />
@@ -524,6 +520,83 @@ function RevenueDeep({ orders, clients, revenueChart, brandBreakdown }: {
   )
 }
 
+// ── Date Range Control ───────────────────────────────────────────────────────
+// Three ways to pick a window: rolling presets (7D/30D/90D style), a specific
+// calendar month, or a fully custom start/end range.
+
+type RangeMode = 'preset' | 'month' | 'custom'
+
+function DateRangeControl({
+  rangeMode, setRangeMode, presetDays, setPresetDays,
+  monthValue, setMonthValue, customStart, setCustomStart, customEnd, setCustomEnd,
+}: {
+  rangeMode: RangeMode; setRangeMode: (m: RangeMode) => void
+  presetDays: number; setPresetDays: (d: number) => void
+  monthValue: string; setMonthValue: (v: string) => void
+  customStart: string; setCustomStart: (v: string) => void
+  customEnd: string; setCustomEnd: (v: string) => void
+}) {
+  const today = todayMT()
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 3, border: `1px solid ${v3.border.subtle}`, borderRadius: v3.radius.md, padding: 3 }}>
+        {PERIODS.map(p => (
+          <button key={p.days} onClick={() => { setRangeMode('preset'); setPresetDays(p.days) }} style={{
+            padding: '6px 14px', borderRadius: v3.radius.sm, border: 'none', cursor: 'pointer',
+            fontSize: '12px', fontWeight: 700, fontFamily: v3.font.ui,
+            background: rangeMode === 'preset' && presetDays === p.days ? v3.amberDim : 'transparent',
+            color: rangeMode === 'preset' && presetDays === p.days ? v3.amberLight : v3.text.muted,
+            transition: 'all 120ms',
+          }}>{p.label}</button>
+        ))}
+      </div>
+
+      <input
+        type="month"
+        value={monthValue}
+        max={today.slice(0, 7)}
+        onChange={e => { if (e.target.value) { setMonthValue(e.target.value); setRangeMode('month') } }}
+        style={{
+          background: v3.bg.card, borderRadius: v3.radius.sm, colorScheme: 'dark', cursor: 'pointer',
+          fontSize: '12px', fontFamily: v3.font.ui, padding: '6px 8px',
+          border: `1px solid ${rangeMode === 'month' ? v3.amber + '60' : v3.border.default}`,
+          color: rangeMode === 'month' ? v3.amberLight : v3.text.muted,
+        }}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input
+          type="date"
+          value={customStart}
+          max={customEnd || today}
+          onChange={e => { if (e.target.value) { setCustomStart(e.target.value); setRangeMode('custom') } }}
+          style={{
+            background: v3.bg.card, borderRadius: v3.radius.sm, colorScheme: 'dark', cursor: 'pointer',
+            fontSize: '12px', fontFamily: v3.font.ui, padding: '6px 8px',
+            border: `1px solid ${rangeMode === 'custom' ? v3.amber + '60' : v3.border.default}`,
+            color: rangeMode === 'custom' ? v3.amberLight : v3.text.muted,
+          }}
+        />
+        <span style={{ color: v3.text.muted, fontSize: '12px' }}>–</span>
+        <input
+          type="date"
+          value={customEnd}
+          min={customStart}
+          max={today}
+          onChange={e => { if (e.target.value) { setCustomEnd(e.target.value); setRangeMode('custom') } }}
+          style={{
+            background: v3.bg.card, borderRadius: v3.radius.sm, colorScheme: 'dark', cursor: 'pointer',
+            fontSize: '12px', fontFamily: v3.font.ui, padding: '6px 8px',
+            border: `1px solid ${rangeMode === 'custom' ? v3.amber + '60' : v3.border.default}`,
+            color: rangeMode === 'custom' ? v3.amberLight : v3.text.muted,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const PERIODS = [
@@ -540,15 +613,63 @@ export default function ReportsPage() {
   const { data: orders = [] }     = useV3Orders()
   const { data: profiles = [] }   = useV3AllProfiles()
   const { data: accounts = [] }   = useV3Accounts()
-  const [period, setPeriod]       = useState(30)
+  const [rangeMode, setRangeMode] = useState<RangeMode>('preset')
+  const [presetDays, setPresetDays] = useState(30)
+  const [monthValue, setMonthValue] = useState(() => todayMT().slice(0, 7))
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd]     = useState('')
   const [brandSlug, setBrandSlug] = useState('all')
   const [deepTab, setDeepTab]     = useState<DeepTab | null>(null)
 
-  // Cap prior-period fetch at 365 days total to avoid massive queries on 1Y view
-  const { data: allVisits = [] } = useV3RecentVisits(Math.min(period * 2, 365))
+  // Resolves whichever range mode is active into concrete boundaries + a matching
+  // prior-period window (previous calendar month when mode is 'month', not just
+  // "period length back", so the trend comparison reads naturally).
+  const resolvedRange = useMemo(() => {
+    if (rangeMode === 'month' && monthValue) {
+      const [y, m] = monthValue.split('-').map(Number)
+      const { start, end } = getMonthRangeMT(y, m)
+      const prevM = m === 1 ? 12 : m - 1
+      const prevY = m === 1 ? y - 1 : y
+      const prior = getMonthRangeMT(prevY, prevM)
+      return {
+        startMs: new Date(start).getTime(),
+        endMs: new Date(end).getTime(),
+        priorStartMs: new Date(prior.start).getTime(),
+        priorEndMs: new Date(prior.end).getTime(),
+        rangeLabel: formatMonthYear(`${monthValue}-01`),
+        trendSuffix: `vs ${formatMonthYear(`${prevY}-${String(prevM).padStart(2, '0')}-01`)}`,
+      }
+    }
+    if (rangeMode === 'custom' && customStart && customEnd) {
+      const { start, end } = getDateRangeMT(customStart, customEnd)
+      const startMs = new Date(start).getTime()
+      const endMs = new Date(end).getTime()
+      const span = endMs - startMs
+      return {
+        startMs, endMs,
+        priorStartMs: startMs - span, priorEndMs: startMs,
+        rangeLabel: `${formatShortDateMT(customStart)} – ${formatShortDateMT(customEnd)}`,
+        trendSuffix: 'vs prior period',
+      }
+    }
+    const endMs = Date.now()
+    const startMs = endMs - presetDays * 86400000
+    const label = presetDays === 30 ? '30 days' : presetDays === 90 ? '90 days' : '12 months'
+    return {
+      startMs, endMs,
+      priorStartMs: startMs - presetDays * 86400000, priorEndMs: startMs,
+      rangeLabel: `Last ${label}`,
+      trendSuffix: `vs prior ${label}`,
+    }
+  }, [rangeMode, presetDays, monthValue, customStart, customEnd])
 
-  const periodStartMs = Date.now() - period * 86400000
-  const priorStartMs  = periodStartMs - period * 86400000
+  // Queries the exact window needed (current period + prior period), rather than
+  // "last N days from now" — the latter silently truncates older months once the
+  // row limit is hit by more recent visits.
+  const { data: allVisits = [] } = useV3VisitsInRange(
+    new Date(resolvedRange.priorStartMs).toISOString(),
+    new Date(resolvedRange.endMs).toISOString(),
+  )
 
   const profileMap = useMemo(() => {
     const m: Record<string, string> = {}
@@ -559,49 +680,47 @@ export default function ReportsPage() {
   const pVisits = useMemo(() =>
     allVisits.filter(v => {
       const ms = new Date(v.visited_at).getTime()
-      if (ms < periodStartMs) return false
+      if (ms < resolvedRange.startMs || ms > resolvedRange.endMs) return false
       if (brandSlug !== 'all' && v.client_slug !== brandSlug) return false
       return true
-    }), [allVisits, periodStartMs, brandSlug])
+    }), [allVisits, resolvedRange, brandSlug])
 
   const priorVisits = useMemo(() =>
     allVisits.filter(v => {
       const ms = new Date(v.visited_at).getTime()
-      if (ms < priorStartMs || ms >= periodStartMs) return false
+      if (ms < resolvedRange.priorStartMs || ms >= resolvedRange.priorEndMs) return false
       if (brandSlug !== 'all' && v.client_slug !== brandSlug) return false
       return true
-    }), [allVisits, priorStartMs, periodStartMs, brandSlug])
+    }), [allVisits, resolvedRange, brandSlug])
 
   const pOrders = useMemo(() =>
     (orders as any[]).filter(o => {
       const ms = new Date(o.sent_at || o.created_at).getTime()
-      if (ms < periodStartMs) return false
+      if (ms < resolvedRange.startMs || ms > resolvedRange.endMs) return false
       if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
       return ['sent', 'fulfilled'].includes(o.status)
-    }), [orders, periodStartMs, brandSlug])
+    }), [orders, resolvedRange, brandSlug])
 
   const priorOrders = useMemo(() =>
     (orders as any[]).filter(o => {
       const ms = new Date(o.sent_at || o.created_at).getTime()
-      if (ms < priorStartMs || ms >= periodStartMs) return false
+      if (ms < resolvedRange.priorStartMs || ms >= resolvedRange.priorEndMs) return false
       if (brandSlug !== 'all' && o.client_slug !== brandSlug) return false
       return ['sent', 'fulfilled'].includes(o.status)
-    }), [orders, priorStartMs, periodStartMs, brandSlug])
+    }), [orders, resolvedRange, brandSlug])
 
   const pPlacements = useMemo(() =>
     placements.filter(p => brandSlug === 'all' || p.client_slug === brandSlug),
     [placements, brandSlug])
 
+  const rateMap = useMemo(() =>
+    Object.fromEntries(clients.map((c: Client) => [c.slug, c.commission_rate ?? 0])),
+    [clients])
+
   const totalRev  = pOrders.reduce((s, o) => s + resolveTotal(o as any), 0)
-  const totalComm = pOrders.reduce((s, o) => {
-    const rate = clients.find((c: Client) => c.slug === (o as any).client_slug)?.commission_rate ?? 0
-    return s + resolveTotal(o as any) * rate
-  }, 0)
+  const totalComm = pOrders.reduce((s, o) => s + getCommissionAmount(o as any, rateMap), 0)
   const priorRev  = priorOrders.reduce((s, o) => s + resolveTotal(o as any), 0)
-  const priorComm = priorOrders.reduce((s, o) => {
-    const rate = clients.find((c: Client) => c.slug === (o as any).client_slug)?.commission_rate ?? 0
-    return s + resolveTotal(o as any) * rate
-  }, 0)
+  const priorComm = priorOrders.reduce((s, o) => s + getCommissionAmount(o as any, rateMap), 0)
 
   const onShelf = pPlacements.filter(p => !p.lost_at && p.status === 'on_shelf').length
 
@@ -611,78 +730,56 @@ export default function ReportsPage() {
 
   const revenueChart = useMemo(() => {
     const months: Record<string, any> = {}
+    const [curY, curM] = todayMT().slice(0, 7).split('-').map(Number)
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(); d.setMonth(d.getMonth() - i)
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      months[key] = { month: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) }
+      let y = curY, m = curM - i
+      while (m <= 0) { m += 12; y -= 1 }
+      const key = `${y}-${String(m).padStart(2, '0')}`
+      months[key] = { month: new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'America/Denver' }) }
     }
     for (const o of orders as any[]) {
       if (brandSlug !== 'all' && o.client_slug !== brandSlug) continue
       if (!['sent','fulfilled'].includes(o.status)) continue
-      const key = (o.sent_at || o.created_at).slice(0, 7)
+      const key = monthKeyMT(o.sent_at || o.created_at)
       if (months[key]) months[key][o.client_slug] = (months[key][o.client_slug] || 0) + resolveTotal(o)
     }
     return Object.values(months)
   }, [orders, brandSlug])
 
+  // Buckets are anchored to the actual selected range (not always "now"), so this
+  // stays correct for a past month or custom range — and labels are real MT dates
+  // instead of meaningless "W1..W12".
   const visitChart = useMemo(() => {
-    const numW = period <= 30 ? 5 : period <= 90 ? 6 : 12
-    const bucketDays = period <= 30 ? 6 : period <= 90 ? 15 : 30
-    const buckets: Record<string, number> = {}
-    for (let i = numW - 1; i >= 0; i--) buckets[`W${numW - i}`] = 0
+    const { startMs, endMs } = resolvedRange
+    const spanDays = Math.max(1, Math.round((endMs - startMs) / 86400000))
+    const numBuckets = spanDays <= 31 ? spanDays : spanDays <= 100 ? Math.ceil(spanDays / 7) : Math.ceil(spanDays / 30)
+    const bucketMs = (endMs - startMs) / numBuckets
+    const buckets = Array.from({ length: numBuckets }, (_, i) => ({
+      label: new Date(startMs + i * bucketMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' }),
+      count: 0,
+    }))
     for (const v of pVisits) {
-      const daysBack = Math.floor((Date.now() - new Date(v.visited_at).getTime()) / (bucketDays * 86400000))
-      const label = `W${numW - daysBack}`
-      if (label in buckets) buckets[label]++
+      const ms = new Date(v.visited_at).getTime()
+      const idx = Math.min(numBuckets - 1, Math.floor((ms - startMs) / bucketMs))
+      if (idx >= 0) buckets[idx].count++
     }
-    return Object.entries(buckets).map(([label, count]) => ({ label, count }))
-  }, [pVisits, period])
+    return buckets
+  }, [pVisits, resolvedRange])
 
   const brandBreakdown = useMemo(() => {
     return clients.map((c: Client) => {
-      const bOrders = (orders as any[]).filter(o =>
-        o.client_slug === c.slug && ['sent','fulfilled'].includes(o.status) &&
-        new Date(o.sent_at || o.created_at).getTime() >= periodStartMs
-      )
+      const bOrders = (orders as any[]).filter(o => {
+        const ms = new Date(o.sent_at || o.created_at).getTime()
+        return o.client_slug === c.slug && ['sent','fulfilled'].includes(o.status) &&
+          ms >= resolvedRange.startMs && ms <= resolvedRange.endMs
+      })
       const rev  = bOrders.reduce((s, o) => s + resolveTotal(o), 0)
-      const comm = rev * (c.commission_rate ?? 0)
+      const comm = bOrders.reduce((s, o) => s + getCommissionAmount(o as any, rateMap), 0)
       const bVisits = pVisits.filter(v => v.client_slug === c.slug)
       const bPlac   = placements.filter(p => p.client_slug === c.slug && !p.lost_at && p.status === 'on_shelf')
       return { slug: c.slug, name: c.name, color: c.color, logo: c.logo_url, rev, comm, visits: bVisits.length, onShelf: bPlac.length }
     }).sort((a, b) => b.rev - a.rev)
-  }, [clients, orders, pVisits, placements, periodStartMs])
-
-  const gradeMap = useMemo(
-    () => buildGradeMap(accounts as any[], orders as any[], allVisits as any[], placements as any[]),
-    [accounts, orders, allVisits, placements],
-  )
-
-  const gradeCounts = useMemo(() => {
-    const counts: Record<Grade, number> = { S: 0, A: 0, B: 0, C: 0, D: 0 }
-    const relevant = brandSlug === 'all'
-      ? accounts
-      : accounts.filter((a: any) => allVisits.some(v => v.account_id === a.id && v.client_slug === brandSlug))
-    for (const a of relevant as any[]) {
-      const g = gradeMap[a.id]?.grade ?? 'D'
-      counts[g]++
-    }
-    return counts
-  }, [accounts, gradeMap, brandSlug, allVisits])
-
-  const gradeTotal = useMemo(
-    () => GRADES.reduce((s, g) => s + gradeCounts[g], 0),
-    [gradeCounts],
-  )
-
-  const periodLabel = period === 30 ? '30 days' : period === 90 ? '90 days' : '12 months'
-
-  const periodRange = useMemo(() => {
-    const fmt = (ms: number) => {
-      const d = new Date(ms)
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })
-    }
-    return `${fmt(periodStartMs)} – ${fmt(Date.now())}`
-  }, [periodStartMs])
+  }, [clients, orders, pVisits, placements, resolvedRange, rateMap])
 
   const KPIs = [
     { label: 'Revenue',    value: formatCurrency(totalRev),  trend: revTrend,   color: v3.amberLight,      mono: true },
@@ -699,20 +796,16 @@ export default function ReportsPage() {
         <div>
           <h1 style={{ fontSize: '26px', fontWeight: 900, color: v3.text.primary, letterSpacing: '-0.03em', margin: 0, lineHeight: 1.1 }}>Reports</h1>
           <div style={{ fontSize: '13px', color: v3.text.muted, marginTop: 3, lineHeight: 1.4 }}>
-            {brandSlug === 'all' ? 'All brands' : (clients.find((c: Client) => c.slug === brandSlug) as Client | undefined)?.name ?? brandSlug} · {periodRange}
+            {brandSlug === 'all' ? 'All brands' : (clients.find((c: Client) => c.slug === brandSlug) as Client | undefined)?.name ?? brandSlug} · {resolvedRange.rangeLabel}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 3, border: `1px solid ${v3.border.subtle}`, borderRadius: v3.radius.md, padding: 3 }}>
-          {PERIODS.map(p => (
-            <button key={p.days} onClick={() => setPeriod(p.days)} style={{
-              padding: '6px 14px', borderRadius: v3.radius.sm, border: 'none', cursor: 'pointer',
-              fontSize: '12px', fontWeight: 700, fontFamily: v3.font.ui,
-              background: period === p.days ? v3.amberDim : 'transparent',
-              color: period === p.days ? v3.amberLight : v3.text.muted,
-              transition: 'all 120ms',
-            }}>{p.label}</button>
-          ))}
-        </div>
+        <DateRangeControl
+          rangeMode={rangeMode} setRangeMode={setRangeMode}
+          presetDays={presetDays} setPresetDays={setPresetDays}
+          monthValue={monthValue} setMonthValue={setMonthValue}
+          customStart={customStart} setCustomStart={setCustomStart}
+          customEnd={customEnd} setCustomEnd={setCustomEnd}
+        />
       </div>
 
       {/* ── KPI strip ────────────────────────────────────────────── */}
@@ -725,7 +818,7 @@ export default function ReportsPage() {
             <div className={s.mono ? 'v3-mono' : ''} style={{ fontSize: '32px', fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.03em' }}>{s.value}</div>
             {s.trend && (
               <div style={{ marginTop: 6, fontSize: '11px', fontWeight: 700, color: s.trend.up ? v3.status.success : v3.status.danger, fontFamily: v3.font.ui, lineHeight: 1.4 }}>
-                {s.trend.up ? '↑' : '↓'} {s.trend.pct}% vs prior {periodLabel}
+                {s.trend.up ? '↑' : '↓'} {s.trend.pct}% {resolvedRange.trendSuffix}
               </div>
             )}
           </div>
@@ -766,70 +859,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* ── Account Grade Distribution ──────────────────────────── */}
-      {gradeTotal > 0 && (
-        <div style={{ background: v3.bg.card, border: `1px solid ${v3.border.default}`, borderRadius: '6px', padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.18em', fontFamily: v3.font.ui }}>
-              Account Grades
-            </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: v3.text.muted, fontFamily: 'monospace' }}>
-              {gradeTotal} accounts
-            </span>
-          </div>
-          {/* Segmented bar */}
-          <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', gap: 2, marginBottom: 16 }}>
-            {GRADES.map(g => {
-              const pct = gradeTotal > 0 ? (gradeCounts[g] / gradeTotal) * 100 : 0
-              if (pct === 0) return null
-              const cfg = GRADE_CONFIG[g]
-              return (
-                <div key={g} title={`${g}: ${gradeCounts[g]}`} style={{
-                  flex: pct, height: '100%',
-                  background: cfg.color,
-                  opacity: g === 'D' ? 0.4 : 0.85,
-                  minWidth: gradeCounts[g] > 0 ? 4 : 0,
-                  boxShadow: cfg.glow !== 'none' ? cfg.glow : undefined,
-                  borderRadius: 2,
-                  transition: 'flex 400ms ease',
-                }} />
-              )
-            })}
-          </div>
-          {/* Grade legend */}
-          <div style={{ display: 'flex', gap: 0 }}>
-            {GRADES.map((g, i) => {
-              const cfg = GRADE_CONFIG[g]
-              const count = gradeCounts[g]
-              const pct = gradeTotal > 0 ? Math.round((count / gradeTotal) * 100) : 0
-              return (
-                <div key={g} style={{
-                  flex: 1, paddingRight: i < 4 ? 12 : 0,
-                  borderRight: i < 4 ? `1px solid ${v3.border.subtle}` : 'none',
-                  paddingLeft: i > 0 ? 12 : 0,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '3px',
-                      background: cfg.bg, border: `1px solid ${cfg.border}`,
-                      boxShadow: cfg.glow !== 'none' ? cfg.glow : undefined,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      <span style={{ fontSize: '10px', fontWeight: 900, color: cfg.color, lineHeight: 1, userSelect: 'none' }}>{g}</span>
-                    </div>
-                    <span style={{ fontSize: '11px', color: v3.text.muted, fontFamily: v3.font.ui }}>{cfg.label}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                    <span style={{ fontSize: '22px', fontWeight: 900, color: count > 0 ? cfg.color : 'rgba(255,255,255,0.15)', fontFamily: 'monospace', lineHeight: 1, letterSpacing: '-0.04em' }}>{count}</span>
-                    {count > 0 && <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>{pct}%</span>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ── Deep dive tabs ───────────────────────────────────────── */}
       <div style={{ borderTop: `1px solid ${v3.border.subtle}`, paddingTop: 14 }}>
         <div style={{ display: 'flex', gap: 0, marginBottom: deepTab ? 20 : 0 }}>
@@ -848,7 +877,7 @@ export default function ReportsPage() {
         </div>
 
         {deepTab === 'revenue' && (
-          <RevenueDeep orders={pOrders} clients={clients} revenueChart={revenueChart} brandBreakdown={brandBreakdown} />
+          <RevenueDeep orders={pOrders} clients={clients} revenueChart={revenueChart} brandBreakdown={brandBreakdown} rateMap={rateMap} />
         )}
         {deepTab === 'team' && (
           <TeamView visits={pVisits} priorVisits={priorVisits} profiles={profiles} />
