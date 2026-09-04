@@ -16,7 +16,6 @@ import { clientLogoUrl } from '../../../lib/constants'
 import { relativeTimeStr, formatShortDateMT } from '../../../lib/formatters'
 import { createPlacement } from '../../../lib/data'
 import type { Client } from '../../../lib/types'
-import { computeGrade, GRADE_CONFIG } from '../../lib/grading'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1044,15 +1043,6 @@ export default function AccountDetailPage() {
   const hc = healthColor(account.last_visited, account.visit_frequency_days)
   const hl = healthLabel(account.last_visited, account.visit_frequency_days)
 
-  const gradeResult = computeGrade(
-    account.id,
-    orders.map((o: any) => ({ ...o, account_id: account.id })),
-    visits.map((v: any) => ({ ...v, account_id: account.id })),
-    placements.map((p: any) => ({ ...p, account_id: account.id })),
-    50000,
-  )
-  const gradeCfg = GRADE_CONFIG[gradeResult.grade]
-
   const clientSlugs: string[] = (account.account_clients ?? []).map((ac: any) => ac.client_slug).filter(Boolean)
   const linkedClients = clients.filter((c: any) => clientSlugs.includes(c.slug))
   const latestVisit = visits[0] ?? null
@@ -1542,83 +1532,6 @@ export default function AccountDetailPage() {
 
         {/* RIGHT COLUMN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-          {/* Grade section */}
-          <div style={{ padding: '0 0 24px' }}>
-            <div style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', marginBottom: 14 }}>Account Grade</div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: '8px', flexShrink: 0,
-                background: gradeCfg.bg, border: `1.5px solid ${gradeCfg.border}`,
-                boxShadow: gradeCfg.glow !== 'none' ? gradeCfg.glow : undefined,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <span style={{ fontSize: '26px', fontWeight: 900, color: gradeCfg.color, letterSpacing: '-0.03em', lineHeight: 1, userSelect: 'none' }}>
-                  {gradeResult.grade}
-                </span>
-              </div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 800, color: gradeCfg.color, letterSpacing: '-0.01em' }}>{gradeCfg.label}</div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.40)', marginTop: 2, fontFamily: 'monospace' }}>
-                  {gradeResult.score} / 100 points
-                </div>
-                {gradeResult.momentum !== 'flat' && (
-                  <div style={{ fontSize: '10px', fontWeight: 700, marginTop: 4, color: gradeResult.momentum === 'up' ? v3.status.success : 'rgba(191,120,80,0.85)' }}>
-                    {gradeResult.momentum === 'up' ? '↑ Trending up' : '↓ Activity declining'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${gradeResult.score}%`, background: gradeCfg.color, borderRadius: 2, transition: 'width 800ms cubic-bezier(0.4,0,0.2,1)' }} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-              {([
-                { key: 'revenue',   label: 'Revenue',      weight: '35%', desc: 'Lifetime order value' },
-                { key: 'velocity',  label: 'Order Freq.',  weight: '20%', desc: 'Orders last 90 days' },
-                { key: 'placement', label: 'Placements',   weight: '20%', desc: 'Active placement health' },
-                { key: 'winRate',   label: 'Win Rate',     weight: '15%', desc: 'Visits with wins' },
-                { key: 'recency',   label: 'Recency',      weight: '10%', desc: 'Days since last visit' },
-              ] as const).map(({ key, label, weight }) => {
-                const val = gradeResult.scores[key]
-                const barColor = val >= 70 ? gradeCfg.color : val >= 40 ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'
-                return (
-                  <div key={key}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.55)', fontWeight: 600 }}>{label}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)' }}>{weight}</span>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.45)', fontFamily: 'monospace', width: 22, textAlign: 'right' }}>{val}</span>
-                      </div>
-                    </div>
-                    <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${val}%`, background: barColor, borderRadius: 2, transition: 'width 600ms cubic-bezier(0.4,0,0.2,1)' }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div style={{ borderTop: `1px solid ${v3.border.subtle}`, paddingTop: 12 }}>
-              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.30)', lineHeight: 1.7 }}>
-                <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.40)', marginBottom: 4 }}>How grades are calculated</div>
-                Revenue (35%) + order frequency (20%) + active placements (20%) + win rate (15%) + visit recency (10%)
-              </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                {([['S', '#e8d48a', '82+'], ['A', '#5a9ea0', '65+'], ['B', '#6878b4', '45+'], ['C', '#a08440', '22+'], ['D', 'rgba(255,255,255,0.32)', '<22']] as const).map(([g, c, range]) => (
-                  <div key={g} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: c }}>{g}</span>
-                    <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)' }}>{range}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
           {/* Contacts */}
           <div style={{ borderTop: `1px solid ${v3.border.subtle}`, paddingTop: 20 }}>

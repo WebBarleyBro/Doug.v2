@@ -5,20 +5,19 @@ import { ChevronRight, CheckCircle2, Pencil, Check, X, Plus, Zap, MapPin } from 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { v3 } from '../lib/theme'
 import {
-  useV3Clients, useV3RecentVisits, useV3FollowUps,
+  useV3Clients, useV3RecentVisits,
   useV3Profile, useV3TerritoryCoverage,
   useV3MyTasks, useV3AtRiskPlacements,
-  useV3OverdueQuery, useV3CommissionMTD,
+  useV3CommissionMTD,
   useV3TodayStops, useV3WinRate, useV3PotentialToday,
   useV3Orders, useV3Placements, useV3Accounts,
 } from '../lib/query'
 import { useOpenLogVisit, useV3Toast } from '../lib/context'
 import { clientLogoUrl } from '../../lib/constants'
-import { clearFollowUp, dismissFollowUp, completeTask, createTask } from '../../lib/data'
+import { completeTask, createTask } from '../../lib/data'
 import { getSupabase } from '../../lib/supabase'
-import { buildGradeMap, gradeOrder } from '../lib/grading'
-import type { GradeResult } from '../lib/grading'
-import { GradeBadge } from '../components/GradeBadge'
+import { buildIntelMap, compareByUrgency, STAGE_COLOR, STAGE_LABEL, SIGNAL_COLOR, SIGNAL_LABEL, type AccountStage, type AccountSignal } from '../lib/stage'
+import { buildDemandMap } from '../lib/demand'
 
 // ── Goals (user-editable, persisted in user_profiles) ────────────────────────
 
@@ -204,117 +203,42 @@ function LogBtn({ onClick }: { onClick: () => void }) {
   )
 }
 
-// ── Follow-up row ─────────────────────────────────────────────────────────────
+// ── Attention row — stage/signal driven, no grade badge ──────────────────────
 
-function FollowUpRow({ visit, gradeResult }: { visit: any; gradeResult?: GradeResult }) {
+function AttentionRow({ account, intel }: { account: { id: string; name: string }; intel: ReturnType<typeof buildIntelMap>[string] }) {
   const { open } = useOpenLogVisit()
-  const toast = useV3Toast()
-  const qc = useQueryClient()
-  const daysAgo = Math.floor((Date.now() - new Date(visit.visited_at).getTime()) / 86400000)
-  const isUrgent = daysAgo >= 7
-
-  const clear = useMutation({
-    mutationFn: () => clearFollowUp(visit.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'followups'] }); toast.show('Follow-up cleared') },
-  })
-  const dismiss = useMutation({
-    mutationFn: () => dismissFollowUp(visit.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['v3', 'followups'] }); toast.show('Follow-up dismissed') },
-  })
+  const signalColor = SIGNAL_COLOR[intel.signal]
+  const stageColor  = STAGE_COLOR[intel.stage]
+  const isUrgent    = intel.signal === 'urgent' || intel.signal === 'cooling'
 
   return (
     <div className="v3-row-hover" style={{
-      display: 'grid', gridTemplateColumns: '1fr auto auto auto auto auto',
-      alignItems: 'center', gap: 8, padding: '13px 8px',
-      borderBottom: '1px solid rgba(255,255,255,0.04)',
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '12px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}>
-      <Link href={`/v3/territory/${visit.account_id}`} style={{ textDecoration: 'none', minWidth: 0, display: 'flex', alignItems: 'center', gap: 11 }}>
-        <div style={{
-          width: 2, height: 26, flexShrink: 0, borderRadius: 1,
-          background: isUrgent ? v3.status.warning : 'rgba(255,255,255,0.08)',
-        }} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {visit.accounts?.name ?? '—'}
+      <Link href={`/v3/accounts/${account.id}`} style={{ textDecoration: 'none', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Signal dot */}
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: signalColor, flexShrink: 0, boxShadow: isUrgent ? `0 0 5px ${signalColor}` : undefined }} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {account.name}
+            </span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: stageColor, background: stageColor + '18', padding: '1px 6px', borderRadius: '2px', border: `1px solid ${stageColor}22`, letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0, fontFamily: v3.font.ui }}>
+              {STAGE_LABEL[intel.stage]}
+            </span>
           </div>
-          <div style={{ fontSize: '14px', color: isUrgent ? `${v3.status.warning}bb` : 'rgba(255,255,255,0.42)', marginTop: 2, letterSpacing: '0.01em' }}>
-            {visit.status}
+          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.42)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {intel.nextAction}
           </div>
         </div>
       </Link>
-      {gradeResult
-        ? <GradeBadge grade={gradeResult.grade} size="sm" showMomentum momentum={gradeResult.momentum} tooltip />
-        : <div style={{ width: 22 }} />
-      }
-      <span className="v3-mono" style={{ fontSize: '14px', color: isUrgent ? v3.status.warning : 'rgba(255,255,255,0.38)', whiteSpace: 'nowrap' }}>
-        {daysAgo === 0 ? 'today' : `${daysAgo}d`}
-      </span>
-      <button
-        onClick={e => { e.stopPropagation(); clear.mutate() }}
-        disabled={clear.isPending || dismiss.isPending}
-        title="Mark cleared — they ordered"
-        style={{
-          padding: '5px 9px', background: 'transparent',
-          border: '1px solid rgba(58,158,116,0.20)', borderRadius: '3px',
-          fontSize: '14px', fontWeight: 600, color: 'rgba(90,158,160,0.55)',
-          cursor: 'pointer', letterSpacing: '0.04em', transition: 'all 130ms', flexShrink: 0,
-          fontFamily: v3.font.ui,
-        }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(90,158,160,0.60)'; e.currentTarget.style.color = v3.status.success }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(90,158,160,0.22)'; e.currentTarget.style.color = 'rgba(90,158,160,0.55)' }}
-      >Cleared</button>
-      <button
-        onClick={e => { e.stopPropagation(); dismiss.mutate() }}
-        disabled={clear.isPending || dismiss.isPending}
-        title="Dismiss — not following up"
-        style={{
-          padding: '5px 9px', background: 'transparent',
-          border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px',
-          fontSize: '14px', fontWeight: 600, color: 'rgba(255,255,255,0.38)',
-          cursor: 'pointer', letterSpacing: '0.04em', transition: 'all 130ms', flexShrink: 0,
-          fontFamily: v3.font.ui,
-        }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.20)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'rgba(255,255,255,0.38)' }}
-      >Dismiss</button>
-      <LogBtn onClick={() => open(visit.accounts ? { id: visit.account_id, name: visit.accounts.name } : undefined)} />
-    </div>
-  )
-}
-
-// ── Overdue row ───────────────────────────────────────────────────────────────
-
-function OverdueRow({ account, gradeResult }: { account: any; gradeResult?: GradeResult }) {
-  const { open } = useOpenLogVisit()
-  const isVeryOverdue = (account.overdueDays ?? 0) >= 14
-
-  return (
-    <div className="v3-row-hover" style={{
-      display: 'grid', gridTemplateColumns: '1fr auto auto auto',
-      alignItems: 'center', gap: 10, padding: '13px 8px',
-      borderBottom: '1px solid rgba(255,255,255,0.04)',
-    }}>
-      <Link href={`/v3/territory/${account.id}`} style={{ textDecoration: 'none', minWidth: 0, display: 'flex', alignItems: 'center', gap: 11 }}>
-        <div style={{
-          width: 2, height: 26, flexShrink: 0, borderRadius: 1,
-          background: isVeryOverdue ? v3.status.danger : `${v3.status.warning}60`,
-        }} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.88)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {account.name}
-          </div>
-          <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.42)', marginTop: 2 }}>
-            every {account.visit_frequency_days}d
-          </div>
-        </div>
-      </Link>
-      {gradeResult
-        ? <GradeBadge grade={gradeResult.grade} size="sm" showMomentum momentum={gradeResult.momentum} tooltip />
-        : <div style={{ width: 22 }} />
-      }
-      <span className="v3-mono" style={{ fontSize: '14px', color: isVeryOverdue ? v3.status.danger : v3.status.warning, whiteSpace: 'nowrap' }}>
-        {account.neverVisited ? 'new' : `+${account.overdueDays}d`}
-      </span>
+      {/* Overdue indicator */}
+      {intel.isOverdue && (
+        <span className="v3-mono" style={{ fontSize: '12px', color: SIGNAL_COLOR['overdue'], whiteSpace: 'nowrap', flexShrink: 0 }}>
+          +{Math.abs(intel.daysUntilDue)}d
+        </span>
+      )}
       <LogBtn onClick={() => open({ id: account.id, name: account.name })} />
     </div>
   )
@@ -636,8 +560,6 @@ function TaskList({ tasks }: { tasks: any[] }) {
 export default function TodayPage() {
   const { data: profile }                                      = useV3Profile()
   const { data: allRecentVisits = [], isLoading: visitsLoading } = useV3RecentVisits(30)
-  const { data: followUps = [],       isLoading: fuLoading }   = useV3FollowUps()
-  const { data: overdue = [],         isLoading: overdueLoading } = useV3OverdueQuery()
   const { data: clients = [] }                                 = useV3Clients()
   const { data: coverage }                                     = useV3TerritoryCoverage()
   const { data: commissionMTD = 0 }                            = useV3CommissionMTD()
@@ -677,45 +599,45 @@ export default function TodayPage() {
     })
   }, [allRecentVisits, MONTH_START_STR, myUserId])
 
-  const gradeMap = useMemo(
-    () => buildGradeMap(allAccounts as any[], allOrders as any[], allRecentVisits as any[], allPlacements as any[]),
-    [allAccounts, allOrders, allRecentVisits, allPlacements],
-  )
+  const clientSlugs = useMemo(() => clients.map((c: any) => c.slug), [clients])
 
-  const dedupedFollowUps = useMemo(() => {
-    const seen = new Set<string>()
-    const deduped = followUps.filter(f => { if (seen.has(f.account_id)) return false; seen.add(f.account_id); return true })
-    return deduped.sort((a, b) => {
-      const ga = gradeOrder(gradeMap[a.account_id]?.grade ?? 'D')
-      const gb = gradeOrder(gradeMap[b.account_id]?.grade ?? 'D')
-      if (ga !== gb) return ga - gb
-      const da = Math.floor((Date.now() - new Date(a.visited_at).getTime()) / 86400000)
-      const db = Math.floor((Date.now() - new Date(b.visited_at).getTime()) / 86400000)
-      return db - da
-    })
-  }, [followUps, gradeMap])
+  const demandMap = useMemo(() => {
+    if (!allAccounts.length || !clientSlugs.length) return {}
+    const ids = allAccounts.map((a: any) => a.id)
+    return buildDemandMap(allOrders as any[], ids, clientSlugs)
+  }, [allOrders, allAccounts, clientSlugs])
 
-  const sortedOverdue = useMemo(() => {
-    return [...(overdue as any[])].sort((a, b) => {
-      const ga = gradeOrder(gradeMap[a.id]?.grade ?? 'D')
-      const gb = gradeOrder(gradeMap[b.id]?.grade ?? 'D')
-      if (ga !== gb) return ga - gb
-      return (b.overdueDays ?? 0) - (a.overdueDays ?? 0)
+  const intelMap = useMemo(() => {
+    if (!allAccounts.length) return {}
+    const ids = allAccounts.map((a: any) => a.id)
+    return buildIntelMap({
+      accountIds:    ids,
+      allVisits:     allRecentVisits as any[],
+      allPlacements: allPlacements as any[],
+      allOrders:     allOrders as any[],
+      clientSlugs,
+      demandMap,
     })
-  }, [overdue, gradeMap])
+  }, [allAccounts, allRecentVisits, allPlacements, allOrders, clientSlugs, demandMap])
+
+  // Attention list: accounts with signal that needs action, sorted by urgency
+  const attentionItems = useMemo(() => {
+    const ACTIONABLE = new Set(['urgent', 'cooling', 'follow_up', 'overdue'])
+    return allAccounts
+      .filter((a: any) => ACTIONABLE.has(intelMap[a.id]?.signal ?? ''))
+      .map((a: any) => ({ account: a, intel: intelMap[a.id]! }))
+      .sort((a, b) => compareByUrgency(a.intel, b.intel))
+  }, [allAccounts, intelMap])
 
   const name = profile?.name?.split(' ')[0] || profile?.full_name?.split(' ')[0] || 'there'
-  const fuCount      = dedupedFollowUps.length
-  const overdueCount = sortedOverdue.length
-  const queueClear   = !fuLoading && !overdueLoading && fuCount === 0 && overdueCount === 0
+  const attentionCount = attentionItems.length
+  const queueClear     = attentionCount === 0 && !visitsLoading
 
-  const visitColor = todayVisits.length > 0 ? '#5a9ea0' : 'rgba(255,255,255,0.10)'
-  const fuColor    = fuCount > 0 ? '#c8a46e' : 'rgba(255,255,255,0.10)'
-  const odColor    = overdueCount > 0 ? '#bf7850' : 'rgba(255,255,255,0.10)'
+  const visitColor     = todayVisits.length > 0 ? '#5a9ea0' : 'rgba(255,255,255,0.10)'
+  const attentionColor = attentionCount > 0 ? '#c8a46e' : 'rgba(255,255,255,0.10)'
 
-  const LIST_CAP = 8
-  const [showAllFU, setShowAllFU]       = useState(false)
-  const [showAllOverdue, setShowAllOverdue] = useState(false)
+  const LIST_CAP = 12
+  const [showAllAttention, setShowAllAttention] = useState(false)
 
   return (
     <div style={{ padding: '20px 28px 0', maxWidth: 1600, margin: '0 auto', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} className="v3-fade-in">
@@ -799,19 +721,11 @@ export default function TodayPage() {
         <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
 
         <Stat
-          label="Follow-Ups"
-          value={fuLoading ? '—' : fuCount}
-          color={fuColor}
-          glow={fuCount > 0 ? 'v3-glow-warn' : undefined}
-        />
-
-        <div style={{ width: 1, background: 'rgba(255,255,255,0.05)', margin: '8px 24px 0', alignSelf: 'stretch' }} />
-
-        <Stat
-          label="Overdue"
-          value={overdueLoading ? '—' : overdueCount}
-          color={odColor}
-          glow={overdueCount > 0 ? 'v3-glow-red' : undefined}
+          label="Attention"
+          value={visitsLoading ? '—' : attentionCount}
+          color={attentionColor}
+          glow={attentionCount > 0 ? 'v3-glow-warn' : undefined}
+          note={attentionCount > 0 ? 'accounts need a visit' : undefined}
         />
 
         {commissionMTD > 0 && (
@@ -835,7 +749,7 @@ export default function TodayPage() {
       )}
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
-      {queueClear && !visitsLoading && !fuLoading && !overdueLoading
+      {queueClear && !visitsLoading
         ? (
           <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, alignContent: 'start' }}>
             <AllClear visits={todayVisits.length} />
@@ -845,46 +759,28 @@ export default function TodayPage() {
         : (
           <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1.6fr 1.4fr 1fr', gap: 24, overflow: 'hidden' }}>
 
-            {/* ── Follow-Ups ──────────────────────────────────────────────── */}
-            <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20, paddingRight: 4 }}>
-              <SectionLabel label="Follow-Ups" count={fuCount} countColor="#c48844" href="/v3/territory" />
-              {fuLoading
+            {/* ── Attention list ───────────────────────────────────────── */}
+            {/* Accounts needing a visit, ranked by urgency × stage depth.  */}
+            {/* Signal: urgent > cooling > follow_up > overdue.              */}
+            <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20, paddingRight: 4, gridColumn: '1 / 3' }}>
+              <SectionLabel label="Attention" count={attentionCount} countColor="#c48844" href="/v3/accounts" />
+              {visitsLoading
                 ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.55)', fontSize: '14px' }}>Loading…</div>
-                : fuCount === 0
-                ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.50)', fontSize: '14px' }}>Queue clear</div>
-                : (showAllFU ? dedupedFollowUps : dedupedFollowUps.slice(0, LIST_CAP)).map(f => <FollowUpRow key={f.id} visit={f} gradeResult={gradeMap[f.account_id]} />)
+                : attentionCount === 0
+                ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.50)', fontSize: '14px' }}>No accounts need attention right now</div>
+                : (showAllAttention ? attentionItems : attentionItems.slice(0, LIST_CAP)).map(({ account, intel }) => (
+                    <AttentionRow key={account.id} account={account} intel={intel} />
+                  ))
               }
-              {fuCount > LIST_CAP && (
-                <button onClick={() => setShowAllFU(v => !v)} style={{
-                  display: 'flex', alignItems: 'center', gap: 3, paddingTop: 12,
-                  fontSize: '13px', color: 'rgba(196,164,110,0.50)', background: 'none', border: 'none', cursor: 'pointer', padding: '12px 0 0', fontFamily: v3.font.ui,
-                }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.amberLight}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(196,164,110,0.50)'}
-                >
-                  {showAllFU ? 'Show less' : `+${fuCount - LIST_CAP} more`} <ChevronRight size={11} />
-                </button>
-              )}
-            </div>
-
-            {/* ── Overdue ─────────────────────────────────────────────────── */}
-            <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20, paddingRight: 4 }}>
-              <SectionLabel label="Overdue" count={overdueCount} countColor="#c46868" href="/v3/territory" />
-              {overdueLoading
-                ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.55)', fontSize: '14px' }}>Loading…</div>
-                : overdueCount === 0
-                ? <div style={{ padding: '24px 0', color: 'rgba(255,255,255,0.50)', fontSize: '14px' }}>All on schedule</div>
-                : (showAllOverdue ? sortedOverdue : sortedOverdue.slice(0, LIST_CAP)).map((a: any) => <OverdueRow key={a.id} account={a} gradeResult={gradeMap[a.id]} />)
-              }
-              {overdueCount > LIST_CAP && (
-                <button onClick={() => setShowAllOverdue(v => !v)} style={{
+              {attentionCount > LIST_CAP && (
+                <button onClick={() => setShowAllAttention(v => !v)} style={{
                   display: 'flex', alignItems: 'center', gap: 3,
                   fontSize: '13px', color: 'rgba(196,164,110,0.50)', background: 'none', border: 'none', cursor: 'pointer', padding: '12px 0 0', fontFamily: v3.font.ui,
                 }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = v3.amberLight}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(196,164,110,0.50)'}
                 >
-                  {showAllOverdue ? 'Show less' : `+${sortedOverdue.length - LIST_CAP} more`} <ChevronRight size={11} />
+                  {showAllAttention ? 'Show less' : `+${attentionCount - LIST_CAP} more`} <ChevronRight size={11} />
                 </button>
               )}
             </div>
@@ -948,7 +844,7 @@ export default function TodayPage() {
                     {atRisk.slice(0, 5).map((p: any) => {
                       const ageDays = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000)
                       return (
-                        <Link key={p.id} href={`/v3/territory/${p.account_id}`} style={{ textDecoration: 'none' }}>
+                        <Link key={p.id} href={`/v3/accounts/${p.account_id}`} style={{ textDecoration: 'none' }}>
                           <div className="v3-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                             <div style={{ width: 2, height: 26, flexShrink: 0, borderRadius: 1, background: `${v3.amber}70` }} />
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -984,7 +880,7 @@ export default function TodayPage() {
                           padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.04)',
                         }}>
                           <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#5a9ea0', flexShrink: 0, opacity: 0.7 }} />
-                          <Link href={`/v3/territory/${(v as any).account_id}`} style={{ flex: 1, textDecoration: 'none', minWidth: 0 }}>
+                          <Link href={`/v3/accounts/${(v as any).account_id}`} style={{ flex: 1, textDecoration: 'none', minWidth: 0 }}>
                             <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.75)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                               {(v as any).accounts?.name ?? '—'}
                             </span>

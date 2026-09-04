@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ShoppingCart, Pencil, X, Check, AlertTriangle, Plus, ExternalLink, Zap } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, Pencil, X, Check, AlertTriangle, Plus, ExternalLink, Zap, Activity } from 'lucide-react'
+import { computeBrandConstraint, CONSTRAINT_LABEL, CONSTRAINT_COLOR, type BrandConstraint } from '../../lib/demand'
 import { v3, v3input, v3label, WIN_STATUSES, HOT_STATUSES } from '../../lib/theme'
 import { useV3Clients } from '../../lib/query'
 import { useV3Toast } from '../../lib/context'
@@ -88,6 +89,13 @@ function useBrandCompliance(clientId: string) {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const CONSTRAINT_EXPLANATION: Record<BrandConstraint, string> = {
+  distribution:      'Fewer than 40% of visited accounts have a placement. Expand the footprint before optimizing velocity — this brand needs more doors.',
+  pull_through:      'Placements are in but fewer than half are reordering. The product is on the shelf but not turning. Activate existing placements: tastings, menu features, staff education.',
+  depth:             'Both rates are healthy. The opportunity is to deepen — more SKUs per account, larger orders, and expanding within accounts already reordering.',
+  insufficient_data: 'Visit 3+ accounts and log orders to unlock constraint analysis.',
+}
 
 const PLAC_STATUS_COLOR: Record<string, string> = {
   committed:  v3.health.new,
@@ -446,6 +454,15 @@ export default function BrandDetailPage() {
     .filter(o => new Date(o.sent_at || o.created_at).getTime() >= monthStartMs)
     .reduce((s, o) => s + resolveTotal(o) * (client.commission_rate ?? 0), 0)
 
+  // Constraint diagnosis — funnel health check (internal only, never shown to portal)
+  const visitedAccountIds    = new Set(visits.map((v: any) => v.account_id).filter(Boolean))
+  const placedAccountIds     = new Set(activePlacements.map((p: any) => p.account_id).filter(Boolean))
+  const reorderingAccountIds = new Set(activePlacements.filter((p: any) => p.status === 'reordering').map((p: any) => p.account_id).filter(Boolean))
+  const brandConstraint = computeBrandConstraint(visitedAccountIds as Set<string>, placedAccountIds as Set<string>, reorderingAccountIds as Set<string>)
+  const constraintColor = CONSTRAINT_COLOR[brandConstraint]
+  const placRate    = visitedAccountIds.size > 0 ? Math.round((placedAccountIds.size / visitedAccountIds.size) * 100) : 0
+  const reorderRate = placedAccountIds.size > 0 ? Math.round(((reorderingAccountIds.size) / placedAccountIds.size) * 100) : 0
+
   // Placement funnel counts
   const placCounts = { committed: 0, ordered: 0, on_shelf: 0, reordering: 0 }
   for (const p of activePlacements) {
@@ -652,8 +669,49 @@ export default function BrandDetailPage() {
       {/* ── Main 2-col grid ───────────────────────────────────────────────── */}
       <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 28, overflow: 'hidden' }}>
 
-        {/* LEFT — Placement pipeline + Hot Leads + Orders + Compliance */}
+        {/* LEFT — Constraint Diagnosis + Placement pipeline + Hot Leads + Orders + Compliance */}
         <div style={{ overflowY: 'auto', height: '100%', paddingBottom: 20 }}>
+
+          {/* ── Constraint Diagnosis ─────────────────────────────────────────── */}
+          <div style={{ background: v3.bg.surface, border: `1px solid ${constraintColor}28`, borderLeft: `3px solid ${constraintColor}`, borderRadius: v3.radius.md, padding: '12px 14px', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Activity size={11} color={constraintColor} />
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.22em', fontFamily: v3.font.ui }}>Constraint Diagnosis</span>
+              <span style={{ marginLeft: 'auto', padding: '2px 9px', borderRadius: v3.radius.full, fontSize: '10px', fontWeight: 700, color: constraintColor, background: constraintColor + '18', border: `1px solid ${constraintColor}40`, letterSpacing: '0.04em' }}>
+                {CONSTRAINT_LABEL[brandConstraint]}
+              </span>
+            </div>
+
+            {/* Funnel */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              {[
+                { count: visitedAccountIds.size,    label: 'Visited',    broken: false },
+                { count: placedAccountIds.size,     label: 'Placed',     broken: brandConstraint === 'distribution' },
+                { count: reorderingAccountIds.size, label: 'Reordering', broken: brandConstraint === 'pull_through' },
+              ].map((step, i, arr) => {
+                const numColor = step.broken ? constraintColor : (i === 2 ? v3.amber : v3.text.primary)
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, flex: i < arr.length - 1 ? '0 0 auto' : undefined }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: numColor, fontFamily: 'monospace', lineHeight: 1 }}>{step.count}</div>
+                      <div style={{ fontSize: '8px', fontWeight: 700, color: step.broken ? constraintColor : v3.text.muted, textTransform: 'uppercase', letterSpacing: '0.10em', marginTop: 1 }}>{step.label}</div>
+                    </div>
+                    {i < arr.length - 1 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 32 }}>
+                        <div style={{ width: '100%', height: 1, background: v3.border.subtle }} />
+                        <span style={{ fontSize: '9px', fontWeight: 700, marginTop: 2, color: i === 0 && brandConstraint === 'distribution' ? constraintColor : i === 1 && brandConstraint === 'pull_through' ? constraintColor : v3.text.muted }}>
+                          {i === 0 ? (visitedAccountIds.size > 0 ? `${placRate}%` : '—') : (placedAccountIds.size > 0 ? `${reorderRate}%` : '—')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.5 }}>{CONSTRAINT_EXPLANATION[brandConstraint]}</div>
+          </div>
+
           <SectionLabel>{`Placement Pipeline · ${activePlacements.length} active`}</SectionLabel>
           {activePlacements.length === 0
             ? <div style={{ color: v3.text.muted, fontSize: '13px', paddingTop: 4 }}>No active placements</div>
@@ -689,7 +747,7 @@ export default function BrandDetailPage() {
                 {hotLeads.map(v => {
                   const sc = VISIT_STATUS_COLOR[v.status] ?? v3.text.muted
                   return (
-                    <Link key={v.id} href={`/v3/territory/${v.account_id}`} style={{ textDecoration: 'none' }}>
+                    <Link key={v.id} href={`/v3/accounts/${v.account_id}`} style={{ textDecoration: 'none' }}>
                       <div className="v3-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: v3.radius.sm }}>
                         <div style={{ width: 5, height: 5, borderRadius: '50%', background: sc, boxShadow: `0 0 5px ${sc}`, flexShrink: 0 }} />
                         <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: v3.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.accounts?.name ?? '—'}</span>
@@ -818,7 +876,7 @@ export default function BrandDetailPage() {
                   const maxTotal = (topAccounts[0] as any).total ?? 1
                   const barPct = maxTotal > 0 ? (acctTotal / maxTotal) * 100 : 0
                   return (
-                    <Link key={a.id} href={`/v3/territory/${a.id}`} style={{ textDecoration: 'none' }}>
+                    <Link key={a.id} href={`/v3/accounts/${a.id}`} style={{ textDecoration: 'none' }}>
                       <div className="v3-row-hover" style={{ padding: '8px 10px', background: v3.bg.surface, borderRadius: v3.radius.sm, border: `1px solid ${v3.border.subtle}`, transition: 'all 80ms' }}
                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = v3.bg.elevated}
                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = v3.bg.surface}
@@ -887,7 +945,7 @@ export default function BrandDetailPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                           {v.accounts?.name && (
-                            <Link href={`/v3/territory/${v.account_id}`} style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Link href={`/v3/accounts/${v.account_id}`} style={{ fontSize: '13px', fontWeight: 700, color: v3.text.primary, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {v.accounts.name}
                             </Link>
                           )}

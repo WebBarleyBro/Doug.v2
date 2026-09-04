@@ -3,7 +3,7 @@ import { useState, useEffect, Component } from 'react'
 import type { ErrorInfo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarDays, MapPin, TrendingUp, Briefcase, BarChart2, LogOut, Plus, Home, Users, BookUser, Route, ClipboardList, Megaphone } from 'lucide-react'
+import { CalendarDays, TrendingUp, Briefcase, BarChart2, LogOut, Plus, Home, Users, BookUser, Route, ClipboardList, MapPin } from 'lucide-react'
 import { V3QueryProvider } from './lib/query'
 import { v3 } from './lib/theme'
 import LogVisitModal from './components/LogVisitModal'
@@ -84,16 +84,16 @@ function WinMomentOverlay({ data, onDone }: { data: WinMoment | null; onDone: ()
 
 // ── Nav items ────────────────────────────────────────────────────────────────
 const NAV = [
-  { href: '/v3/today',     label: 'Today',     icon: Home,       section: 'main' },
-  { href: '/v3/territory', label: 'Territory', icon: MapPin,     section: 'main' },
-  { href: '/v3/pipeline',  label: 'Orders',    icon: TrendingUp, section: 'main' },
-  { href: '/v3/brands',    label: 'Brands',    icon: Briefcase,  section: 'main' },
-  { href: '/v3/reports',   label: 'Reports',   icon: BarChart2,  section: 'main' },
+  { href: '/v3/today',      label: 'Today',      icon: Home,       section: 'main' },
+  { href: '/v3/accounts',   label: 'Accounts',   icon: MapPin,     section: 'main' },
+  { href: '/v3/pipeline',   label: 'Orders',     icon: TrendingUp, section: 'main' },
+  { href: '/v3/brands',     label: 'Brands',     icon: Briefcase,  section: 'main' },
+  { href: '/v3/reports',    label: 'Reports',    icon: BarChart2,  section: 'main' },
 ]
 const NAV_EXTRA = [
-  { href: '/v3/marketing', label: 'Marketing', icon: Megaphone },
-  { href: '/v3/planner',   label: 'Planner',   icon: Route },
-  { href: '/v3/calendar',  label: 'Calendar',  icon: CalendarDays },
+  { href: '/v3/prospects', label: 'Prospects', icon: Users },
+  { href: '/v3/territory', label: 'Territory', icon: Route },
+  { href: '/v3/planner',   label: 'Planner',   icon: CalendarDays },
   { href: '/v3/visits',    label: 'Visits',    icon: ClipboardList },
   { href: '/v3/contacts',  label: 'Contacts',  icon: BookUser },
 ]
@@ -188,7 +188,7 @@ function Sidebar({ pathname, onLogVisit }: { pathname: string; onLogVisit: () =>
         <div style={{ width: 2, height: 20, background: v3.amber, borderRadius: 1, flexShrink: 0, boxShadow: `0 0 6px ${v3.amber}55` }} />
         <div>
           <div style={{ fontSize: '12px', fontWeight: 700, color: v3.text.primary, letterSpacing: '-0.01em', lineHeight: 1 }}>
-            Barley Bros
+            Western Peak
           </div>
           <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.38)', letterSpacing: '0.14em', marginTop: 3, textTransform: 'uppercase', fontFamily: v3.font.mono }}>
             Field CRM
