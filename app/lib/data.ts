@@ -1363,34 +1363,78 @@ export async function getWeeklyReportData(clientSlug: string, weekStart: string,
 
 // ─── Client portal data ───────────────────────────────────────────────────
 
+// Supabase caps a single response at 1000 rows; a brand's visit history can
+// exceed that, so range-bounded portal queries page until a short page comes back.
+const PORTAL_PAGE = 1000
+async function fetchAllPages<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PORTAL_PAGE) {
+    const { data, error } = await build(from, from + PORTAL_PAGE - 1)
+    if (error) throw error
+    const page = data || []
+    rows.push(...page)
+    if (page.length < PORTAL_PAGE) return rows
+  }
+}
+
+export const PORTAL_VISIT_SELECT = 'id, visited_at, status, notes, account_id, accounts(id, name, address, account_type)'
+
+// Visits for one brand inside an explicit window — used when a portal viewer picks
+// a month or custom range older than the initially loaded history.
+export async function getPortalVisitsInRange(clientSlug: string, startISO: string, endISO: string) {
+  const sb = getSupabase()
+  return fetchAllPages<any>((from, to) =>
+    sb.from('visits')
+      .select(PORTAL_VISIT_SELECT)
+      .eq('client_slug', clientSlug)
+      .gte('visited_at', startISO)
+      .lte('visited_at', endISO)
+      .order('visited_at', { ascending: false })
+      .range(from, to)
+  )
+}
+
+// Portal history window: 13 months so any calendar month in the last year can be
+// compared against the month before it.
+export const PORTAL_HISTORY_DAYS = 400
+
 export async function getPortalData(clientSlug: string) {
   const sb = getSupabase()
-  const ninetyDaysAgo = nDaysAgoMT(90)
+  const historyStart = nDaysAgoMT(PORTAL_HISTORY_DAYS)
 
   // Fetch client first so we have its ID for registrations
   const client = await getClient(clientSlug)
   if (!client) return null
 
-  const [visitsRes, placementsRes, ordersRes, eventsRes, suggestionsRes, campaignsRes, registrationsRes] = await Promise.all([
-    sb.from('visits')
-      .select('id, visited_at, status, notes, account_id, accounts(id, name, address, account_type)')
-      .eq('client_slug', clientSlug)
-      .gte('visited_at', ninetyDaysAgo)
-      .order('visited_at', { ascending: false })
-      .limit(150),
-    sb.from('placements')
-      .select('id, account_id, product_name, placement_type, status, price_point, created_at, updated_at, accounts(id, name, address)')
-      .eq('client_slug', clientSlug)
-      .is('lost_at', null)
-      .order('created_at', { ascending: false }),
-    sb.from('purchase_orders')
-      .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, sent_at, account_id, accounts(id, name), distributor_email, distributor_rep_name, deliver_to_address, distributor_status, distributor_contacted_at')
-      .eq('client_slug', clientSlug)
-      .order('created_at', { ascending: false }),
+  const [visits, placements, orders, eventsRes, suggestionsRes, campaignsRes, registrationsRes] = await Promise.all([
+    fetchAllPages<any>((from, to) =>
+      sb.from('visits')
+        .select(PORTAL_VISIT_SELECT)
+        .eq('client_slug', clientSlug)
+        .gte('visited_at', historyStart)
+        .order('visited_at', { ascending: false })
+        .range(from, to)
+    ),
+    // Lost placements are included so period stats can tell "won this month" from
+    // "still active"; the portal itself only ever displays active ones.
+    fetchAllPages<any>((from, to) =>
+      sb.from('placements')
+        .select('id, account_id, product_name, placement_type, status, price_point, created_at, lost_at, accounts(id, name, address)')
+        .eq('client_slug', clientSlug)
+        .order('created_at', { ascending: false })
+        .range(from, to)
+    ),
+    fetchAllPages<any>((from, to) =>
+      sb.from('purchase_orders')
+        .select('id, po_number, deliver_to_name, total_amount, status, order_type, created_at, sent_at, account_id, accounts(id, name), distributor_email, distributor_rep_name, deliver_to_address, distributor_status, distributor_contacted_at, po_line_items(*)')
+        .eq('client_slug', clientSlug)
+        .order('created_at', { ascending: false })
+        .range(from, to)
+    ),
     sb.from('events')
-      .select('id, title, event_type, start_time, accounts(name)')
+      .select('id, title, event_type, start_time, status, accounts(name)')
       .eq('client_slug', clientSlug)
-      .gte('start_time', ninetyDaysAgo)
+      .gte('start_time', historyStart)
       .order('start_time', { ascending: false }),
     sb.from('client_suggestions')
       .select('*')
@@ -1408,72 +1452,16 @@ export async function getPortalData(clientSlug: string) {
       .order('state'),
   ])
 
-  const visits = visitsRes.data || []
-  const placements = placementsRes.data || []
-  const orders = ordersRes.data || []
-  const events = eventsRes.data || []
-  const suggestions = (suggestionsRes.data || []) as any[]
-  const campaigns = (campaignsRes.data || []) as any[]
-  const registrations = (registrationsRes.data || []) as any[]
-
-  // Treat as distributor inquiry if order_type is 'distributor', OR if it has a distributor email/rep
-  // but no explicit 'direct' type (handles orders where order_type was never set)
-  const isDistributor = (o: any) =>
-    o.order_type === 'distributor' ||
-    (o.order_type !== 'direct' && (o.distributor_email || o.distributor_rep_name))
-  const distOrders = orders.filter(isDistributor)
-  const confirmedDist = distOrders.filter((o: any) => o.status === 'fulfilled')
-  const pendingDist = distOrders.filter((o: any) => o.status === 'sent')
-
-  const followUpVisits = visits.filter((v: any) => v.status === 'Will Order Soon' || v.status === 'Needs Follow Up')
-  const funnel = {
-    visits: visits.length,
-    followUps: followUpVisits.length,
-    inquiries: distOrders.length,
-    confirmed: confirmedDist.length,
-    pending: pendingDist.length,
-  }
-
-  const TZ = 'America/Denver'
-  const visitTrend: { week: string; weekEnd: string; visits: number }[] = []
-  // Compute today's date string in MT
-  const todayMT = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
-  const todayMTDate = new Date(todayMT + 'T12:00:00Z')
-  // Find start of current week (Sunday) in MT
-  const todayDOW = new Date(todayMT + 'T12:00:00Z').getUTCDay()
-  const currentWeekSundayMT = new Date(todayMTDate)
-  currentWeekSundayMT.setUTCDate(currentWeekSundayMT.getUTCDate() - todayDOW)
-
-  for (let i = 11; i >= 0; i--) {
-    const weekSunday = new Date(currentWeekSundayMT)
-    weekSunday.setUTCDate(weekSunday.getUTCDate() - i * 7)
-    const weekSaturday = new Date(weekSunday)
-    weekSaturday.setUTCDate(weekSaturday.getUTCDate() + 6)
-    const weekStartStr = weekSunday.toLocaleDateString('en-CA', { timeZone: TZ })
-    const weekEndStr = weekSaturday.toLocaleDateString('en-CA', { timeZone: TZ })
-    const count = visits.filter((v: any) => {
-      const raw = v.visited_at
-      const vd = raw.length > 10 && !raw.endsWith('Z') && !raw.includes('+') && !raw.includes('-', 10) ? raw + 'Z' : raw
-      const ds = new Date(vd).toLocaleDateString('en-CA', { timeZone: TZ })
-      return ds >= weekStartStr && ds <= weekEndStr
-    }).length
-    const label = new Date(weekStartStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-    const endLabel = new Date(weekEndStr + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-    visitTrend.push({ week: label, weekEnd: endLabel, visits: count })
-  }
-
   return {
     client,
     visits,
     placements,
     orders,
-    events,
-    distOrders,
-    suggestions,
-    campaigns,
-    registrations,
-    funnel,
-    visitTrend,
+    events: eventsRes.data || [],
+    suggestions: (suggestionsRes.data || []) as any[],
+    campaigns: (campaignsRes.data || []) as any[],
+    registrations: (registrationsRes.data || []) as any[],
+    historyStartISO: historyStart,
   }
 }
 
