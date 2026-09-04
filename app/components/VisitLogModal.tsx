@@ -6,6 +6,8 @@ import { logVisit, getAccounts, getClients, getProducts, createPlacement } from 
 import { invalidatePrefix } from '../lib/cache'
 import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
+import { scanFields, firstNameOf, languageHeadline, languageDetail } from '../lib/language-guard'
+import { getCurrentUserWithProfile } from '../lib/auth'
 import type { Account, Client, Product, VisitStatus, PlacementType, PlacementStatus } from '../lib/types'
 import AddAccountModal from './AddAccountModal'
 
@@ -88,6 +90,16 @@ export default function VisitLogModal({
   const [placements, setPlacements] = useState<PlacementEntry[]>([])
   const [showPlacements, setShowPlacements] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  // Language nudge — visit notes are shown verbatim in the brand's portal.
+  const [repFirstName, setRepFirstName] = useState('there')
+  const [languageAck, setLanguageAck] = useState(false)
+  useEffect(() => {
+    if (!isOpen) return
+    getCurrentUserWithProfile()
+      .then(r => setRepFirstName(firstNameOf(r?.profile, r?.user?.email)))
+      .catch(() => {})
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) return
@@ -181,6 +193,25 @@ export default function VisitLogModal({
     }))
   }
 
+  // Only the note fields that reach the brand's portal.
+  const brandNameOf = (slug: string) => clients.find(c => c.slug === slug)?.name ?? slug
+  const languageHits = scanFields([
+    { label: 'the visit notes', value: form.notes },
+    ...Object.entries(form.client_notes).map(([slug, text]) => ({ label: `the notes for ${brandNameOf(slug)}`, value: text })),
+    ...form.tastings.map(t => ({ label: `the tasting notes for ${brandNameOf(t.clientSlug)}`, value: t.notes })),
+  ])
+  const languageKey = languageHits.flatMap(h => h.words).sort().join(',')
+  useEffect(() => {
+    if (!languageKey && languageAck) setLanguageAck(false)
+  }, [languageKey, languageAck])
+
+  // The nudge sits by the save button, which can be below the fold while you are
+  // typing — bring it into view the moment it stops a save.
+  const langRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (languageAck) langRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [languageAck])
+
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
     setError('')
@@ -208,6 +239,9 @@ export default function VisitLogModal({
     const followupNote = form.followup_days
       ? `Follow up in ${form.followup_days} days`
       : form.create_checkin ? 'General check-in reminder' : undefined
+
+    // Stop once so the wording gets a second look; saving again goes through.
+    if (languageHits.length > 0 && !languageAck) { setLanguageAck(true); return }
 
     setSaving(true)
     try {
@@ -696,6 +730,27 @@ export default function VisitLogModal({
             </div>
           </Section>
 
+          {languageHits.length > 0 && (
+            <div role="alert" ref={langRef} style={{
+              padding: '12px 14px', marginBottom: '16px', borderRadius: '8px',
+              backgroundColor: languageAck ? t.status.dangerBg : t.status.warningBg,
+              border: `1px solid ${languageAck ? 'rgba(232,85,64,0.35)' : 'rgba(160,132,64,0.35)'}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700, marginBottom: '4px', color: languageAck ? t.status.danger : t.status.warning }}>
+                <AlertCircle size={15} />
+                {languageHeadline(repFirstName)}
+              </div>
+              <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.5 }}>
+                {languageDetail(languageHits)}
+              </div>
+              {languageAck && (
+                <div style={{ fontSize: '11.5px', color: t.text.muted, marginTop: '6px' }}>
+                  Press Log Visit again to save it as written.
+                </div>
+              )}
+            </div>
+          )}
+
           {error && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
@@ -713,7 +768,7 @@ export default function VisitLogModal({
               opacity: saving || !form.account_id ? 0.6 : 1,
               cursor: saving || !form.account_id ? 'not-allowed' : 'pointer', marginTop: '8px',
             }}>
-            {saving ? 'Saving...' : 'Log Visit'}
+            {saving ? 'Saving...' : (languageHits.length > 0 && languageAck) ? 'Log Visit anyway' : 'Log Visit'}
           </button>
         </form>
       )}

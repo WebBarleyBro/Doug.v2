@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Check, Plus, Package, User, ChevronDown, Calendar, GlassWater, Building2, Clock } from 'lucide-react'
 import { v3, v3input, v3label, WIN_STATUSES } from '../lib/theme'
-import { useV3Clients, useLogVisit } from '../lib/query'
+import { useV3Clients, useLogVisit, useV3Profile } from '../lib/query'
+import { scanFields, firstNameOf, languageHeadline, languageDetail } from '../../lib/language-guard'
 import { useWinMoment, useV3Toast } from '../lib/context'
 import { useQueryClient } from '@tanstack/react-query'
 import { getSupabase } from '../../lib/supabase'
@@ -108,6 +109,10 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
   const [error, setError]   = useState('')
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Language nudge — these notes are shown verbatim in the brand's portal.
+  const { data: profile } = useV3Profile()
+  const [languageAck, setLanguageAck] = useState(false)
+
   useEffect(() => {
     if (selectedSlugs.length > 0 && !selectedSlugs.includes(placementSlug)) {
       setPlacementSlug(selectedSlugs[0])
@@ -140,6 +145,30 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
   const canSubmit = accountId && selectedSlugs.length > 0 && status
   const multiBrand = selectedSlugs.length > 1
 
+  // Only scan the note fields that will actually be saved: shared notes are
+  // dropped on a multi-brand visit, per-brand notes on a single-brand one.
+  const brandName = (slug: string) => (clients as Client[]).find(c => c.slug === slug)?.name ?? slug
+  const languageHits = scanFields([
+    { label: 'the visit notes', value: multiBrand ? '' : sharedNotes },
+    ...(multiBrand ? selectedSlugs.map(s => ({ label: `the notes for ${brandName(s)}`, value: brandNotes[s] })) : []),
+    { label: 'the tasting notes', value: tastingNotes },
+    { label: 'the feedback', value: feedback },
+  ])
+  const repFirstName = firstNameOf(profile as any)
+
+  // Once the wording is cleaned up, arm the nudge again for the next slip.
+  const languageKey = languageHits.flatMap(h => h.words).sort().join(',')
+  useEffect(() => {
+    if (!languageKey && languageAck) setLanguageAck(false)
+  }, [languageKey, languageAck])
+
+  // The nudge sits by the save button, which can be below the fold while you are
+  // typing — bring it into view the moment it stops a save.
+  const langRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (languageAck) langRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [languageAck])
+
   async function handleCreateAccount() {
     if (!newAccName.trim() || creatingAccSaving) return
     setCreatingAccSaving(true)
@@ -168,6 +197,8 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
 
   async function handleSubmit() {
     if (!canSubmit || saving) return
+    // Stop once so the wording gets a second look; saving again goes through.
+    if (languageHits.length > 0 && !languageAck) { setLanguageAck(true); return }
     setSaving(true)
     setError('')
     try {
@@ -687,6 +718,27 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
             )}
           </div>
 
+          {/* ── LANGUAGE NUDGE ──────────────────────────────── */}
+          {languageHits.length > 0 && (
+            <div role="alert" ref={langRef} style={{
+              padding: '12px 14px', marginBottom: 14, borderRadius: v3.radius.md, fontFamily: v3.font.ui,
+              background: languageAck ? 'rgba(224,102,74,0.12)' : v3.status.warningDim,
+              border: `1px solid ${languageAck ? 'rgba(224,102,74,0.45)' : v3.status.warning + '40'}`,
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: languageAck ? '#e0664a' : v3.status.warning, marginBottom: 4 }}>
+                {languageHeadline(repFirstName)}
+              </div>
+              <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.5 }}>
+                {languageDetail(languageHits)}
+              </div>
+              {languageAck && (
+                <div style={{ fontSize: '11.5px', color: v3.text.muted, marginTop: 6 }}>
+                  Tap Log Visit again to save it as written.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── ERROR ───────────────────────────────────────── */}
           {error && (
             <div style={{ padding: '10px 14px', background: v3.status.dangerDim, border: `1px solid ${v3.status.danger}33`, borderRadius: v3.radius.md, fontSize: v3.type.sm, color: v3.status.danger, marginBottom: 14, fontFamily: v3.font.ui }}>
@@ -715,7 +767,7 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
               : saving
               ? 'Saving…'
               : canSubmit
-              ? 'Log Visit'
+              ? (languageHits.length > 0 && languageAck ? 'Log Visit anyway' : 'Log Visit')
               : !accountId ? 'Select an account'
               : !selectedSlugs.length ? 'Select a brand'
               : 'Select an outcome'
