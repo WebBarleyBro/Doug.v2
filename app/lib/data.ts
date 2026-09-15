@@ -913,6 +913,9 @@ export async function getProducts(clientSlug: string): Promise<Product[]> {
     .from('products')
     .select('*')
     .eq('client_slug', clientSlug)
+    // Retired rows (duplicate entries, discontinued SKUs) stay in the table for
+    // history but must not show up in pickers — `active` is that switch.
+    .eq('active', true)
     .order('name')
   if (error) throw error
   // Normalize price across possible column names
