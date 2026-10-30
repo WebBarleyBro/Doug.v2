@@ -16,7 +16,7 @@ import {
 } from './portal-metrics'
 import {
   C, FS, FM, FIRM, accentTokens, PortalStyles, Seg, Btn, Panel, MeasuresBlock, CumulativeChart, Funnel, Ledger, AccountsPanel, EventsPanel, Timeline,
-  Drawer, Field, AccountDrawer, MonthlyPreview, QuarterlyPreview, mono, upperLabel,
+  Drawer, Field, AccountDrawer, OrderDrawer, MonthlyPreview, QuarterlyPreview, mono, upperLabel,
 } from './portal-ui'
 import PortalMap from './PortalMap'
 
@@ -38,7 +38,7 @@ const FILE_KINDS: { label: string; type: ClientFileType; description?: string }[
 ]
 const FILE_TYPE_LABEL: Record<string, string> = { logo: 'Logo', brand_asset: 'Brand asset', photo: 'Photo', compliance: 'Compliance', other: 'File' }
 
-type DrawerKind = null | 'files' | 'suggest' | 'report' | { account: string }
+type DrawerKind = null | 'files' | 'suggest' | 'report' | { account: string } | { order: string }
 
 export default function ClientPortalPage() {
   const { slug } = useParams() as { slug: string }
@@ -155,6 +155,7 @@ export default function ClientPortalPage() {
 
   const closeDrawer = useCallback(() => setDrawer(null), [])
   const openAccount = useCallback((id: string) => setDrawer({ account: id }), [])
+  const openOrder = useCallback((id: string) => setDrawer({ order: id }), [])
 
   const openReport = () => {
     const todayMonth = mtDayKey(loadedAt).slice(0, 7)
@@ -264,7 +265,8 @@ export default function ClientPortalPage() {
   const hasEvents = report.events.length > 0
   const updatedAt = new Date(loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })
   const sinceLabel = client?.since_date ? fmtMonthLong(String(client.since_date).slice(0, 7)) : null
-  const accountDetail = drawer && typeof drawer === 'object' ? getAccountDetail(report, drawer.account) : null
+  const accountDetail = drawer && typeof drawer === 'object' && 'account' in drawer ? getAccountDetail(report, drawer.account) : null
+  const orderDetail = drawer && typeof drawer === 'object' && 'order' in drawer ? report.ordersLedger.all.find(o => o.id === drawer.order) || null : null
   const today = mtDayKey(loadedAt)
   const todayMonth = today.slice(0, 7)
   const reportQNext = reportQuarter ? addMonths(quarterFirstMonth(reportQuarter.year, reportQuarter.q), 3) <= todayMonth : false
@@ -375,7 +377,7 @@ export default function ClientPortalPage() {
           <AccountsPanel report={report} wide />
         )}
 
-        <Timeline report={report} firm={firm} />
+        <Timeline report={report} firm={firm} onOpenOrder={openOrder} onOpenAccount={openAccount} />
 
         <footer style={{ marginTop: 26, paddingTop: 16, borderTop: `1px solid ${C.line}`, fontSize: 12.5, color: C.mute, display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <span>Prepared by {FIRM.name} · Updates as the field logs it · Mountain Time</span>
@@ -385,6 +387,7 @@ export default function ClientPortalPage() {
 
       {/* ── Drawers ── */}
       {accountDetail && <AccountDrawer detail={accountDetail} firm={firm} onClose={closeDrawer} />}
+      {orderDetail && <OrderDrawer order={orderDetail} accent={accent} onOpenAccount={openAccount} onClose={closeDrawer} />}
 
       {drawer === 'files' && (
         <Drawer title="Files" sub={`Shared between ${client?.name} and ${FIRM.name}`} onClose={closeDrawer}>

@@ -8,7 +8,7 @@ import { WESTERN_PEAK_LOGO_ON_LIGHT_URL } from '../../lib/constants'
 import {
   type PeriodReport, type Delta, type AccountRow, type OrderRow, type ProductRow, type TimelineStop, type AccountDetail,
   type MonthlyPdfData, type QuarterlyPdfData,
-  formatDelta, formatPdfDelta, money, moneyK, fmtShort, fmtShortYear, unitLabel,
+  formatDelta, formatPdfDelta, money, moneyK, fmtShort, fmtShortYear, unitLabel, unitsLabel, placementSummary,
 } from './portal-metrics'
 
 // ── Design tokens (portal only) ───────────────────────────────────────────────
@@ -100,7 +100,10 @@ export function PortalStyles({ accent }: { accent: Accent }) {
       .pt-tl-day{display:grid;grid-template-columns:120px 1fr;gap:18px;padding:0 0 22px;position:relative}
       .pt-tl-date{position:sticky;top:70px;align-self:start;font-family:${FM};font-size:12.5px;color:${C.ink2};padding-top:2px}
       .pt-tl-stops{position:relative;padding-left:22px;border-left:1px solid ${C.line};display:flex;flex-direction:column;gap:9px}
-      .pt-stop{position:relative;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+      .pt-stop{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
+      .pt-feedrow{cursor:pointer;border-radius:6px;padding:4px 8px;margin:-4px -8px}
+      .pt-feedrow:hover{background:rgba(242,243,245,.035)}
+      .pt-feedrow::before{left:-19px!important;top:11px!important}
       .pt-stop::before{content:"";position:absolute;left:-27px;top:7px;width:9px;height:9px;border-radius:50%;background:${C.bg};border:1.5px solid ${C.mute}}
       .pt-stop.win::before{background:${C.bar};border-color:${C.bar};box-shadow:0 0 0 3px rgba(242,243,245,.12)}
 
@@ -686,45 +689,68 @@ export function EventsPanel({ report }: { report: PeriodReport }) {
 }
 
 // ── Field activity timeline ───────────────────────────────────────────────────
+// Single-line rows. Everything: order rows (with "{n} new") and visit rows. Orders:
+// order rows. Placements: one row per order that placed products. Visits: visit rows.
 
-type FeedFilter = 'all' | 'orders' | 'visits'
+type FeedFilter = 'all' | 'orders' | 'placements' | 'visits'
+type FeedRow = { key: string; stop: TimelineStop; kind: 'order' | 'placement' | 'visit' }
 
-export function Timeline({ report, firm }: { report: PeriodReport; firm: boolean }) {
+function rowsFor(stops: TimelineStop[], filter: FeedFilter): FeedRow[] {
+  const out: FeedRow[] = []
+  for (const s of stops) {
+    if (s.kind === 'visit') { if (filter === 'all' || filter === 'visits') out.push({ key: s.id, stop: s, kind: 'visit' }); continue }
+    if (filter === 'all' || filter === 'orders') out.push({ key: s.id, stop: s, kind: 'order' })
+    else if (filter === 'placements' && (s.newPlacements?.length || 0) > 0) out.push({ key: `p:${s.id}`, stop: s, kind: 'placement' })
+  }
+  return out
+}
+
+function FeedLine({ row, firm, showNewTag, onClick }: { row: FeedRow; firm: boolean; showNewTag: boolean; onClick: () => void }) {
+  const s = row.stop
+  const sep = <span style={{ color: C.faint }}> · </span>
+  const nNew = s.newPlacements?.length || 0
+  return (
+    <div role="button" tabIndex={0} className={`pt-stop pt-feedrow ${row.kind !== 'visit' ? 'win' : ''}`} onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}>
+      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13.5, color: C.ink2, minWidth: 0 }}>
+        <b style={{ color: C.ink, fontWeight: 600, fontSize: 14 }}>{s.name}</b>
+        {sep}
+        {row.kind === 'order' && <><span style={{ color: C.ink }}>Order</span>{sep}<span style={mono}>{unitsLabel(s.units || { cases: 0, bottles: 0 })}</span></>}
+        {row.kind === 'placement' && <span style={{ color: C.ink }}>{placementSummary(s.newPlacements || [])}</span>}
+        {row.kind === 'visit' && <><span style={{ color: C.ink }}>Visit</span>{firm && (s.status || s.rep) ? <span style={{ color: C.mute, fontSize: 12 }}> ({[s.status, s.rep].filter(Boolean).join(' · ')})</span> : null}{s.note ? <>{sep}{s.note}</> : null}</>}
+      </div>
+      <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', whiteSpace: 'nowrap' }}>
+        {row.kind === 'order' && showNewTag && nNew > 0 && <Tag>{nNew} new</Tag>}
+        {row.kind === 'order' && <span style={{ ...mono, fontSize: 13, color: C.ink }}>{money(s.amount || 0)}</span>}
+      </span>
+    </div>
+  )
+}
+
+export function Timeline({ report, firm, onOpenOrder, onOpenAccount }: { report: PeriodReport; firm: boolean; onOpenOrder: (orderId: string) => void; onOpenAccount: (accountId: string) => void }) {
   const [filter, setFilter] = useState<FeedFilter>('all')
   const [all, setAll] = useState(false)
   const { range } = report
-  const isWin = (s: TimelineStop) => s.kind === 'order'
-  const days = useMemo(() => report.timeline.map(d => ({ ...d, stops: d.stops.filter(s => filter === 'all' || (filter === 'orders' ? isWin(s) : !isWin(s))) })).filter(d => d.stops.length), [report.timeline, filter])
-  const total = days.reduce((s, d) => s + d.stops.length, 0)
+  const days = useMemo(() => report.timeline.map(d => ({ ...d, rows: rowsFor(d.stops, filter) })).filter(d => d.rows.length), [report.timeline, filter])
+  const total = days.reduce((s, d) => s + d.rows.length, 0)
   let budget = all ? Infinity : 16
-  const visible = days.map(d => { const take = d.stops.slice(0, Math.max(0, budget)); budget -= take.length; return { ...d, stops: take } }).filter(d => d.stops.length)
+  const visible = days.map(d => { const take = d.rows.slice(0, Math.max(0, budget)); budget -= take.length; return { ...d, rows: take } }).filter(d => d.rows.length)
+  const visitCount = report.timeline.reduce((n, d) => n + d.stops.filter(s => s.kind === 'visit').length, 0)
   return (
-    <Panel title="Field activity" sub={`${report.measures.visits} visit${report.measures.visits === 1 ? '' : 's'} · ${report.orders.length} order${report.orders.length === 1 ? '' : 's'} in ${range.label}`}
-      right={<Seg ariaLabel="Show" value={filter} onChange={f => { setFilter(f); setAll(false) }} options={[{ value: 'all', label: 'Everything' }, { value: 'orders', label: 'Orders' }, { value: 'visits', label: 'Visits only' }]} />}>
+    <Panel title="Field activity" sub={`${visitCount} visit${visitCount === 1 ? '' : 's'} · ${report.orders.length} order${report.orders.length === 1 ? '' : 's'} in ${range.label}`}
+      right={<Seg ariaLabel="Show" value={filter} onChange={f => { setFilter(f); setAll(false) }} options={[{ value: 'all', label: 'Everything' }, { value: 'orders', label: 'Orders' }, { value: 'placements', label: 'Placements' }, { value: 'visits', label: 'Visits' }]} />}>
       {visible.length === 0 ? <Empty>Nothing in this range.</Empty> : (
         <div style={{ paddingLeft: 4 }}>
           {visible.map(d => (
             <div key={d.date} className="pt-tl-day">
               <div className="pt-tl-date">
                 {d.weekday}
-                <small style={{ display: 'block', color: C.mute, fontSize: 11.5, marginTop: 2 }}>{d.label} · {d.stops.length} stop{d.stops.length === 1 ? '' : 's'}{d.orderTotal ? ` · ${money(d.orderTotal)}` : ''}</small>
+                <small style={{ display: 'block', color: C.mute, fontSize: 11.5, marginTop: 2 }}>{d.label} · {d.rows.length} stop{d.rows.length === 1 ? '' : 's'}{d.orderTotal ? ` · ${money(d.orderTotal)}` : ''}</small>
               </div>
               <div className="pt-tl-stops">
-                {d.stops.map(s => (
-                  <div key={s.id} className={`pt-stop ${isWin(s) ? 'win' : ''}`}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>
-                        {s.name}
-                        <small style={{ fontWeight: 400, color: C.mute, fontSize: 12, marginLeft: 6 }}>
-                          {s.type === 'off_premise' ? 'retail' : 'on-premise'}{firm && (s.rep || s.status) ? ` · ${[s.rep, s.status].filter(Boolean).join(' · ')}` : ''}
-                        </small>
-                      </div>
-                      <div style={{ fontSize: 13.5, color: C.ink2, marginTop: 2, lineHeight: 1.45 }}>
-                        {s.label && <b style={{ color: C.ink, fontWeight: 500 }}>{s.label}</b>}{s.label && s.text ? (s.kind === 'order' ? ' ' : ' · ') : ''}{s.text}
-                      </div>
-                    </div>
-                    <span style={{ ...mono, fontSize: 13, color: C.ink, whiteSpace: 'nowrap', paddingTop: 1 }}>{s.amount ? money(s.amount) : ''}</span>
-                  </div>
+                {d.rows.map(r => (
+                  <FeedLine key={r.key} row={r} firm={firm} showNewTag={filter === 'all' || filter === 'orders'}
+                    onClick={() => (r.kind === 'visit' ? onOpenAccount(r.stop.accountId) : r.stop.orderId && onOpenOrder(r.stop.orderId))} />
                 ))}
               </div>
             </div>
@@ -776,6 +802,48 @@ export function Drawer({ title, sub, onClose, children }: { title: string; sub?:
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="pt-field"><span>{label}</span>{children}</label>
+}
+
+// ── Order drawer ──────────────────────────────────────────────────────────────
+
+export function OrderDrawer({ order, accent, onOpenAccount, onClose }: { order: OrderRow; accent: Accent; onOpenAccount: (id: string) => void; onClose: () => void }) {
+  const cell: React.CSSProperties = { padding: '9px 10px 9px 0', borderBottom: `1px solid ${C.line2}`, fontSize: 13.5, verticalAlign: 'middle' }
+  return (
+    <Drawer title={order.po ? `Order ${order.po}` : 'Order'} onClose={onClose}
+      sub={<>
+        <button type="button" onClick={() => onOpenAccount(order.accountId)} style={{ color: accent.accentInk, textDecoration: 'underline', textUnderlineOffset: 3, fontSize: 13 }}>{order.accountName}</button>
+        <span> · {fmtShortYear(order.date)}</span>
+      </>}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, color: C.mute }}>
+        <span>PO <span style={{ ...mono, color: C.ink2 }}>{order.po || '—'}</span></span>
+        <Tag kind={order.statusLabel === 'Fulfilled' ? 'solid' : 'plain'}>{order.statusLabel}</Tag>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="pt-table" style={{ fontSize: 13.5 }}>
+          <thead><tr>
+            <th className="static" scope="col">Product</th><th className="r static" scope="col">Quantity</th><th className="r static" scope="col">Unit price</th><th className="r static" scope="col">Line total</th>
+          </tr></thead>
+          <tbody>
+            {order.lines.map((l, i) => (
+              <tr key={i}>
+                <td style={cell}>
+                  {l.name}{l.retail && <span style={{ color: C.mute, fontSize: 12 }}> · retail</span>}
+                  {l.newPlacement && <span style={{ marginLeft: 8 }}><Tag kind="acc" accent={accent}>New placement</Tag></span>}
+                </td>
+                <td className="r" style={{ ...cell, ...mono, whiteSpace: 'nowrap' }}>{unitsLabel(l)}</td>
+                <td className="r" style={{ ...cell, ...mono, whiteSpace: 'nowrap', color: C.ink2 }}>{l.unitPrice != null ? `$${l.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>
+                <td className="r" style={{ ...cell, ...mono, whiteSpace: 'nowrap' }}>${l.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ ...cell, borderBottom: 0, fontWeight: 600 }} colSpan={3}>Total</td>
+              <td className="r" style={{ ...cell, ...mono, borderBottom: 0, fontWeight: 600, whiteSpace: 'nowrap' }}>${order.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Drawer>
+  )
 }
 
 // ── Account drawer ────────────────────────────────────────────────────────────

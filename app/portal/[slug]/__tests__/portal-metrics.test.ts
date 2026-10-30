@@ -6,7 +6,7 @@ import {
   type PortalVisit, type PortalOrder, type ReportInput,
   resolveRange, parseHash, toHash, stepSelection, defaultSelection,
   dedupeByAccountDay, delta, formatDelta, frequencyFor, buildPeriodReport, buildMonthlyPdfData, buildQuarterlyPdfData,
-  mtDayKey, mtStartOfDayMs, addDays, lineQty, describeOrder, getAccountDetail, isDistributorAccount,
+  mtDayKey, mtStartOfDayMs, addDays, lineQty, describeOrder, getAccountDetail, isDistributorAccount, unitsLabel, placementSummary,
 } from '../portal-metrics'
 
 // Noon Mountain Time, Friday October 30 2026.
@@ -161,7 +161,7 @@ test('distributor accounts count in orders and value but not in account measures
   assert.equal(r.ordersLedger.period.length, 3)
   assert.equal(r.productsLedger.period.find(p => p.name === 'Rye')?.accounts, 0)
   assert.equal(r.active.byProduct.find(p => p.name === 'Rye'), undefined)
-  assert.equal(r.timelineStops, 3)                        // distributor orders still appear as stops
+  assert.equal(r.timelineStops, 4)                        // visit + 3 orders; distributor orders still appear as rows
   assert.equal(r.allTime.accounts, 1); assert.equal(r.allTime.orders, 3)
 })
 
@@ -243,38 +243,58 @@ test('Not Interested counts as a visit but never appears in the client timeline 
   assert.equal(client.timelineStops, 1)
   assert.equal(getAccountDetail(client, 'accA')?.visits.length, 0)
   assert.equal(firm.timelineStops, 2)
-  assert.equal(firm.timeline.flatMap(d => d.stops).find(s => s.accountId === 'accA')?.kind, 'passed')
+  assert.equal(firm.timeline.flatMap(d => d.stops).find(s => s.accountId === 'accA')?.status, 'Not Interested')
 })
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
-test('timeline merges a visit with that day\'s orders ("Ordered"), keeps visit-less orders as "Order" stops, marks first orders', () => {
+test('timeline: one row per order and per visit; orders carry units, total and the products they placed', () => {
   const r = buildPeriodReport(base({
     visits: [
-      visit('v1', 'accA', '2026-10-05T18:00:00', 'Just Ordered'),
-      visit('v2', 'accB', '2026-10-05T19:00:00', 'Will Order Soon', { notes: 'Wants a price sheet' }),
-      visit('v3', 'accD', '2026-10-05T19:30:00', 'Needs Follow Up', { notes: '  ' }),
-      visit('v4', 'accE', '2026-10-06T19:30:00', 'Menu Feature Won', { notes: 'On the fall menu' }),
+      visit('v1', 'accA', '2026-10-05T18:00:00', 'Just Ordered', { notes: 'Dropped off the price sheet' }),
+      visit('v2', 'accB', '2026-10-05T19:00:00', 'Will Order Soon', { notes: '' }),
     ],
     orders: [
       order('o1', 'accA', '2026-10-05T20:00:00Z', 120, 'sent', [{ product_name: 'Ridge Mountain Gin (Off-Premise)', cases: 2, bottles: 0, unit_price: 60, total: 120 }]),
-      order('o2', 'accC', '2026-10-07T20:00:00Z', 45, 'sent', [{ product_name: 'Rye', cases: 0, bottles: 3, unit_price: 180, total: 45 }]),
+      order('o2', 'accC', '2026-10-07T20:00:00Z', 45, 'sent', [{ product_name: 'Rye', cases: 0, bottles: 3, unit_price: 15, total: 45 }]),
     ],
   }))
   const oct5 = r.timeline.find(d => d.date === '2026-10-05')!
   assert.equal(oct5.weekday, 'Monday'); assert.equal(oct5.label, 'Oct 5'); assert.equal(oct5.orderTotal, 120)
-  const a = oct5.stops.find(s => s.accountId === 'accA')!
-  assert.equal(a.kind, 'order'); assert.equal(a.label, 'Ordered'); assert.equal(a.text, '2 cs Ridge Mountain Gin · first order here'); assert.equal(a.amount, 120)
-  const b = oct5.stops.find(s => s.accountId === 'accB')!
-  assert.equal(b.kind, 'followup'); assert.equal(b.label, 'Follow-up'); assert.equal(b.text, 'Wants a price sheet')
-  const d = oct5.stops.find(s => s.accountId === 'accD')!
-  assert.equal(d.label, 'Follow-up'); assert.equal(d.text, '')
-  const e = r.timeline.find(x => x.date === '2026-10-06')!.stops[0]
-  assert.equal(e.kind, 'placement'); assert.equal(e.label, 'Menu feature'); assert.equal(e.text, 'On the fall menu')
+  assert.deepEqual(oct5.stops.map(s => [s.kind, s.accountId]), [['order', 'accA'], ['visit', 'accA'], ['visit', 'accB']])
+  const o = oct5.stops[0]
+  assert.equal(o.orderId, 'o1'); assert.deepEqual(o.units, { cases: 2, bottles: 0 }); assert.equal(o.amount, 120); assert.deepEqual(o.newPlacements, ['Ridge Mountain Gin'])
+  assert.equal(oct5.stops[1].note, 'Dropped off the price sheet'); assert.equal(oct5.stops[2].note, '')
+  assert.equal(oct5.stops[1].status, null)   // raw status only in the staff view
   const oct7 = r.timeline.find(x => x.date === '2026-10-07')!
-  assert.equal(oct7.stops[0].kind, 'order'); assert.equal(oct7.stops[0].label, 'Order'); assert.equal(oct7.stops[0].text, '3 btl Rye · first order here'); assert.equal(oct7.stops[0].status, null)
-  assert.equal(r.timelineStops, 5)
-  assert.equal(r.timeline[0].date, '2026-10-07')   // newest day first
+  assert.deepEqual(oct7.stops[0].units, { cases: 0, bottles: 3 })
+  assert.equal(unitsLabel(oct7.stops[0].units!), '3 bottles'); assert.equal(unitsLabel({ cases: 1, bottles: 2 }), '1 case + 2 bottles')
+  assert.equal(r.timelineStops, 4); assert.equal(r.timeline[0].date, '2026-10-07')
+})
+
+test('placements: first client-visible order line per (account, product) across all time; distributors never place', () => {
+  const r = buildPeriodReport(base({
+    orders: [
+      order('old', 'accA', '2026-08-01T15:00:00Z', 30, 'sent', [{ product_name: 'Rye', cases: 1, unit_price: 30, total: 30 }]),
+      order('draft', 'accA', '2026-09-01T15:00:00Z', 30, 'draft', [{ product_name: 'Gin', cases: 1, total: 30 }]),
+      order('o1', 'accA', '2026-10-03T15:00:00Z', 100, 'fulfilled', [
+        { product_name: 'Rye', cases: 1, unit_price: 30, total: 30 },
+        { product_name: 'Gin', cases: 1, unit_price: 30, total: 30 },
+        { product_name: 'Gin (Off-Premise)', cases: 1, unit_price: 40, total: 40 },
+      ]),
+      order('o2', 'accA', '2026-10-09T15:00:00Z', 30, 'sent', [{ product_name: 'Gin', cases: 1, unit_price: 30, total: 30 }]),
+      order('d1', 'dist', '2026-10-10T15:00:00Z', 30, 'sent', [{ product_name: 'Vodka', cases: 1, total: 30 }]),
+    ],
+    accounts: [{ id: 'dist', name: 'Chieftain Distribution', account_type: 'off_premise' }],
+  }))
+  const o1 = r.ordersLedger.period.find(x => x.id === 'o1')!
+  assert.deepEqual(o1.lines.map(l => [l.name, l.retail, l.newPlacement]), [['Rye', false, false], ['Gin', false, true], ['Gin', true, true]])
+  assert.deepEqual(o1.newPlacements, ['Gin'])                      // display names, deduped
+  assert.equal(o1.lines[0].unitPrice, 30)
+  assert.deepEqual(r.ordersLedger.period.find(x => x.id === 'o2')!.newPlacements, [])
+  assert.deepEqual(r.ordersLedger.period.find(x => x.id === 'd1')!.newPlacements, [])
+  assert.equal(placementSummary(['Gin']), 'New placement · Gin')
+  assert.equal(placementSummary(['Gin', 'Rye', 'Rum']), 'New placements · Gin, +2 more')
 })
 
 // ── Ledgers and products ──────────────────────────────────────────────────────

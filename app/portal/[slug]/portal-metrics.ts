@@ -396,6 +396,16 @@ export interface AccountRow {
   frequency?: OrderFrequency | null   // staff only
 }
 
+export interface OrderLine {
+  name: string                 // display name, " (Off-Premise)" stripped
+  retail: boolean
+  cases: number
+  bottles: number
+  unitPrice: number | null
+  value: number
+  newPlacement: boolean        // first client-visible order line for this (account, product) pair, all time
+}
+
 export interface OrderRow {
   id: string
   accountId: string
@@ -403,7 +413,9 @@ export interface OrderRow {
   date: string                 // YYYY-MM-DD (MT)
   po: string
   products: string
-  lines: { name: string; retail: boolean; cases: number; bottles: number; value: number }[]
+  lines: OrderLine[]
+  units: { cases: number; bottles: number }
+  newPlacements: string[]      // display names of the products this order placed at the account
   total: number
   status: string
   statusLabel: 'Fulfilled' | 'Sent'
@@ -421,22 +433,35 @@ export interface ProductRow {
 
 export interface EventRow { id: string; date: string; account: string; type: string; typeLabel: string; consumers: number }
 
-export type StopKind = 'order' | 'placement' | 'tasting' | 'followup' | 'visit' | 'passed'
+// One timeline row. Orders carry the products they placed; the UI shows them as
+// an order row (with "{n} new") or, under the Placements filter, as a placement row.
 export interface TimelineStop {
   id: string
   accountId: string
   name: string
   type: string | null
-  kind: StopKind
-  label: string | null         // bold lead-in ("Ordered", "Order", "Menu feature", "Tasting", "Follow-up", "Passed")
-  text: string                 // the rest of the line
+  kind: 'order' | 'visit'
+  orderId?: string
+  units?: { cases: number; bottles: number }
   amount?: number
-  firstOrder?: boolean
-  status: string | null        // raw visit status (null for an order with no visit logged)
+  newPlacements?: string[]
+  note?: string                // visit note as logged
+  status: string | null        // raw visit status (staff view only)
   rep: string | null
-  visitedAt: string | null
 }
 export interface TimelineDay { date: string; weekday: string; label: string; stops: TimelineStop[]; orderTotal: number }
+
+// "3 cases" / "4 bottles" / "2 cases + 3 bottles" — units as stored, never converted.
+export function unitsLabel(u: { cases: number; bottles: number }): string {
+  const c = u.cases ? `${u.cases} case${u.cases === 1 ? '' : 's'}` : ''
+  const b = u.bottles ? `${u.bottles} bottle${u.bottles === 1 ? '' : 's'}` : ''
+  return [c, b].filter(Boolean).join(' + ') || '—'
+}
+// "New placement · Rye" / "New placements · Rye, +2 more"
+export function placementSummary(products: string[]): string {
+  if (!products.length) return ''
+  return products.length === 1 ? `New placement · ${products[0]}` : `New placements · ${products[0]}, +${products.length - 1} more`
+}
 
 export interface MapAccount {
   id: string; name: string; type: string | null; lat: number; lng: number
@@ -567,6 +592,21 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   for (const o of allOrders) { const k = orderAccountKey(o); if (!k) continue; const l = ordersByAccount.get(k) || []; l.push(o); ordersByAccount.set(k, l) }
   for (const l of ordersByAccount.values()) l.sort((a, b) => orderDateMs(a) - orderDateMs(b))
   const venueOrderAccounts = [...ordersByAccount.keys()].filter(k => !isDist(k))
+
+  // Placements: the first client-visible order line for each (venue account, product_name)
+  // pair, across all time. Keyed by line identity (order id + line index). Never reads the
+  // placements table. Distributors are not venues, so their lines are never placements.
+  const placementLines = new Set<string>()
+  for (const [acct, list] of ordersByAccount) {
+    if (isDist(acct)) continue
+    const seenProducts = new Set<string>()
+    for (const o of list) (o.po_line_items || []).forEach((l, i) => {   // list is oldest first
+      const key = String(l.product_name || '').trim()
+      if (!key || seenProducts.has(key)) return
+      seenProducts.add(key)
+      placementLines.add(`${o.id}#${i}`)
+    })
+  }
   const firstOrderMs = (acct: string) => { const l = ordersByAccount.get(acct); return l?.length ? orderDateMs(l[0]) : NaN }
   const lastOrderKey = (acct: string) => { const l = ordersByAccount.get(acct); return l?.length ? mtDayKey(orderDateMs(l[l.length - 1])) : null }
 
@@ -712,7 +752,13 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     return {
       id: o.id, accountId: k, accountName: nameOf(k), date: mtDayKey(orderDateMs(o)), po: o.po_number || '',
       products: describeOrder(o),
-      lines: (o.po_line_items || []).map(l => { const q = lineQty(l); return { name: stripProductName(l.product_name), retail: isRetailSku(l.product_name), cases: q.cases, bottles: q.bottles, value: round2(lineValue(l)) } }),
+      lines: (o.po_line_items || []).map((l, i) => {
+        const q = lineQty(l)
+        const price = Number(l.unit_price ?? l.price ?? NaN)
+        return { name: stripProductName(l.product_name), retail: isRetailSku(l.product_name), cases: q.cases, bottles: q.bottles, unitPrice: Number.isFinite(price) ? price : null, value: round2(lineValue(l)), newPlacement: placementLines.has(`${o.id}#${i}`) }
+      }),
+      units: (o.po_line_items || []).reduce<{ cases: number; bottles: number }>((u, l) => { const q = lineQty(l); return { cases: u.cases + q.cases, bottles: u.bottles + q.bottles } }, { cases: 0, bottles: 0 }),
+      newPlacements: uniq((o.po_line_items || []).flatMap((l, i) => placementLines.has(`${o.id}#${i}`) ? [stripProductName(l.product_name)] : [])),
       total: round2(orderValue(o)), status: o.status, statusLabel: o.status === 'fulfilled' ? 'Fulfilled' : 'Sent',
     }
   })
@@ -731,56 +777,31 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
       .sort((a, b) => b.value - a.value || b.cases - a.cases || a.name.localeCompare(b.name))
   }
 
-  // ── Timeline: union of visits and orders by account and MT day ──
-  const ordersByAcctDay = new Map<string, PortalOrder[]>()
-  for (const o of orders) { const k = `${orderAccountKey(o)}__${mtDayKey(orderDateMs(o))}`; const l = ordersByAcctDay.get(k) || []; l.push(o); ordersByAcctDay.set(k, l) }
-
-  const stopFromOrders = (acct: string, day: string, list: PortalOrder[], visit: PortalVisit | null): TimelineStop => {
-    const total = round2(sum(list.map(orderValue)))
-    const first = !Number.isNaN(firstOrderMs(acct)) && mtDayKey(firstOrderMs(acct)) === day
-    return {
-      // A visit and an order the same day merge into one "Ordered" stop; an order alone is its own "Order" stop.
-      id: visit ? visit.id : `o:${list[0].id}`, accountId: acct, name: nameOf(acct), type: typeOf(acct), kind: 'order', label: visit ? 'Ordered' : 'Order',
-      text: list.map(describeOrder).join('; ') + (first ? ' · first order here' : ''), amount: total, firstOrder: first,
-      status: visit?.status ?? null, rep: visit?.user_id ? (repNames[visit.user_id] || null) : null, visitedAt: visit?.visited_at ?? null,
-    }
-  }
-  const timelineVisits = visits.filter(v => v.account_id && (staff || v.status !== 'Not Interested'))
+  // ── Timeline: one row per order and one per visit, grouped by MT day ──
+  // An order is not a visit, so a visit and an order the same day are separate rows.
+  const orderRowById = new Map(orderRows(orders).map(r => [r.id, r]))
   const dayMap = new Map<string, TimelineStop[]>()
-  const covered = new Set<string>()
-  for (const v of timelineVisits) {
-    const acct = v.account_id as string
-    const day = mtDayKey(toMs(v.visited_at))
-    const key = `${acct}__${day}`
-    covered.add(key)
-    const dayOrders = ordersByAcctDay.get(key)
-    const notes = (v.notes || '').trim()
-    const rep = v.user_id ? (repNames[v.user_id] || null) : null
-    let stop: TimelineStop
-    if (dayOrders?.length) stop = stopFromOrders(acct, day, dayOrders, v)
-    else {
-      const base = { id: v.id, accountId: acct, name: nameOf(acct), type: typeOf(acct), status: v.status, rep, visitedAt: v.visited_at }
-      if (v.status === 'Menu Feature Won') stop = { ...base, kind: 'placement', label: 'Menu feature', text: notes }
-      else if (v.status === 'New Placement') stop = { ...base, kind: 'placement', label: 'New placement', text: notes }
-      else if (v.status === 'Tasted') stop = { ...base, kind: 'tasting', label: 'Tasting', text: notes }
-      else if (v.status === 'Will Order Soon' || v.status === 'Needs Follow Up') stop = { ...base, kind: 'followup', label: 'Follow-up', text: notes }
-      else if (v.status === 'Not Interested') stop = { ...base, kind: 'passed', label: 'Passed', text: notes }
-      else stop = { ...base, kind: 'visit', label: null, text: notes }
-    }
-    const l = dayMap.get(day) || []; l.push(stop); dayMap.set(day, l)
+  const push = (day: string, stop: TimelineStop) => { const l = dayMap.get(day) || []; l.push(stop); dayMap.set(day, l) }
+  for (const o of orders) {
+    const row = orderRowById.get(o.id)
+    if (!row) continue
+    push(row.date, {
+      id: `o:${o.id}`, accountId: row.accountId, name: row.accountName, type: typeOf(row.accountId), kind: 'order', orderId: o.id,
+      units: row.units, amount: row.total, newPlacements: row.newPlacements, status: null, rep: null,
+    })
   }
-  // Orders with no visit row that day are their own stops.
-  for (const [key, list] of ordersByAcctDay) {
-    if (covered.has(key)) continue
-    const [acct, day] = key.split('__')
-    if (!acct || !day) continue
-    const l = dayMap.get(day) || []; l.push(stopFromOrders(acct, day, list, null)); dayMap.set(day, l)
+  for (const v of visits) {
+    if (!v.account_id || (!staff && v.status === 'Not Interested')) continue
+    push(mtDayKey(toMs(v.visited_at)), {
+      id: v.id, accountId: v.account_id, name: nameOf(v.account_id), type: typeOf(v.account_id), kind: 'visit',
+      note: (v.notes || '').trim(), status: staff ? v.status : null, rep: v.user_id ? (repNames[v.user_id] || null) : null,
+    })
   }
   const dayOrderTotal = new Map<string, number>()
   for (const o of orders) { const k = mtDayKey(orderDateMs(o)); dayOrderTotal.set(k, round2((dayOrderTotal.get(k) || 0) + orderValue(o))) }
   const timeline: TimelineDay[] = [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([date, stops]) => ({
     date, weekday: fmtWeekday(date), label: fmtShort(date),
-    stops: stops.sort((a, b) => (a.kind === 'order' || a.kind === 'placement' ? 0 : 1) - (b.kind === 'order' || b.kind === 'placement' ? 0 : 1) || a.name.localeCompare(b.name)),
+    stops: stops.sort((a, b) => (a.kind === 'order' ? 0 : 1) - (b.kind === 'order' ? 0 : 1) || a.name.localeCompare(b.name)),
     orderTotal: dayOrderTotal.get(date) || 0,
   }))
 
