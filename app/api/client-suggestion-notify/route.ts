@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     const text = lines.filter(l => l !== null).join('\n')
 
     await resend.emails.send({
+      // TODO: switch to westernpeak.org when Resend domain is verified
       from: 'portal@barley-bros.com',
       to: ['sara@barley-bros.com'],
       subject: `[${client_name}] New ${typeLabel}: ${name}`,

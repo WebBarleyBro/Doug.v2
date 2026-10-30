@@ -1380,7 +1380,7 @@ async function fetchAllPages<T>(build: (from: number, to: number) => PromiseLike
   }
 }
 
-export const PORTAL_VISIT_SELECT = 'id, visited_at, status, notes, account_id, accounts(id, name, address, account_type)'
+export const PORTAL_VISIT_SELECT = 'id, visited_at, status, notes, account_id, user_id, accounts(id, name, address, account_type)'
 
 // Visits for one brand inside an explicit window — used when a portal viewer picks
 // a month or custom range older than the initially loaded history.
@@ -1405,16 +1405,17 @@ export async function getPortalData(clientSlug: string) {
   const sb = getSupabase()
   const historyStart = nDaysAgoMT(PORTAL_HISTORY_DAYS)
 
-  // Fetch client first so we have its ID for registrations
+  // Fetch client first so we have its ID for registrations and tasting sign-ups
   const client = await getClient(clientSlug)
   if (!client) return null
 
-  const [visits, placements, orders, eventsRes, suggestionsRes, campaignsRes, registrationsRes] = await Promise.all([
+  const [visits, placements, orders, eventsRes, suggestionsRes, campaignsRes, registrationsRes, consumersRes] = await Promise.all([
+    // Every visit for the brand: the portal's "since tracking start" numbers and the
+    // tracking start itself are computed from the full history, not a window.
     fetchAllPages<any>((from, to) =>
       sb.from('visits')
         .select(PORTAL_VISIT_SELECT)
         .eq('client_slug', clientSlug)
-        .gte('visited_at', historyStart)
         .order('visited_at', { ascending: false })
         .range(from, to)
     ),
@@ -1434,10 +1435,10 @@ export async function getPortalData(clientSlug: string) {
         .order('created_at', { ascending: false })
         .range(from, to)
     ),
+    // Events may be tagged with the single client_slug or the multi-brand client_slugs array.
     sb.from('events')
-      .select('id, title, event_type, start_time, status, accounts(name)')
-      .eq('client_slug', clientSlug)
-      .gte('start_time', historyStart)
+      .select('id, title, event_type, start_time, status, account_id, accounts(name)')
+      .or(`client_slug.eq.${clientSlug},client_slugs.cs.{${clientSlug}}`)
       .order('start_time', { ascending: false }),
     sb.from('client_suggestions')
       .select('*')
@@ -1453,7 +1454,29 @@ export async function getPortalData(clientSlug: string) {
       .select('*')
       .eq('client_id', client.id)
       .order('state'),
+    sb.from('tasting_consumers')
+      .select('event_id')
+      .eq('client_id', client.id),
   ])
+
+  // Accounts tied to this brand (visited, placed or ordered), with coordinates for the map.
+  const accountIds = [...new Set([
+    ...visits.map((v: any) => v.account_id),
+    ...placements.map((p: any) => p.account_id),
+    ...orders.map((o: any) => o.account_id),
+  ].filter(Boolean))] as string[]
+  const accounts: any[] = []
+  for (let i = 0; i < accountIds.length; i += 100) {
+    const { data } = await sb.from('accounts')
+      .select('id, name, account_type, address, lat, lng')
+      .in('id', accountIds.slice(i, i + 100))
+    accounts.push(...(data || []))
+  }
+
+  const tastingConsumers: Record<string, number> = {}
+  for (const row of (consumersRes.data || []) as { event_id: string | null }[]) {
+    if (row.event_id) tastingConsumers[row.event_id] = (tastingConsumers[row.event_id] || 0) + 1
+  }
 
   return {
     client,
@@ -1461,6 +1484,8 @@ export async function getPortalData(clientSlug: string) {
     placements,
     orders,
     events: eventsRes.data || [],
+    accounts,
+    tastingConsumers,
     suggestions: (suggestionsRes.data || []) as any[],
     campaigns: (campaignsRes.data || []) as any[],
     registrations: (registrationsRes.data || []) as any[],

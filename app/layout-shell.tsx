@@ -187,7 +187,7 @@ function DesktopSidebar({ profile, navGroups, collapsed, setCollapsed }: {
             />
             <div>
               <div style={{ fontSize: '20px', fontWeight: '700', color: '#F5F0E8', letterSpacing: '-0.03em', lineHeight: 1 }}>Doug</div>
-              <div style={{ fontSize: '9px', color: t.text.muted, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '4px' }}>by Barley Bros</div>
+              <div style={{ fontSize: '9px', color: t.text.muted, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '4px' }}>by Western Peak</div>
             </div>
           </div>
         )}
@@ -486,7 +486,7 @@ function MobileDrawer({ open, onClose, profile, nav }: {
             </div>
             <div>
               <div style={{ fontSize: '15px', fontWeight: '600', color: t.text.primary }}>{profile.name}</div>
-              <div style={{ fontSize: '12px', color: t.text.muted, textTransform: 'capitalize' }}>{profile.role} · Barley Bros</div>
+              <div style={{ fontSize: '12px', color: t.text.muted, textTransform: 'capitalize' }}>{profile.role} · Western Peak</div>
             </div>
           </div>
         </div>

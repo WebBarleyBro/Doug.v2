@@ -1,8 +1,8 @@
-# Barley Bros CRM — Product Spec
+# Doug — Product Spec
 
 ## What We Are
 
-Barley Bros is a **spirits marketing and sales representation firm** based in Colorado. We are NOT a distributor. We represent craft distilleries and emerging beverage brands, putting boots on the ground at on-premise accounts (bars, restaurants, hotels) and off-premise accounts (liquor stores, grocery) to:
+Western Peak is a **spirits marketing and sales representation firm** based in Colorado. We are NOT a distributor. We represent craft distilleries and emerging beverage brands, putting boots on the ground at on-premise accounts (bars, restaurants, hotels) and off-premise accounts (liquor stores, grocery) to:
 
 - Secure new product placements and defend existing ones
 - Run tastings and brand activation events
@@ -381,7 +381,7 @@ Barley Bros is a **spirits marketing and sales representation firm** based in Co
 ---
 
 ### Client Portal (`/portal/[slug]`)
-**Purpose:** Brand client view. Shows them what Barley Bros is doing on their behalf.
+**Purpose:** Brand client view. Shows them what Western Peak is doing on their behalf.
 
 **Sections:**
 - Hero (brand logo, contact info, account manager)
@@ -392,7 +392,7 @@ Barley Bros is a **spirits marketing and sales representation firm** based in Co
 - Orders/Inquiries
 - Events & Tastings (upcoming + past)
 - Campaigns
-- Files & Assets — portal clients can upload logos/compliance docs/photos; view and download files shared by Barley Bros; expiry warnings on compliance docs
+- Files & Assets — portal clients can upload logos/compliance docs/photos; view and download files shared by Western Peak; expiry warnings on compliance docs
 - Suggest an Account form
 - Print/PDF report button
 

@@ -3,8 +3,8 @@
 # Doug.v2 CRM — Claude Code Instructions
 
 ## Project Overview
-**Doug.v2** is a Next.js 15 field-sales CRM for spirits representation (Barley Bros).
-- Users: 4-8 field reps, 4 brand clients (for now)
+**Doug.v2** is a Next.js 15 field-sales CRM for spirits representation (Western Peak).
+- Users: 4-8 field reps, 3 active brand clients (4 in the system)
 - Tech: Next.js 15, React 19, Supabase (PostgREST + RLS), Vercel, Tailwind CSS 4
 - Data: Mountain Time (MT) timezone everywhere; all dates in YYYY-MM-DD format
 - **Billing removed** — using external invoicing tools
@@ -34,4 +34,4 @@
 
 ## Before You Start
 - Read SPEC.md for business requirements
-- Visit https://barley-bros.com to understand the business
+- Visit https://westernpeak.org to understand the business

@@ -38,8 +38,10 @@ export async function POST(request: NextRequest) {
       : String(to).split(',').map((e: string) => e.trim()).filter(Boolean)
 
     const { data, error } = await resend.emails.send({
+      // TODO: switch to westernpeak.org when Resend domain is verified
       from: 'orders@barley-bros.com',
       to: toArray,
+      // TODO: switch to westernpeak.org when Resend domain is verified
       replyTo: replyTo || 'info@barley-bros.com',
       subject,
       text,
