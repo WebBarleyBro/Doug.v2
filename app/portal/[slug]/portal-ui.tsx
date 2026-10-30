@@ -920,15 +920,15 @@ const pg = {
 function PreviewBars({ bars, max }: { bars: { label: string; value: number }[]; max: number }) {
   const bw = 520 / Math.max(1, bars.length)
   return (
-    <svg viewBox="0 0 520 70" style={{ width: '100%', height: 'auto', display: 'block' }} aria-hidden="true">
+    <svg viewBox="0 0 520 84" style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }} aria-hidden="true">
       {bars.map((b, i) => { const h = (b.value / Math.max(1, max)) * 44, x = i * bw + bw * 0.25; return (
         <g key={b.label}>
-          <rect x={x} y={52 - h} width={bw * 0.5} height={h} fill="#111" rx={1} />
-          <text x={x + bw * 0.25} y={48 - h} textAnchor="middle" fill="#111" fontWeight={500} style={{ fontFamily: FM, fontSize: 7 }}>{moneyK(b.value)}</text>
-          <text x={x + bw * 0.25} y={64} textAnchor="middle" fill="#666" style={{ fontFamily: FM, fontSize: 7 }}>{b.label}</text>
+          <rect x={x} y={66 - h} width={bw * 0.5} height={h} fill="#111" rx={1} />
+          <text x={x + bw * 0.25} y={62 - h} textAnchor="middle" fill="#111" fontWeight={500} style={{ fontFamily: FM, fontSize: 7 }}>{moneyK(b.value)}</text>
+          <text x={x + bw * 0.25} y={78} textAnchor="middle" fill="#666" style={{ fontFamily: FM, fontSize: 7 }}>{b.label}</text>
         </g>
       ) })}
-      <line x1={0} x2={520} y1={52.5} y2={52.5} stroke="#999" strokeWidth={0.5} />
+      <line x1={0} x2={520} y1={66.5} y2={66.5} stroke="#999" strokeWidth={0.5} />
     </svg>
   )
 }

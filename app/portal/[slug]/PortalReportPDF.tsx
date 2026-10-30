@@ -63,18 +63,18 @@ const s = StyleSheet.create({
 function Bars({ bars }: { bars: { label: string; value: number }[] }) {
   const W = 520, max = Math.max(1, ...bars.map(b => b.value)), bw = W / Math.max(1, bars.length)
   return (
-    <Svg width={W} height={70} viewBox={`0 0 ${W} 70`} style={{ width: '100%' }}>
+    <Svg width={W} height={84} viewBox={`0 0 ${W} 84`} style={{ width: '100%' }}>
       {bars.map((b, i) => {
         const h = (b.value / max) * 44, x = i * bw + bw * 0.25
         return (
           <React.Fragment key={b.label}>
-            <Rect x={x} y={52 - h} width={bw * 0.5} height={h} fill={INK} rx={1} />
-            <Text x={x + bw * 0.25} y={48 - h} style={{ fontFamily: MONO, fontSize: 7, fill: INK, textAnchor: 'middle' } as never}>{moneyK(b.value)}</Text>
-            <Text x={x + bw * 0.25} y={64} style={{ fontFamily: MONO, fontSize: 7, fill: GREY, textAnchor: 'middle' } as never}>{b.label}</Text>
+            <Rect x={x} y={66 - h} width={bw * 0.5} height={h} fill={INK} rx={1} />
+            <Text x={x + bw * 0.25} y={62 - h} style={{ fontFamily: MONO, fontSize: 7, fill: INK, textAnchor: 'middle' } as never}>{moneyK(b.value)}</Text>
+            <Text x={x + bw * 0.25} y={78} style={{ fontFamily: MONO, fontSize: 7, fill: GREY, textAnchor: 'middle' } as never}>{b.label}</Text>
           </React.Fragment>
         )
       })}
-      <Line x1={0} x2={W} y1={52.5} y2={52.5} stroke="#999" strokeWidth={0.5} />
+      <Line x1={0} x2={W} y1={66.5} y2={66.5} stroke="#999" strokeWidth={0.5} />
     </Svg>
   )
 }
