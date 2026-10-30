@@ -20,3 +20,6 @@ npm-debug.log*
 .claude/settings.local.json
 
 .vercel
+
+# Local database backups (scripts/backup.js)
+backups/
