@@ -4,9 +4,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Home, MapPin, Users, Calendar, BarChart3, DollarSign,
-  ShoppingCart, Megaphone, Shield, Package,
+  ShoppingCart, Megaphone, Package,
   BookOpen, ChevronRight, ChevronLeft, Search, Bell, X, Menu, Plus,
-  LogOut, Map, ClipboardList, UserCircle, FolderOpen, Upload, Zap,
+  LogOut, Map, ClipboardList, UserCircle, FolderOpen, Upload, Zap, FileText,
 } from 'lucide-react'
 import { t, btnPrimary } from './lib/theme'
 import { signOut } from './lib/auth'
@@ -47,12 +47,10 @@ const ownerNav = [
   { href: '/orders',      label: 'Orders',      icon: ShoppingCart },
   { href: '/command',     label: 'Intelligence', icon: Zap },
   { href: '/finance',     label: 'Finance',     icon: DollarSign },
+  { href: '/brand-reports', label: 'Brand reports', icon: FileText },
   { href: '/analytics',   label: 'Analytics',   icon: BarChart3 },
   { href: '/calendar',    label: 'Calendar',    icon: Calendar },
   { href: '/contacts',    label: 'Contacts',    icon: UserCircle },
-  { href: '/marketing',   label: 'Marketing',   icon: Megaphone },
-  { href: '/compliance',  label: 'Compliance',  icon: Shield },
-  { href: '/intern-hub',  label: 'Intern Hub',  icon: BookOpen },
 ]
 
 const repNav = [
@@ -106,17 +104,13 @@ const ownerNavGroups: NavGroup[] = [
     { href: '/placements', label: 'Placements',  icon: Package },
     { href: '/orders',     label: 'Orders',      icon: ShoppingCart },
     { href: '/finance',    label: 'Finance',     icon: DollarSign },
+    { href: '/brand-reports', label: 'Brand reports', icon: FileText },
   ]},
   { label: 'INTEL', items: [
     { href: '/command',    label: 'Intelligence', icon: Zap },
     { href: '/analytics',  label: 'Analytics',   icon: BarChart3 },
     { href: '/calendar',   label: 'Calendar',    icon: Calendar },
     { href: '/contacts',   label: 'Contacts',    icon: UserCircle },
-    { href: '/marketing',  label: 'Marketing',   icon: Megaphone },
-    { href: '/compliance', label: 'Compliance',  icon: Shield },
-  ]},
-  { label: 'TEAM', items: [
-    { href: '/intern-hub', label: 'Intern Hub',  icon: BookOpen },
   ]},
 ]
 
