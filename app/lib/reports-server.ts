@@ -57,19 +57,47 @@ export async function loadReportSource(admin: SupabaseClient, client: BrandRow, 
   return { visits, orders, events: (eventsRes.data || []) as any[], accounts, tastingConsumers, nowMs }
 }
 
-/** The brand's contact email(s) plus every portal login for that brand, de-duplicated. */
-export async function recipientsFor(admin: SupabaseClient, client: BrandRow): Promise<string[]> {
-  const found: string[] = []
+export interface ReportSettings {
+  client_slug: string
+  monthly_enabled: boolean
+  quarterly_enabled: boolean
+  include_portal_logins: boolean
+  extra_recipients: string[]
+  excluded_recipients: string[]
+}
+
+/** All brands' report settings, or null when migration 071 has not been run. */
+export async function loadReportSettings(admin: SupabaseClient): Promise<Record<string, ReportSettings> | null> {
+  const { data, error } = await admin.from('report_settings').select('*')
+  if (error) return null
+  return Object.fromEntries((data || []).map((r: ReportSettings) => [r.client_slug, r]))
+}
+
+/**
+ * Who receives a brand's report: its contact email(s) and, if enabled, every portal
+ * login for the brand; minus anyone removed by hand; plus anyone added by hand.
+ */
+export async function recipientsFor(admin: SupabaseClient, client: BrandRow, settings?: ReportSettings | null): Promise<{ contacts: string[]; logins: string[]; extra: string[]; excluded: string[]; final: string[] }> {
   const split = (s?: string | null) => String(s || '').split(/[,;]/).map(x => x.trim()).filter(Boolean)
-  const { data: settings } = await admin.from('client_settings').select('primary_contact_email').eq('client_slug', client.slug).maybeSingle()
-  found.push(...split(settings?.primary_contact_email), ...split(client.contact_email))
-  const { data: logins } = await admin.from('user_profiles').select('id').eq('role', 'portal').eq('client_slug', client.slug)
-  for (const p of logins || []) {
+  const { data: cs } = await admin.from('client_settings').select('primary_contact_email').eq('client_slug', client.slug).maybeSingle()
+  const contacts = [...split(cs?.primary_contact_email), ...split(client.contact_email)]
+  const logins: string[] = []
+  const { data: profiles } = await admin.from('user_profiles').select('id').eq('role', 'portal').eq('client_slug', client.slug)
+  for (const p of profiles || []) {
     const { data } = await admin.auth.admin.getUserById(p.id)
-    if (data?.user?.email) found.push(data.user.email)
+    if (data?.user?.email) logins.push(data.user.email)
   }
+  const extra = (settings?.extra_recipients || []).filter(e => EMAIL_RE.test(e))
+  const excluded = new Set((settings?.excluded_recipients || []).map(e => e.toLowerCase()))
+  const pool = [...contacts, ...(settings?.include_portal_logins === false ? [] : logins), ...extra]
   const seen = new Set<string>()
-  return found.filter(e => EMAIL_RE.test(e) && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()))
+  const final = pool.filter(e => {
+    const k = e.toLowerCase()
+    if (!EMAIL_RE.test(e) || excluded.has(k) || seen.has(k)) return false
+    seen.add(k); return true
+  })
+  const dedupe = (l: string[]) => [...new Map(l.map(e => [e.toLowerCase(), e])).values()]
+  return { contacts: dedupe(contacts), logins: dedupe(logins), extra: dedupe(extra), excluded: [...excluded], final }
 }
 
 /** The periods that just ended: last month always, last quarter when that month closed one. */

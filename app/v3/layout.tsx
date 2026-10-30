@@ -3,7 +3,7 @@ import { useState, useEffect, Component } from 'react'
 import type { ErrorInfo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { CalendarDays, TrendingUp, Briefcase, BarChart2, LogOut, Plus, Home, Users, BookUser, Route, ClipboardList, MapPin } from 'lucide-react'
+import { CalendarDays, TrendingUp, Briefcase, BarChart2, LogOut, Plus, Home, Users, BookUser, Route, ClipboardList, MapPin, FileText } from 'lucide-react'
 import { V3QueryProvider } from './lib/query'
 import { v3 } from './lib/theme'
 import LogVisitModal from './components/LogVisitModal'
@@ -96,6 +96,7 @@ const NAV_EXTRA = [
   { href: '/v3/planner',   label: 'Planner',   icon: CalendarDays },
   { href: '/v3/visits',    label: 'Visits',    icon: ClipboardList },
   { href: '/v3/contacts',  label: 'Contacts',  icon: BookUser },
+  { href: '/v3/brand-reports', label: 'Brand reports', icon: FileText },
 ]
 
 function NavItem({ href, label, icon: Icon, pathname, dim }: { href: string; label: string; icon: any; pathname: string; dim?: boolean }) {

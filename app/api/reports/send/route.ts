@@ -1,16 +1,17 @@
 // Scheduled brand reports. Vercel Cron calls this at 9am Mountain Time on the 1st of
-// every month (see vercel.json). It emails each active brand last month's one-page
-// report, plus last quarter's on Jan 1, Apr 1, Jul 1 and Oct 1. Each PDF is saved
-// to storage (client-files/reports/{slug}/…), which is also how a report is never
-// sent twice: if the file already exists the brand is skipped.
+// every month (see vercel.json). Each brand switched on in report_settings (Brand
+// reports page) gets last month's one-page report, plus last quarter's on Jan 1,
+// Apr 1, Jul 1 and Oct 1. Each PDF is saved to storage (client-files/reports/{slug}/),
+// which is also how a report is never sent twice: if the file exists it is skipped.
 //
 // Manual use, signed in as an owner or admin (Bearer token):
-//   ?mode=dry                 list what would be sent, send nothing
-//   ?mode=pdf&slug=…          download one brand's PDF (monthly, or quarterly with &quarter=)
-//   ?mode=test                send every report to you only; nothing saved
-//   ?month=2026-10            pick the month (default: last month)
-//   ?quarter=q3-2026          pick the quarter (default: last quarter, only on quarter ends)
-//   ?slug=noco-distillery     one brand only
+//   ?mode=dry                 what would be sent (default); sends nothing
+//   ?mode=pdf&slug=…          one brand's PDF (monthly, or quarterly with &quarter=)
+//   ?mode=test&slug=…         email the report to you only; nothing saved
+//   ?mode=send&slug=…         send now to the brand's recipients (even if switched off)
+//   ?mode=history             list reports already sent, per brand
+//   ?month=2026-10            the month (default: last month)
+//   ?quarter=q3-2026          the quarter (default: last quarter, only when one just ended)
 //   ?force=1                  send even if this report was already sent
 
 import React from 'react'
@@ -18,11 +19,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getAuthUserFromRequest, getSupabaseAdmin } from '../../../lib/supabase-server'
-import { buildMonthlyPdfData, buildQuarterlyPdfData } from '../../../portal/[slug]/portal-metrics'
+import { buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthLong } from '../../../portal/[slug]/portal-metrics'
 import { MonthlyReportPDF, QuarterlyReportPDF } from '../../../portal/[slug]/PortalReportPDF'
 import {
   type BrandRow, REPORT_FROM, REPORT_REPLY_TO,
-  loadReportSource, recipientsFor, periodsEndedBefore, hasActivity, portalLink, buildReportEmail,
+  loadReportSource, loadReportSettings, recipientsFor, periodsEndedBefore, hasActivity, portalLink, buildReportEmail,
 } from '../../../lib/reports-server'
 
 export const runtime = 'nodejs'
@@ -32,6 +33,7 @@ export const maxDuration = 60
 const resend = new Resend(process.env.RESEND_API_KEY)
 const BUCKET = 'client-files'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const fail = (status: number, code: string, error: string, extra?: object) => NextResponse.json({ error, code, ...extra }, { status })
 
 type Job = { client: BrandRow; kind: 'monthly' | 'quarterly'; label: string; filename: string; hash: string; month?: string; quarter?: { year: number; q: number } }
 
@@ -41,34 +43,59 @@ export async function GET(req: NextRequest) {
   let callerEmail: string | null = null
   if (!isCron) {
     const user = await getAuthUserFromRequest(req)
-    if (!user) return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 })
-    if (!['owner', 'admin'].includes(user.role)) return NextResponse.json({ error: 'Owners and admins only', code: 'FORBIDDEN' }, { status: 403 })
+    if (!user) return fail(401, 'UNAUTHORIZED', 'Please sign in again.')
+    if (!['owner', 'admin'].includes(user.role)) return fail(403, 'FORBIDDEN', 'Owners and admins only.')
     callerEmail = user.email || null
   }
   const mode = isCron ? 'send' : (url.searchParams.get('mode') || 'dry')
-  if (!['dry', 'pdf', 'test', 'send'].includes(mode)) return NextResponse.json({ error: 'Unknown mode', code: 'BAD_REQUEST' }, { status: 400 })
+  if (!['dry', 'pdf', 'test', 'send', 'history'].includes(mode)) return fail(400, 'BAD_REQUEST', 'Unknown mode.')
+  const slugFilter = url.searchParams.get('slug')
+  if (!isCron && (mode === 'send' || mode === 'test' || mode === 'pdf') && !slugFilter) return fail(400, 'BAD_REQUEST', 'Pick a brand.')
   const force = !isCron && url.searchParams.get('force') === '1'
+
+  const admin = getSupabaseAdmin()
+
+  if (mode === 'history') {
+    const { data: clients } = await admin.from('clients').select('slug').eq('active', true)
+    const history: Record<string, { name: string; label: string; url: string; sentAt: string | null }[]> = {}
+    for (const c of clients || []) {
+      const { data: files } = await admin.storage.from(BUCKET).list(`reports/${c.slug}`, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
+      history[c.slug] = (files || []).filter(f => f.name.endsWith('.pdf')).map(f => {
+        const m = f.name.match(/-(\d{4})-(\d{2})\.pdf$/i), q = f.name.match(/-Q([1-4])-(\d{4})\.pdf$/i)
+        return {
+          name: f.name,
+          label: m ? fmtMonthLong(`${m[1]}-${m[2]}`) : q ? `Q${q[1]} ${q[2]}` : f.name,
+          url: admin.storage.from(BUCKET).getPublicUrl(`reports/${c.slug}/${f.name}`).data.publicUrl,
+          sentAt: f.created_at || null,
+        }
+      })
+    }
+    return NextResponse.json({ history })
+  }
+
+  // The scheduled send waits for migration 071 so nothing goes out before you have
+  // seen the settings. Manual previews and tests still work.
+  const settings = await loadReportSettings(admin)
+  if (!settings && (isCron || mode === 'send')) return fail(503, 'NOT_CONFIGURED', 'Run migration 071 (report settings) first. Nothing was sent.')
 
   const nowMs = Date.now()
   const ended = periodsEndedBefore(nowMs)
   const monthKey = url.searchParams.get('month') || ended.monthKey
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) return fail(400, 'BAD_REQUEST', 'month must be YYYY-MM.')
   const qParam = url.searchParams.get('quarter')?.match(/^q([1-4])-(\d{4})$/i)
   const quarter = qParam ? { q: Number(qParam[1]), year: Number(qParam[2]) } : (url.searchParams.get('month') ? null : ended.quarter)
-  if (!/^\d{4}-\d{2}$/.test(monthKey)) return NextResponse.json({ error: 'month must be YYYY-MM', code: 'BAD_REQUEST' }, { status: 400 })
+  const onlyQuarter = !!qParam && (mode === 'pdf' || url.searchParams.get('only') === 'quarter')
+  const onlyMonth = url.searchParams.get('only') === 'month'
 
-  const admin = getSupabaseAdmin()
-  const slugFilter = url.searchParams.get('slug')
-  let q = admin.from('clients').select('id, slug, name, active, contact_email').eq('active', true)
+  let q = admin.from('clients').select('id, slug, name, active, contact_email').eq('active', true).order('name')
   if (slugFilter) q = q.eq('slug', slugFilter)
   const { data: clients, error: cErr } = await q
-  if (cErr) return NextResponse.json({ error: cErr.message, code: 'INTERNAL_ERROR' }, { status: 500 })
+  if (cErr) return fail(500, 'INTERNAL_ERROR', cErr.message)
 
   const jobs: Job[] = []
   for (const client of (clients || []) as BrandRow[]) {
-    const [y, m] = monthKey.split('-')
-    const monthName = new Date(Number(y), Number(m) - 1, 15).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    if (!(mode === 'pdf' && qParam)) jobs.push({ client, kind: 'monthly', label: monthName, filename: `${client.slug}-${monthKey}.pdf`, hash: `#${monthKey}`, month: monthKey })
-    if (quarter) jobs.push({ client, kind: 'quarterly', label: `Q${quarter.q} ${quarter.year}`, filename: `${client.slug}-Q${quarter.q}-${quarter.year}.pdf`, hash: `#q${quarter.q}-${quarter.year}`, quarter })
+    if (!onlyQuarter) jobs.push({ client, kind: 'monthly', label: fmtMonthLong(monthKey), filename: `${client.slug}-${monthKey}.pdf`, hash: `#${monthKey}`, month: monthKey })
+    if (quarter && !onlyMonth) jobs.push({ client, kind: 'quarterly', label: `Q${quarter.q} ${quarter.year}`, filename: `${client.slug}-Q${quarter.q}-${quarter.year}.pdf`, hash: `#q${quarter.q}-${quarter.year}`, quarter })
   }
 
   const preparedOn = new Date(nowMs).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' })
@@ -77,7 +104,9 @@ export async function GET(req: NextRequest) {
 
   for (const job of jobs) {
     const { client } = job
-    const r: Record<string, unknown> = { brand: client.slug, report: job.label, kind: job.kind }
+    const setting = settings?.[client.slug] ?? null
+    const enabled = !!setting && (job.kind === 'monthly' ? setting.monthly_enabled : setting.quarterly_enabled)
+    const r: Record<string, unknown> = { brand: client.slug, brandName: client.name, report: job.label, kind: job.kind, enabled, filename: job.filename }
     try {
       if (!sourceCache.has(client.slug)) sourceCache.set(client.slug, await loadReportSource(admin, client, nowMs))
       const src = sourceCache.get(client.slug)!
@@ -86,7 +115,27 @@ export async function GET(req: NextRequest) {
         ? { accounts: data.accountsWorked.current, orders: data.orders.current, value: data.value.current }
         : { accounts: data.totals.accountsWorked, orders: data.totals.orders, value: data.totals.value }
       r.figures = figures
-      if (!hasActivity(data)) { r.status = 'skipped: no visits or orders in this period'; results.push(r); continue }
+      const active = hasActivity(data)
+
+      const recips = await recipientsFor(admin, client, setting)
+      r.recipientDetail = recips
+      const recipients = mode === 'test' ? (callerEmail ? [callerEmail] : []) : recips.final
+      r.recipients = recipients
+
+      const path = `reports/${client.slug}/${job.filename}`
+      const { data: existing } = await admin.storage.from(BUCKET).list(`reports/${client.slug}`, { search: job.filename })
+      const alreadySent = (existing || []).some(f => f.name === job.filename)
+      r.alreadySent = alreadySent
+
+      // Scheduled (and bulk) sends respect the on/off switch; a "Send now" for one brand does not.
+      const respectSwitch = isCron || !slugFilter
+      if (mode !== 'pdf' && mode !== 'test') {
+        if (respectSwitch && !enabled) { r.status = 'off'; results.push(r); continue }
+        if (!active) { r.status = 'skipped: no visits or orders in this period'; results.push(r); continue }
+        if (alreadySent && !force) { r.status = 'already sent'; results.push(r); continue }
+        if (!recipients.length) { r.status = 'skipped: no recipient email on file'; results.push(r); continue }
+        if (mode === 'dry') { r.status = 'will send'; results.push(r); continue }
+      }
 
       const doc = job.kind === 'monthly'
         ? React.createElement(MonthlyReportPDF, { data: data as never, clientName: client.name, preparedOn })
@@ -96,15 +145,7 @@ export async function GET(req: NextRequest) {
       if (mode === 'pdf') {
         return new NextResponse(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${job.filename}"` } })
       }
-
-      const path = `reports/${client.slug}/${job.filename}`
-      const { data: existing } = await admin.storage.from(BUCKET).list(`reports/${client.slug}`, { search: job.filename })
-      const alreadySent = (existing || []).some(f => f.name === job.filename)
-      const recipients = mode === 'test' ? (callerEmail ? [callerEmail] : []) : await recipientsFor(admin, client)
-      r.recipients = recipients
-      if (alreadySent && !force && mode !== 'test') { r.status = 'skipped: already sent'; results.push(r); continue }
-      if (!recipients.length) { r.status = 'skipped: no recipient email on file'; results.push(r); continue }
-      if (mode === 'dry') { r.status = 'would send'; results.push(r); continue }
+      if (!recipients.length) { r.status = 'skipped: no email for you on file'; results.push(r); continue }
 
       const email = buildReportEmail({ brandName: client.name, periodLabel: job.label, kind: job.kind, figures, link: portalLink(client.slug, job.hash) })
       const { error: sendErr } = await resend.emails.send({
@@ -112,7 +153,7 @@ export async function GET(req: NextRequest) {
         to: recipients,
         ...(mode === 'send' ? { bcc: REPORT_REPLY_TO } : {}),
         replyTo: REPORT_REPLY_TO,
-        subject: email.subject,
+        subject: mode === 'test' ? `[Test] ${email.subject}` : email.subject,
         text: email.text,
         html: email.html,
         attachments: [{ filename: job.filename, content: Buffer.from(pdf) }],
@@ -124,7 +165,7 @@ export async function GET(req: NextRequest) {
         if (upErr) console.error('reports.archive', client.slug, upErr)
         r.archived = !upErr
       }
-      r.status = mode === 'test' ? 'sent to you only' : 'sent'
+      r.status = mode === 'test' ? 'test sent to you' : 'sent'
       results.push(r)
       await sleep(600)   // stay well under Resend's rate limit
     } catch (e: unknown) {
@@ -134,8 +175,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (mode === 'pdf') return NextResponse.json({ error: 'No report to show for that brand and period', code: 'NOT_FOUND', results }, { status: 404 })
-  console.log('reports.run', JSON.stringify({ mode, monthKey, quarter, results }))
-  return NextResponse.json({ mode, month: monthKey, quarter: quarter ? `Q${quarter.q} ${quarter.year}` : null, results })
+  if (mode === 'pdf') return fail(404, 'NOT_FOUND', 'No report for that brand and period.', { results })
+  console.log('reports.run', JSON.stringify({ mode, cron: isCron, monthKey, quarter, results: results.map(r => ({ brand: r.brand, report: r.report, status: r.status })) }))
+  return NextResponse.json({
+    mode, configured: !!settings, month: monthKey, monthLabel: fmtMonthLong(monthKey),
+    quarter: quarter ? `Q${quarter.q} ${quarter.year}` : null, quarterKey: quarter ? `q${quarter.q}-${quarter.year}` : null, results,
+  })
 }
-
