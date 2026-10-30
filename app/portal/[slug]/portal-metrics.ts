@@ -1,24 +1,25 @@
-// Pure, UI-free calculations for the client portal. Every KPI, chart, table and
-// the PDF export read from the same PeriodReport so the numbers always agree.
+// Pure, UI-free calculations for the client portal. Every measure, chart, table,
+// drawer and the PDF read from the same PeriodReport so the numbers always agree.
+// Nothing in here touches the DOM or the database; everything takes an explicit
+// `nowMs` so it can be unit-tested against a fixture.
 
-import {
-  getMonthRangeMT, getDateRangeMT, nDaysAgoMT, todayMT,
-  formatMonthYear, formatShortDateMT,
-} from '../../lib/formatters'
 import { resolveTotal } from '../../lib/formatters'
 
 const TZ = 'America/Denver'
-const DAY_MS = 86400000
+export const DAY_MS = 86400000
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Input row shapes (what getPortalData returns) ─────────────────────────────
+
+export interface PortalAccountRef { id: string; name: string; address?: string | null; account_type?: string | null }
 
 export interface PortalVisit {
   id: string
   account_id: string | null
+  user_id?: string | null
   visited_at: string
   status: string
   notes?: string | null
-  accounts?: { id: string; name: string; address?: string | null; account_type?: string | null } | null
+  accounts?: PortalAccountRef | null
 }
 
 export interface PortalPlacement {
@@ -27,9 +28,21 @@ export interface PortalPlacement {
   product_name: string
   placement_type?: string | null
   status: string
+  price_point?: number | null
   created_at: string
   lost_at?: string | null
   accounts?: { id: string; name: string } | null
+}
+
+export interface PortalLineItem {
+  id?: string
+  product_name?: string | null
+  cases?: number | string | null
+  bottles?: number | string | null
+  quantity?: number | string | null
+  unit_price?: number | string | null
+  price?: number | string | null
+  total?: number | string | null
 }
 
 export interface PortalOrder {
@@ -43,151 +56,69 @@ export interface PortalOrder {
   sent_at?: string | null
   account_id: string | null
   accounts?: { id: string; name: string } | null
-  po_line_items?: Record<string, unknown>[]
+  po_line_items?: PortalLineItem[]
 }
 
 export interface PortalEvent {
   id: string
-  title: string
+  title?: string | null
   event_type?: string | null
   start_time: string
   status?: string | null
+  account_id?: string | null
   accounts?: { name: string } | null
 }
 
-export type PresetDays = 7 | 30 | 90
-export type RangeMode = 'preset' | 'month' | 'custom'
+export interface PortalAccount {
+  id: string
+  name: string
+  account_type?: string | null
+  address?: string | null
+  lat?: number | null
+  lng?: number | null
+}
 
-export interface RangeSelection {
-  mode: RangeMode
-  presetDays: PresetDays
-  month: string        // YYYY-MM
-  customStart: string  // YYYY-MM-DD
-  customEnd: string    // YYYY-MM-DD
+// ── Period model ──────────────────────────────────────────────────────────────
+
+export type PeriodMode = '30d' | 'month' | 'quarter' | 'custom'
+
+export interface PeriodSelection {
+  mode: PeriodMode
+  anchor: string        // YYYY-MM: the month, or the first month of the quarter
+  customStart: string   // YYYY-MM-DD
+  customEnd: string     // YYYY-MM-DD
 }
 
 export interface ResolvedRange {
+  mode: PeriodMode
+  startKey: string      // first MT day of the period
+  endKey: string        // last MT day used for calculations (today when the period is still running)
+  fullEndKey: string    // last calendar day of the period (chart x-axis)
+  priorStartKey: string
+  priorEndKey: string
   startMs: number
   endMs: number
+  fullEndMs: number
   priorStartMs: number
   priorEndMs: number
-  days: number
-  label: string        // "August 2026" / "Last 30 days" / "Jun 3 – Jul 14"
-  priorLabel: string   // "July 2026" / "prior 30 days"
-  startISO: string
-  endISO: string
-  priorStartISO: string
+  days: number          // calendar days in the full period
+  priorDays: number
+  partial: boolean      // month/quarter that includes today
+  label: string         // "October 2026" / "Q3 2026" / "Last 30 days" / "Sep 15 – Oct 15, 2026"
+  labelToDate: string   // label + " to date" when partial
+  compareLabel: string  // "previous month" / "previous quarter" / "previous 30 days" / "previous N days"
+  navLabel: string      // "Oct 2026" / "Q3 2026"
+  hash: string          // "#2026-10" / "#q3-2026" / "#30d" / "#2026-09-15_2026-10-15"
+  canNext: boolean
+  monthKeys: string[]   // the calendar months the period spans (3 for a quarter)
 }
 
 export interface Delta {
   current: number
   prior: number
   diff: number
-  pct: number | null   // null when prior is 0 (no meaningful %)
   dir: 'up' | 'down' | 'flat'
 }
-
-export interface TrendBucket {
-  label: string        // x-axis label for the current period bucket
-  current: number
-  prior: number
-  priorLabel: string   // date range of the matched prior bucket (tooltip)
-}
-
-export interface OutcomeRow {
-  status: string
-  group: OutcomeGroup
-  current: number
-  prior: number
-  pct: number          // share of current-period visits, 0–100
-}
-
-export interface TopAccount {
-  id: string
-  name: string
-  visits: number
-  wins: number
-  orders: number
-  orderValue: number
-}
-
-export interface PipelineStage {
-  status: string
-  label: string
-  count: number
-}
-
-export interface PeriodReport {
-  range: ResolvedRange
-  visits: PortalVisit[]           // deduped, in period, newest first
-  priorVisits: PortalVisit[]
-  orders: PortalOrder[]           // sent/fulfilled in period
-  events: PortalEvent[]           // in period
-  kpis: {
-    visits: Delta
-    accountsReached: Delta
-    wins: Delta
-    winRate: Delta                // percentage points
-    inProgress: Delta             // accounts with a warm outcome
-    orders: Delta
-    orderValue: Delta             // dollars, 0 when the brand has no $ data
-    newPlacements: Delta
-    events: Delta
-  }
-  hasOrderValue: boolean
-  trend: TrendBucket[]
-  trendGranularity: 'day' | 'week' | 'month'
-  outcomes: OutcomeRow[]
-  topAccounts: TopAccount[]
-  snapshot: {
-    activePlacements: number
-    onShelf: number
-    pipeline: PipelineStage[]
-    reach: { pct: number | null; buying: number; visited: number }        // this period
-    repeat: { pct: number | null; repeatAccounts: number; ordering: number } // all order history
-  }
-}
-
-// ── Outcome vocabulary ────────────────────────────────────────────────────────
-
-export type OutcomeGroup = 'win' | 'progress' | 'neutral' | 'passed'
-
-export const WIN_STATUSES = new Set(['New Placement', 'Menu Feature Won', 'Just Ordered'])
-export const HOT_STATUSES = new Set(['Will Order Soon', 'Needs Follow Up'])
-
-export function outcomeGroup(status: string): OutcomeGroup {
-  if (WIN_STATUSES.has(status)) return 'win'
-  if (HOT_STATUSES.has(status)) return 'progress'
-  if (status === 'Not Interested') return 'passed'
-  return 'neutral'
-}
-
-export const OUTCOME_GROUP_LABEL: Record<OutcomeGroup, string> = {
-  win: 'Win', progress: 'In progress', neutral: 'Check-in', passed: 'Passed',
-}
-
-// Validated against the portal surface (#0d0b08) with the dataviz palette checker:
-// all adjacent pairs clear the colorblind and normal-vision floors and 3:1 contrast.
-export const OUTCOME_GROUP_COLOR: Record<OutcomeGroup, string> = {
-  win: '#199e70', progress: '#c98500', passed: '#d95926', neutral: '#8a8782',
-}
-
-// Plain-language explanation shown to brand clients next to each outcome.
-export const OUTCOME_DESCRIPTION: Record<string, string> = {
-  'New Placement':    'Product newly placed at this account',
-  'Menu Feature Won': 'Featured on the menu or a display',
-  'Just Ordered':     'Account placed an order',
-  'Will Order Soon':  'Buyer committed to ordering',
-  'Needs Follow Up':  'Interested — our team is following up',
-  'Tasted':           'Staff or buyer sampled the product',
-  'General Check-In': 'Routine relationship visit',
-  'Not Interested':   'Account passed for now',
-}
-
-export const PIPELINE_LABEL: Record<string, string> = {
-  committed: 'Committed', ordered: 'Ordered', on_shelf: 'On shelf', reordering: 'Reordering',
-}
-export const PIPELINE_ORDER = ['committed', 'ordered', 'on_shelf', 'reordering']
 
 // ── Date helpers (Mountain Time) ──────────────────────────────────────────────
 
@@ -203,79 +134,177 @@ export function mtDayKey(ms: number): string {
   return new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ })
 }
 
-export function mtShortDate(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', day: 'numeric' })
-}
-
-export function mtMonthShort(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-US', { timeZone: TZ, month: 'short', year: '2-digit' })
-}
-
-// Last N calendar months as YYYY-MM keys, newest first (for the month picker).
-export function recentMonthKeys(count: number): string[] {
-  const [y, m] = todayMT().slice(0, 7).split('-').map(Number)
-  const out: string[] = []
-  for (let i = 0; i < count; i++) {
-    let mm = m - i, yy = y
-    while (mm <= 0) { mm += 12; yy -= 1 }
-    out.push(`${yy}-${String(mm).padStart(2, '0')}`)
+// UTC ms of Mountain-Time midnight for a YYYY-MM-DD key (handles DST).
+export function mtStartOfDayMs(key: string): number {
+  for (const h of [6, 7]) {
+    const c = new Date(`${key}T0${h}:00:00.000Z`).getTime()
+    if (mtDayKey(c) === key) return c
   }
-  return out
+  return new Date(`${key}T07:00:00.000Z`).getTime()
 }
 
-export function defaultRangeSelection(): RangeSelection {
-  return { mode: 'preset', presetDays: 30, month: todayMT().slice(0, 7), customStart: '', customEnd: '' }
+export function mtEndOfDayMs(key: string): number {
+  return mtStartOfDayMs(addDays(key, 1)) - 1
 }
 
-export function resolveRange(sel: RangeSelection): ResolvedRange {
-  if (sel.mode === 'month' && sel.month) {
-    const [y, m] = sel.month.split('-').map(Number)
-    const cur = getMonthRangeMT(y, m)
-    const prevM = m === 1 ? 12 : m - 1
-    const prevY = m === 1 ? y - 1 : y
-    const prior = getMonthRangeMT(prevY, prevM)
-    const startMs = new Date(cur.start).getTime()
-    // A month still in progress ends "now" so its pace reads honestly.
-    const endMs = Math.min(new Date(cur.end).getTime(), Date.now())
+export function addDays(key: string, n: number): string {
+  const d = new Date(key + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+export function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((new Date(toKey + 'T12:00:00Z').getTime() - new Date(fromKey + 'T12:00:00Z').getTime()) / DAY_MS)
+}
+
+export function addMonths(monthKey: string, n: number): string {
+  const [y, m] = monthKey.split('-').map(Number)
+  const idx = y * 12 + (m - 1) + n
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`
+}
+
+export function monthStartKey(monthKey: string): string { return `${monthKey}-01` }
+export function monthEndKey(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number)
+  return `${monthKey}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
+}
+export function quarterOf(monthKey: string): { year: number; q: number } {
+  const [y, m] = monthKey.split('-').map(Number)
+  return { year: y, q: Math.floor((m - 1) / 3) + 1 }
+}
+export function quarterFirstMonth(year: number, q: number): string {
+  return `${year}-${String((q - 1) * 3 + 1).padStart(2, '0')}`
+}
+
+const dUTC = (key: string) => new Date(key + 'T12:00:00Z')
+export function fmtShort(key: string): string { return dUTC(key).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }) }
+export function fmtShortYear(key: string): string { return dUTC(key).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }) }
+export function fmtMonthLong(monthKey: string): string { return dUTC(monthKey.slice(0, 7) + '-15').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }) }
+export function fmtMonthShort(monthKey: string): string { return dUTC(monthKey.slice(0, 7) + '-15').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' }) }
+export function fmtMon(monthKey: string): string { return dUTC(monthKey.slice(0, 7) + '-15').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' }) }
+export function fmtWeekday(key: string): string { return dUTC(key).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long' }) }
+export function isoDayKey(iso: string | null | undefined): string { const ms = toMs(iso); return Number.isNaN(ms) ? '' : mtDayKey(ms) }
+export function fmtIsoShort(iso: string | null | undefined): string { const k = isoDayKey(iso); return k ? fmtShort(k) : '—' }
+export function fmtIsoShortYear(iso: string | null | undefined): string { const k = isoDayKey(iso); return k ? fmtShortYear(k) : '—' }
+
+export function money(n: number): string { return '$' + Math.round(n).toLocaleString('en-US') }
+export function moneyK(n: number): string {
+  if (n >= 10000) return '$' + Math.round(n / 1000) + 'k'
+  if (n >= 1000) return '$' + (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return '$' + Math.round(n)
+}
+
+// ── Selection ↔ hash ──────────────────────────────────────────────────────────
+
+export function defaultSelection(nowMs: number): PeriodSelection {
+  return { mode: 'month', anchor: mtDayKey(nowMs).slice(0, 7), customStart: '', customEnd: '' }
+}
+
+export function parseHash(hash: string, nowMs: number): PeriodSelection {
+  const h = (hash || '').replace(/^#/, '').trim()
+  const base = defaultSelection(nowMs)
+  let m: RegExpMatchArray | null
+  if (/^30d$/i.test(h)) return { ...base, mode: '30d' }
+  if ((m = h.match(/^(\d{4})-(\d{2})$/)) && +m[2] >= 1 && +m[2] <= 12) return { ...base, mode: 'month', anchor: `${m[1]}-${m[2]}` }
+  if ((m = h.match(/^q([1-4])-(\d{4})$/i))) return { ...base, mode: 'quarter', anchor: quarterFirstMonth(+m[2], +m[1]) }
+  if ((m = h.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/)) && m[1] <= m[2]) return { ...base, mode: 'custom', customStart: m[1], customEnd: m[2] }
+  return base
+}
+
+export function toHash(sel: PeriodSelection): string {
+  if (sel.mode === '30d') return '#30d'
+  if (sel.mode === 'quarter') { const { year, q } = quarterOf(sel.anchor); return `#q${q}-${year}` }
+  if (sel.mode === 'custom') return sel.customStart && sel.customEnd ? `#${sel.customStart}_${sel.customEnd}` : '#custom'
+  return `#${sel.anchor}`
+}
+
+export function stepSelection(sel: PeriodSelection, dir: 1 | -1): PeriodSelection {
+  if (sel.mode === 'month') return { ...sel, anchor: addMonths(sel.anchor, dir) }
+  if (sel.mode === 'quarter') return { ...sel, anchor: addMonths(sel.anchor, 3 * dir) }
+  return sel
+}
+
+export function resolveRange(sel: PeriodSelection, nowMs: number): ResolvedRange {
+  const today = mtDayKey(nowMs)
+  const build = (p: Omit<ResolvedRange, 'startMs' | 'endMs' | 'fullEndMs' | 'priorStartMs' | 'priorEndMs' | 'days' | 'priorDays' | 'endKey' | 'labelToDate' | 'canNext'> & { endKey?: string }): ResolvedRange => {
+    const endKey = p.endKey ?? (p.fullEndKey > today ? today : p.fullEndKey)
     return {
-      startMs, endMs,
-      priorStartMs: new Date(prior.start).getTime(),
-      priorEndMs: new Date(prior.end).getTime(),
-      days: Math.max(1, Math.round((new Date(cur.end).getTime() - startMs) / DAY_MS)),
-      label: formatMonthYear(`${sel.month}-01`),
-      priorLabel: formatMonthYear(`${prevY}-${String(prevM).padStart(2, '0')}-01`),
-      startISO: cur.start, endISO: cur.end, priorStartISO: prior.start,
+      ...p, endKey,
+      startMs: mtStartOfDayMs(p.startKey), endMs: mtEndOfDayMs(endKey), fullEndMs: mtEndOfDayMs(p.fullEndKey),
+      priorStartMs: mtStartOfDayMs(p.priorStartKey), priorEndMs: mtEndOfDayMs(p.priorEndKey),
+      days: daysBetween(p.startKey, p.fullEndKey) + 1, priorDays: daysBetween(p.priorStartKey, p.priorEndKey) + 1,
+      labelToDate: p.partial ? `${p.label} to date` : p.label,
+      canNext: p.fullEndKey < today,
     }
   }
-  if (sel.mode === 'custom' && sel.customStart && sel.customEnd) {
-    const { start, end } = getDateRangeMT(sel.customStart, sel.customEnd)
-    const startMs = new Date(start).getTime()
-    const endMs = Math.min(new Date(end).getTime(), Date.now())
-    const span = new Date(end).getTime() - startMs
-    return {
-      startMs, endMs,
-      priorStartMs: startMs - span, priorEndMs: startMs,
-      days: Math.max(1, Math.round(span / DAY_MS)),
-      label: `${formatShortDateMT(sel.customStart)} – ${formatShortDateMT(sel.customEnd)}`,
-      priorLabel: `the ${Math.max(1, Math.round(span / DAY_MS))} days before`,
-      startISO: start, endISO: end, priorStartISO: new Date(startMs - span).toISOString(),
-    }
+  if (sel.mode === '30d') {
+    const startKey = addDays(today, -29)
+    return build({
+      mode: '30d', startKey, fullEndKey: today, priorStartKey: addDays(today, -59), priorEndKey: addDays(today, -30),
+      partial: false, label: 'Last 30 days', compareLabel: 'previous 30 days', navLabel: `${fmtShort(startKey)} – ${fmtShort(today)}`,
+      hash: '#30d', monthKeys: [startKey.slice(0, 7), today.slice(0, 7)].filter((k, i, a) => a.indexOf(k) === i),
+    })
   }
-  const days = sel.presetDays
-  const start = nDaysAgoMT(days - 1)
-  const priorStart = nDaysAgoMT(2 * days - 1)
-  const startMs = new Date(start).getTime()
-  return {
-    startMs, endMs: Date.now(),
-    priorStartMs: new Date(priorStart).getTime(), priorEndMs: startMs,
-    days,
-    label: `Last ${days} days`,
-    priorLabel: `the ${days} days before`,
-    startISO: start, endISO: new Date().toISOString(), priorStartISO: priorStart,
+  if (sel.mode === 'quarter') {
+    const { year, q } = quarterOf(sel.anchor)
+    const first = quarterFirstMonth(year, q)
+    const last = addMonths(first, 2)
+    const priorFirst = addMonths(first, -3)
+    const fullEndKey = monthEndKey(last)
+    return build({
+      mode: 'quarter', startKey: monthStartKey(first), fullEndKey,
+      priorStartKey: monthStartKey(priorFirst), priorEndKey: monthEndKey(addMonths(priorFirst, 2)),
+      partial: fullEndKey >= today, label: `Q${q} ${year}`, compareLabel: 'previous quarter', navLabel: `Q${q} ${year}`,
+      hash: `#q${q}-${year}`, monthKeys: [first, addMonths(first, 1), last],
+    })
   }
+  if (sel.mode === 'custom' && sel.customStart && sel.customEnd && sel.customStart <= sel.customEnd) {
+    const n = daysBetween(sel.customStart, sel.customEnd) + 1
+    const startYear = sel.customStart.slice(0, 4), endYear = sel.customEnd.slice(0, 4)
+    const label = `${startYear === endYear ? fmtShort(sel.customStart) : fmtShortYear(sel.customStart)} – ${fmtShortYear(sel.customEnd)}`
+    const months: string[] = []
+    for (let k = sel.customStart.slice(0, 7); k <= sel.customEnd.slice(0, 7); k = addMonths(k, 1)) months.push(k)
+    return build({
+      mode: 'custom', startKey: sel.customStart, fullEndKey: sel.customEnd, endKey: sel.customEnd > today ? today : sel.customEnd,
+      priorStartKey: addDays(sel.customStart, -n), priorEndKey: addDays(sel.customStart, -1),
+      partial: false, label, compareLabel: `previous ${n} days`, navLabel: 'Custom', hash: `#${sel.customStart}_${sel.customEnd}`, monthKeys: months,
+    })
+  }
+  // Month (also the fallback for an incomplete custom selection)
+  const anchor = /^\d{4}-\d{2}$/.test(sel.anchor) ? sel.anchor : today.slice(0, 7)
+  const fullEndKey = monthEndKey(anchor)
+  const prior = addMonths(anchor, -1)
+  return build({
+    mode: 'month', startKey: monthStartKey(anchor), fullEndKey, priorStartKey: monthStartKey(prior), priorEndKey: monthEndKey(prior),
+    partial: fullEndKey >= today, label: fmtMonthLong(anchor), compareLabel: 'previous month', navLabel: fmtMonthShort(anchor),
+    hash: `#${anchor}`, monthKeys: [anchor],
+  })
 }
 
-// ── Core calculations ─────────────────────────────────────────────────────────
+// ── Vocabulary ────────────────────────────────────────────────────────────────
+
+export const CLIENT_OUTCOME_LABEL: Record<string, string> = {
+  'Just Ordered': 'Ordered', 'New Placement': 'New placement', 'Menu Feature Won': 'Menu feature',
+  'Will Order Soon': 'Follow-up', 'Needs Follow Up': 'Follow-up', 'Tasted': 'Tasting', 'General Check-In': 'Visit',
+}
+export const PLACEMENT_LOCATION_LABEL: Record<string, string> = {
+  well: 'Well', shelf: 'Back bar / shelf', menu: 'Menu', cocktail: 'Cocktail', retail: 'Retail shelf', seasonal: 'Seasonal',
+}
+export const PLACEMENT_STAGES: { status: string; label: string; hint: string }[] = [
+  { status: 'committed', label: 'Committed', hint: 'Buyer said yes' },
+  { status: 'ordered', label: 'Ordered', hint: 'First order in' },
+  { status: 'on_shelf', label: 'On shelf', hint: 'Stocked or on menu' },
+  { status: 'reordering', label: 'Reordering', hint: 'Two or more orders' },
+]
+export const EVENT_TYPE_LABEL: Record<string, string> = {
+  tasting: 'Tasting', brand_dinner: 'Brand dinner', meeting: 'Buyer meeting', training: 'Staff training', milestone: 'Milestone', other: 'Event',
+}
+export function accountTypeLabel(t: string | null | undefined): string { return t === 'off_premise' ? 'Retail' : 'On-premise' }
+export function accountTypeLower(t: string | null | undefined): string { return t === 'off_premise' ? 'retail' : 'on-premise' }
+export function stripProductName(name: string | null | undefined): string { return String(name || '').replace(/\s*\(Off-Premise\)\s*$/i, '').trim() }
+export function isRetailSku(name: string | null | undefined): boolean { return /\(Off-Premise\)\s*$/i.test(String(name || '')) }
+
+// ── Core helpers ──────────────────────────────────────────────────────────────
 
 // Lower rank = more significant; picks the best visit when deduping account+day.
 const STATUS_RANK: Record<string, number> = {
@@ -285,7 +314,7 @@ const STATUS_RANK: Record<string, number> = {
 }
 
 // One visit per account per Mountain-Time day (a multi-brand stop logs one row
-// per brand; a repeat stop the same day is the same visit).
+// per brand; a repeat stop the same day is the same visit). Newest first.
 export function dedupeByAccountDay<T extends PortalVisit>(visits: T[]): T[] {
   const seen = new Map<string, T>()
   for (const v of visits) {
@@ -297,190 +326,567 @@ export function dedupeByAccountDay<T extends PortalVisit>(visits: T[]): T[] {
 }
 
 export function delta(current: number, prior: number): Delta {
-  const diff = current - prior
-  const pct = prior > 0 ? Math.round((diff / prior) * 100) : null
-  return { current, prior, diff, pct, dir: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat' }
+  const diff = Math.round((current - prior) * 100) / 100
+  return { current, prior, diff, dir: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat' }
 }
 
-export function orderDateMs(o: PortalOrder): number {
-  return toMs(o.sent_at || o.created_at)
+export function orderDateMs(o: PortalOrder): number { return toMs(o.sent_at || o.created_at) }
+export function isClientVisibleOrder(o: PortalOrder): boolean { return o.status === 'sent' || o.status === 'fulfilled' }
+export function orderValue(o: PortalOrder): number { return resolveTotal(o) || 0 }
+export function orderAccountKey(o: PortalOrder): string { return o.account_id || (o.deliver_to_name ? `name:${o.deliver_to_name}` : '') }
+
+function within(ms: number, startMs: number, endMs: number): boolean { return ms >= startMs && ms <= endMs }
+function sum(list: number[]): number { return list.reduce((s, n) => s + n, 0) }
+function round2(n: number): number { return Math.round(n * 100) / 100 }
+function uniq<T>(list: T[]): T[] { return [...new Set(list)] }
+
+export function lineQty(l: PortalLineItem): { cases: number; bottles: number } {
+  const cases = Number(l.cases ?? 0) || 0
+  const bottles = Number(l.bottles ?? 0) || 0
+  const quantity = Number(l.quantity ?? 0) || 0
+  return { cases: cases || (bottles ? 0 : quantity), bottles }
+}
+export function lineValue(l: PortalLineItem): number {
+  const t = Number(l.total ?? 0)
+  if (t > 0) return t
+  const price = Number(l.unit_price ?? l.price ?? 0) || 0
+  const { cases, bottles } = lineQty(l)
+  return price * (cases + bottles)
+}
+export function describeLine(l: PortalLineItem): string {
+  const { cases, bottles } = lineQty(l)
+  const parts = [cases ? `${cases} cs` : '', bottles ? `${bottles} btl` : ''].filter(Boolean).join(' + ')
+  return `${parts ? parts + ' ' : ''}${stripProductName(l.product_name)}`.trim()
+}
+export function describeOrder(o: PortalOrder): string {
+  const lines = (o.po_line_items || []).map(describeLine).filter(Boolean)
+  return lines.length ? lines.join(', ') : (o.deliver_to_name ? 'Order' : 'Order')
 }
 
-export function isClientVisibleOrder(o: PortalOrder): boolean {
-  return o.status === 'sent' || o.status === 'fulfilled'
+// Cadence: average gap between an account's orders vs days since the last one.
+export type CadenceFlag = 'on pace' | 'slipping' | 'overdue'
+export function cadenceFor(orderDatesMs: number[], nowMs: number): { sinceDays: number; avgGapDays: number; flag: CadenceFlag } | null {
+  const d = [...orderDatesMs].filter(n => !Number.isNaN(n)).sort((a, b) => a - b)
+  if (d.length < 2) return null
+  const gaps: number[] = []
+  for (let i = 1; i < d.length; i++) gaps.push((d[i] - d[i - 1]) / DAY_MS)
+  const avg = sum(gaps) / gaps.length
+  const since = (nowMs - d[d.length - 1]) / DAY_MS
+  const flag: CadenceFlag = since <= avg ? 'on pace' : since <= avg * 1.5 ? 'slipping' : 'overdue'
+  return { sinceDays: Math.max(0, Math.round(since)), avgGapDays: Math.round(avg), flag }
 }
 
-export function orderValue(o: PortalOrder): number {
-  return resolveTotal(o as any) || 0
+// ── Report types ──────────────────────────────────────────────────────────────
+
+export interface SparkSeries { months: { key: string; label: string }[]; accountsVisited: number[]; orders: number[]; orderValue: number[] }
+
+export interface CumulativePoint { date: string; value: number; orders: number }
+
+export interface AccountRow {
+  id: string
+  name: string
+  type: string | null
+  lastVisit: string | null     // YYYY-MM-DD (MT)
+  visits: number
+  orders: number
+  value: number
+  allTimeValue: number
+  allTimeOrders: number
+  onShelf: number
+  cadence?: { sinceDays: number; avgGapDays: number; flag: CadenceFlag } | null
 }
 
-function within(ms: number, startMs: number, endMs: number): boolean {
-  return ms >= startMs && ms <= endMs
+export interface OrderRow {
+  id: string
+  accountId: string
+  accountName: string
+  date: string                 // YYYY-MM-DD (MT)
+  po: string
+  products: string
+  lines: { name: string; retail: boolean; cases: number; bottles: number; value: number }[]
+  total: number
+  status: string
+  statusLabel: 'Fulfilled' | 'Sent'
 }
 
-function uniqueAccounts(visits: PortalVisit[]): number {
-  return new Set(visits.map(v => v.account_id).filter(Boolean)).size
+export interface ProductRow {
+  name: string
+  retail: boolean
+  cases: number
+  bottles: number
+  value: number
+  accounts: number
+  onShelf: number
 }
 
-export function buildPeriodReport(input: {
+export interface EventRow { id: string; date: string; account: string; type: string; typeLabel: string; consumers: number }
+
+export type StopKind = 'order' | 'placement' | 'tasting' | 'followup' | 'visit' | 'passed'
+export interface TimelineStop {
+  id: string
+  accountId: string
+  name: string
+  type: string | null
+  kind: StopKind
+  label: string | null         // bold lead-in ("Ordered", "Menu feature", "Tasting", "Follow-up", "Passed")
+  text: string                 // the rest of the line
+  amount?: number
+  firstOrder?: boolean
+  status: string | null        // raw visit status (null for an order with no visit logged)
+  rep: string | null
+  visitedAt: string | null
+}
+export interface TimelineDay { date: string; weekday: string; label: string; stops: TimelineStop[]; orderTotal: number }
+
+export interface MapAccount {
+  id: string; name: string; type: string | null; lat: number; lng: number
+  hasPlacement: boolean; visitedInPeriod: boolean; visitedEver: boolean; orderedInPeriod: boolean
+  lastVisit: string | null; onShelf: number; periodValue: number
+}
+
+export interface AccountDetail {
+  id: string; name: string; type: string | null; firstVisit: string | null
+  ordersAllTime: number; valueAllTime: number; onShelfNow: number
+  onShelf: { id: string; product: string; location: string; since: string; stage: string }[]
+  orders: OrderRow[]
+  visits: { id: string; date: string; notes: string; status: string; label: string; rep: string | null; win: boolean }[]
+}
+
+export interface PeriodReport {
+  range: ResolvedRange
+  nowMs: number
+  staff: boolean
+  trackingStart: string | null              // ISO day key of the earliest visit or order
+  trackingStartLabel: string | null         // "April 2026"
+  trackingStartMon: string | null           // "Apr"
+  visits: PortalVisit[]                     // deduped, in period, newest first (all statuses)
+  priorVisits: PortalVisit[]
+  orders: PortalOrder[]                     // client-visible, in period, newest first
+  priorOrders: PortalOrder[]
+  allVisits: PortalVisit[]                  // deduped, all time
+  allOrders: PortalOrder[]                  // client-visible, all time
+  activePlacements: PortalPlacement[]
+  accountInfo: Record<string, { name: string; type: string | null }>
+  repNames: Record<string, string>          // empty unless built for staff
+  measures: {
+    accountsVisited: Delta
+    visits: number
+    orders: Delta
+    orderValue: Delta
+  }
+  sparklines: SparkSeries
+  allTime: { accounts: number; orders: number; value: number; orderingAccounts: number; reorderingAccounts: number; avgOrder: number }
+  secondary: { onShelf: number; reorderingAccounts: number; orderingAccounts: number; newPlacements: number; tastings: number }
+  cumulative: { current: CumulativePoint[]; prior: { date: string; value: number }[]; axisDays: number }
+  funnel: { visited: number; visits: number; ordered: number; firstTime: number; repeat: number; priorVisited: number; priorOrdered: number; conversionPct: number | null }
+  accountsLedger: { period: AccountRow[]; all: AccountRow[] }
+  ordersLedger: { period: OrderRow[]; all: OrderRow[] }
+  productsLedger: { period: ProductRow[]; all: ProductRow[] }
+  placements: { active: number; accounts: number; stages: { status: string; label: string; hint: string; count: number }[] }
+  placementLocations: { type: string; label: string; count: number }[]
+  events: EventRow[]
+  eventSummary: { tastings: number; consumers: number; other: number }
+  timeline: TimelineDay[]
+  timelineStops: number
+  mapAccounts: MapAccount[]
+}
+
+export interface ReportInput {
   visits: PortalVisit[]
   placements: PortalPlacement[]
   orders: PortalOrder[]
   events: PortalEvent[]
+  accounts?: PortalAccount[]
+  tastingConsumers?: Record<string, number>   // event id → sign-ups
   range: ResolvedRange
-}): PeriodReport {
-  const { range } = input
+  nowMs: number
+  staff?: boolean
+  repNames?: Record<string, string>
+}
+
+// ── Builder ───────────────────────────────────────────────────────────────────
+
+export function recentMonths(nowMs: number, count: number): { key: string; label: string; startMs: number; endMs: number }[] {
+  const cur = mtDayKey(nowMs).slice(0, 7)
+  const out: { key: string; label: string; startMs: number; endMs: number }[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    const key = addMonths(cur, -i)
+    out.push({ key, label: fmtMon(key), startMs: mtStartOfDayMs(monthStartKey(key)), endMs: mtEndOfDayMs(monthEndKey(key)) })
+  }
+  return out
+}
+
+export function buildPeriodReport(input: ReportInput): PeriodReport {
+  const { range, nowMs } = input
+  const staff = !!input.staff
+  const repNames = staff ? (input.repNames || {}) : {}
+
+  // ── Account names/types from every source we have ──
+  const accountInfo: Record<string, { name: string; type: string | null }> = {}
+  const touchInfo = (id: string | null | undefined, name?: string | null, type?: string | null) => {
+    if (!id) return
+    const ex = accountInfo[id]
+    if (!ex) accountInfo[id] = { name: name || 'Account', type: type ?? null }
+    else { if (ex.name === 'Account' && name) ex.name = name; if (ex.type == null && type) ex.type = type }
+  }
+  for (const a of input.accounts || []) touchInfo(a.id, a.name, a.account_type)
+  for (const v of input.visits) touchInfo(v.account_id, v.accounts?.name, v.accounts?.account_type)
+  for (const p of input.placements) touchInfo(p.account_id, p.accounts?.name)
+  for (const o of input.orders) touchInfo(o.account_id, o.accounts?.name || o.deliver_to_name)
+  const nameOf = (id: string) => accountInfo[id]?.name || (id.startsWith('name:') ? id.slice(5) : 'Account')
+  const typeOf = (id: string) => accountInfo[id]?.type ?? null
+
+  // ── Visits ──
   const allVisits = dedupeByAccountDay(input.visits)
+  const visits = allVisits.filter(v => within(toMs(v.visited_at), range.startMs, range.endMs))
+  const priorVisits = allVisits.filter(v => within(toMs(v.visited_at), range.priorStartMs, range.priorEndMs))
+  const distinctAccounts = (list: PortalVisit[]) => uniq(list.map(v => v.account_id).filter(Boolean) as string[])
 
-  const visits      = allVisits.filter(v => within(toMs(v.visited_at), range.startMs, range.endMs))
-  const priorVisits = allVisits.filter(v => { const ms = toMs(v.visited_at); return ms >= range.priorStartMs && ms < range.priorEndMs })
+  // ── Orders ──
+  const allOrders = input.orders.filter(isClientVisibleOrder).sort((a, b) => orderDateMs(b) - orderDateMs(a))
+  const orders = allOrders.filter(o => within(orderDateMs(o), range.startMs, range.endMs))
+  const priorOrders = allOrders.filter(o => within(orderDateMs(o), range.priorStartMs, range.priorEndMs))
+  const valueOf = (list: PortalOrder[]) => round2(sum(list.map(orderValue)))
 
-  const visibleOrders = input.orders.filter(isClientVisibleOrder)
-  const orders      = visibleOrders.filter(o => within(orderDateMs(o), range.startMs, range.endMs))
-  const priorOrders = visibleOrders.filter(o => { const ms = orderDateMs(o); return ms >= range.priorStartMs && ms < range.priorEndMs })
-  const orderValueSum = (list: PortalOrder[]) => Math.round(list.reduce((s, o) => s + orderValue(o), 0))
-  const hasOrderValue = visibleOrders.some(o => orderValue(o) > 0)
+  // Orders per account, all time, oldest first (for first-order and cadence logic)
+  const ordersByAccount = new Map<string, PortalOrder[]>()
+  for (const o of allOrders) { const k = orderAccountKey(o); if (!k) continue; const l = ordersByAccount.get(k) || []; l.push(o); ordersByAccount.set(k, l) }
+  for (const l of ordersByAccount.values()) l.sort((a, b) => orderDateMs(a) - orderDateMs(b))
+  const firstOrderMs = (acct: string) => { const l = ordersByAccount.get(acct); return l?.length ? orderDateMs(l[0]) : NaN }
 
-  const events      = input.events.filter(e => within(toMs(e.start_time), range.startMs, range.endMs) && e.status !== 'cancelled')
-  const priorEvents = input.events.filter(e => { const ms = toMs(e.start_time); return ms >= range.priorStartMs && ms < range.priorEndMs && e.status !== 'cancelled' })
+  // ── Tracking start ──
+  const firstVisitMs = allVisits.length ? Math.min(...allVisits.map(v => toMs(v.visited_at))) : NaN
+  const firstOrder = allOrders.length ? Math.min(...allOrders.map(orderDateMs)) : NaN
+  const trackingMs = [firstVisitMs, firstOrder].filter(n => !Number.isNaN(n))
+  const trackingStart = trackingMs.length ? mtDayKey(Math.min(...trackingMs)) : null
 
-  const newPlac      = input.placements.filter(p => within(toMs(p.created_at), range.startMs, range.endMs)).length
-  const priorNewPlac = input.placements.filter(p => { const ms = toMs(p.created_at); return ms >= range.priorStartMs && ms < range.priorEndMs }).length
+  // ── Placements ──
+  const activePlacements = input.placements.filter(p => !p.lost_at)
+  const onShelfPlacements = activePlacements.filter(p => p.status === 'on_shelf' || p.status === 'reordering')
+  const onShelfByAccount = new Map<string, number>()
+  for (const p of onShelfPlacements) if (p.account_id) onShelfByAccount.set(p.account_id, (onShelfByAccount.get(p.account_id) || 0) + 1)
+  const onShelfByProduct = new Map<string, number>()
+  for (const p of onShelfPlacements) { const n = stripProductName(p.product_name); onShelfByProduct.set(n, (onShelfByProduct.get(n) || 0) + 1) }
+  const newPlacements = input.placements.filter(p => within(toMs(p.created_at), range.startMs, range.endMs)).length
 
-  const wins      = visits.filter(v => WIN_STATUSES.has(v.status))
-  const priorWins = priorVisits.filter(v => WIN_STATUSES.has(v.status))
-  const winRate      = visits.length ? Math.round((wins.length / visits.length) * 100) : 0
-  const priorWinRate = priorVisits.length ? Math.round((priorWins.length / priorVisits.length) * 100) : 0
+  // ── Events ──
+  const consumers = input.tastingConsumers || {}
+  const periodEvents = input.events
+    .filter(e => e.status !== 'cancelled' && e.event_type !== 'planned_stop' && within(toMs(e.start_time), range.startMs, range.endMs))
+    .sort((a, b) => toMs(b.start_time) - toMs(a.start_time))
+  const events: EventRow[] = periodEvents.map(e => ({
+    id: e.id, date: mtDayKey(toMs(e.start_time)),
+    account: e.accounts?.name || (e.account_id ? nameOf(e.account_id) : '') || e.title || 'Event',
+    type: e.event_type || 'other', typeLabel: EVENT_TYPE_LABEL[e.event_type || 'other'] || 'Event',
+    consumers: consumers[e.id] || 0,
+  }))
+  const tastings = events.filter(e => e.type === 'tasting')
+  const eventSummary = { tastings: tastings.length, consumers: sum(tastings.map(t => t.consumers)), other: events.length - tastings.length }
 
-  const inProgress      = uniqueAccounts(visits.filter(v => HOT_STATUSES.has(v.status)))
-  const priorInProgress = uniqueAccounts(priorVisits.filter(v => HOT_STATUSES.has(v.status)))
+  // ── Measures + sparklines ──
+  const measures = {
+    accountsVisited: delta(distinctAccounts(visits).length, distinctAccounts(priorVisits).length),
+    visits: visits.length,
+    orders: delta(orders.length, priorOrders.length),
+    orderValue: delta(valueOf(orders), valueOf(priorOrders)),
+  }
+  const months = recentMonths(nowMs, 6)
+  const sparklines: SparkSeries = {
+    months: months.map(m => ({ key: m.key, label: m.label })),
+    accountsVisited: months.map(m => distinctAccounts(allVisits.filter(v => within(toMs(v.visited_at), m.startMs, m.endMs))).length),
+    orders: months.map(m => allOrders.filter(o => within(orderDateMs(o), m.startMs, m.endMs)).length),
+    orderValue: months.map(m => valueOf(allOrders.filter(o => within(orderDateMs(o), m.startMs, m.endMs)))),
+  }
 
-  // ── Trend buckets: current vs prior period, aligned by position ──
-  const spanDays = range.days
-  const granularity: 'day' | 'week' | 'month' = spanDays <= 31 ? 'day' : spanDays <= 120 ? 'week' : 'month'
-  const bucketMs = granularity === 'day' ? DAY_MS : granularity === 'week' ? 7 * DAY_MS : 30 * DAY_MS
-  const bucketCount = Math.max(1, Math.ceil(spanDays * DAY_MS / bucketMs))
-  const trend: TrendBucket[] = Array.from({ length: bucketCount }, (_, i) => {
-    const curStart = range.startMs + i * bucketMs
-    const priStart = range.priorStartMs + i * bucketMs
-    const label = granularity === 'month' ? mtMonthShort(curStart) : mtShortDate(curStart)
-    const priorLabel = granularity === 'day'
-      ? mtShortDate(priStart)
-      // Half a day back from the bucket edge keeps the label on the last day across DST changes.
-      : `${mtShortDate(priStart)} – ${mtShortDate(Math.min(priStart + bucketMs - DAY_MS / 2, range.priorEndMs - DAY_MS / 2))}`
-    return { label, current: 0, prior: 0, priorLabel }
+  // ── All time ──
+  const orderingAccounts = ordersByAccount.size
+  const reorderingAccounts = [...ordersByAccount.values()].filter(l => l.length >= 2).length
+  const allValue = valueOf(allOrders)
+  const allTime = {
+    accounts: distinctAccounts(allVisits).length, orders: allOrders.length, value: allValue,
+    orderingAccounts, reorderingAccounts, avgOrder: allOrders.length ? round2(allValue / allOrders.length) : 0,
+  }
+  const secondary = { onShelf: onShelfPlacements.length, reorderingAccounts, orderingAccounts, newPlacements, tastings: tastings.length }
+
+  // ── Cumulative order value by day (current drawn to today, prior for its whole span) ──
+  const todayKey = mtDayKey(nowMs)
+  const cumulate = (list: PortalOrder[], startKey: string, endKey: string) => {
+    const byDay = new Map<string, { value: number; orders: number }>()
+    for (const o of list) { const k = mtDayKey(orderDateMs(o)); const c = byDay.get(k) || { value: 0, orders: 0 }; c.value += orderValue(o); c.orders += 1; byDay.set(k, c) }
+    const out: CumulativePoint[] = []
+    let acc = 0
+    for (let k = startKey; k <= endKey; k = addDays(k, 1)) { const c = byDay.get(k); acc = round2(acc + (c?.value || 0)); out.push({ date: k, value: acc, orders: c?.orders || 0 }) }
+    return out
+  }
+  const curEndKey = range.fullEndKey > todayKey ? todayKey : range.fullEndKey
+  const cumulative = {
+    current: curEndKey >= range.startKey ? cumulate(orders, range.startKey, curEndKey) : [],
+    prior: cumulate(priorOrders, range.priorStartKey, range.priorEndKey).map(p => ({ date: p.date, value: p.value })),
+    axisDays: range.days,
+  }
+
+  // ── Funnel ──
+  const visitedIds = distinctAccounts(visits)
+  const orderedIds = uniq(orders.map(orderAccountKey).filter(Boolean))
+  const funnel = {
+    visited: visitedIds.length, visits: visits.length, ordered: orderedIds.length,
+    firstTime: orderedIds.filter(id => within(firstOrderMs(id), range.startMs, range.endMs)).length,
+    repeat: orderedIds.filter(id => (ordersByAccount.get(id)?.length || 0) >= 2).length,
+    priorVisited: distinctAccounts(priorVisits).length,
+    priorOrdered: uniq(priorOrders.map(orderAccountKey).filter(Boolean)).length,
+    conversionPct: visitedIds.length ? Math.round(orderedIds.length / visitedIds.length * 100) : null,
+  }
+
+  // ── Ledgers ──
+  const lastVisitByAccount = new Map<string, string>()
+  for (const v of allVisits) { if (!v.account_id) continue; const k = mtDayKey(toMs(v.visited_at)); if (!lastVisitByAccount.has(v.account_id) || k > (lastVisitByAccount.get(v.account_id) as string)) lastVisitByAccount.set(v.account_id, k) }
+
+  const accountRows = (V: PortalVisit[], O: PortalOrder[]): AccountRow[] => {
+    const rows = new Map<string, AccountRow>()
+    const touch = (id: string): AccountRow => {
+      let r = rows.get(id)
+      if (!r) {
+        const all = ordersByAccount.get(id) || []
+        r = {
+          id, name: nameOf(id), type: typeOf(id), lastVisit: lastVisitByAccount.get(id) || null,
+          visits: 0, orders: 0, value: 0, allTimeValue: valueOf(all), allTimeOrders: all.length, onShelf: onShelfByAccount.get(id) || 0,
+        }
+        if (staff) r.cadence = cadenceFor(all.map(orderDateMs), nowMs)
+        rows.set(id, r)
+      }
+      return r
+    }
+    for (const v of V) if (v.account_id) touch(v.account_id).visits++
+    for (const o of O) { const k = orderAccountKey(o); if (!k) continue; const r = touch(k); r.orders++; r.value = round2(r.value + orderValue(o)) }
+    return [...rows.values()].sort((a, b) => b.value - a.value || b.visits - a.visits || a.name.localeCompare(b.name))
+  }
+  const orderRows = (O: PortalOrder[]): OrderRow[] => O.map(o => {
+    const k = orderAccountKey(o)
+    return {
+      id: o.id, accountId: k, accountName: nameOf(k), date: mtDayKey(orderDateMs(o)), po: o.po_number || '',
+      products: describeOrder(o),
+      lines: (o.po_line_items || []).map(l => { const q = lineQty(l); return { name: stripProductName(l.product_name), retail: isRetailSku(l.product_name), cases: q.cases, bottles: q.bottles, value: round2(lineValue(l)) } }),
+      total: round2(orderValue(o)), status: o.status, statusLabel: o.status === 'fulfilled' ? 'Fulfilled' : 'Sent',
+    }
   })
-  const bucketIndex = (ms: number, originMs: number) => Math.min(bucketCount - 1, Math.floor((ms - originMs) / bucketMs))
-  for (const v of visits)      trend[bucketIndex(toMs(v.visited_at), range.startMs)].current++
-  for (const v of priorVisits) { const i = bucketIndex(toMs(v.visited_at), range.priorStartMs); if (i >= 0) trend[i].prior++ }
+  const productRows = (O: PortalOrder[]): ProductRow[] => {
+    const rows = new Map<string, ProductRow & { acctSet: Set<string> }>()
+    for (const o of O) for (const l of (o.po_line_items || [])) {
+      const name = stripProductName(l.product_name)
+      if (!name) continue
+      let r = rows.get(name)
+      if (!r) { r = { name, retail: isRetailSku(l.product_name), cases: 0, bottles: 0, value: 0, accounts: 0, onShelf: onShelfByProduct.get(name) || 0, acctSet: new Set() }; rows.set(name, r) }
+      const q = lineQty(l)
+      r.cases += q.cases; r.bottles += q.bottles; r.value = round2(r.value + lineValue(l))
+      const k = orderAccountKey(o); if (k) r.acctSet.add(k)
+    }
+    return [...rows.values()].map(r => ({ name: r.name, retail: r.retail, cases: r.cases, bottles: r.bottles, value: r.value, accounts: r.acctSet.size, onShelf: r.onShelf }))
+      .sort((a, b) => b.value - a.value || b.cases - a.cases || a.name.localeCompare(b.name))
+  }
 
-  // ── Outcome breakdown ──
-  const statusOrder = ['New Placement', 'Menu Feature Won', 'Just Ordered', 'Will Order Soon', 'Needs Follow Up', 'Tasted', 'General Check-In', 'Not Interested']
-  const countBy = (list: PortalVisit[]) => list.reduce((acc, v) => { acc[v.status] = (acc[v.status] || 0) + 1; return acc }, {} as Record<string, number>)
-  const curCounts = countBy(visits), priCounts = countBy(priorVisits)
-  const outcomes: OutcomeRow[] = statusOrder
-    .filter(s => (curCounts[s] || 0) > 0 || (priCounts[s] || 0) > 0)
-    .map(s => ({
-      status: s, group: outcomeGroup(s),
-      current: curCounts[s] || 0, prior: priCounts[s] || 0,
-      pct: visits.length ? Math.round(((curCounts[s] || 0) / visits.length) * 100) : 0,
+  // ── Placements panel ──
+  const placements = {
+    active: activePlacements.length,
+    accounts: uniq(activePlacements.map(p => p.account_id).filter(Boolean)).length,
+    stages: PLACEMENT_STAGES.map(s => ({ ...s, count: activePlacements.filter(p => p.status === s.status).length })),
+  }
+  const locCount = new Map<string, number>()
+  for (const p of onShelfPlacements) { const t = p.placement_type || 'shelf'; locCount.set(t, (locCount.get(t) || 0) + 1) }
+  const placementLocations = [...locCount.entries()].map(([type, count]) => ({ type, label: PLACEMENT_LOCATION_LABEL[type] || type, count })).sort((a, b) => b.count - a.count)
+
+  // ── Timeline ──
+  const ordersByAcctDay = new Map<string, PortalOrder[]>()
+  for (const o of orders) { const k = `${orderAccountKey(o)}__${mtDayKey(orderDateMs(o))}`; const l = ordersByAcctDay.get(k) || []; l.push(o); ordersByAcctDay.set(k, l) }
+  const placementsByAcctDay = new Map<string, PortalPlacement[]>()
+  for (const p of input.placements) { if (!p.account_id) continue; const k = `${p.account_id}__${mtDayKey(toMs(p.created_at))}`; const l = placementsByAcctDay.get(k) || []; l.push(p); placementsByAcctDay.set(k, l) }
+
+  const stopFromOrders = (acct: string, day: string, list: PortalOrder[], visit: PortalVisit | null): TimelineStop => {
+    const total = round2(sum(list.map(orderValue)))
+    const first = !Number.isNaN(firstOrderMs(acct)) && mtDayKey(firstOrderMs(acct)) === day
+    return {
+      id: visit ? visit.id : `o:${list[0].id}`, accountId: acct, name: nameOf(acct), type: typeOf(acct), kind: 'order', label: 'Ordered',
+      text: list.map(describeOrder).join('; ') + (first ? ' · first order here' : ''), amount: total, firstOrder: first,
+      status: visit?.status ?? null, rep: visit?.user_id ? (repNames[visit.user_id] || null) : null, visitedAt: visit?.visited_at ?? null,
+    }
+  }
+  const timelineVisits = visits.filter(v => v.account_id && (staff || v.status !== 'Not Interested'))
+  const dayMap = new Map<string, TimelineStop[]>()
+  const covered = new Set<string>()
+  for (const v of timelineVisits) {
+    const acct = v.account_id as string
+    const day = mtDayKey(toMs(v.visited_at))
+    const key = `${acct}__${day}`
+    covered.add(key)
+    const dayOrders = ordersByAcctDay.get(key)
+    const notes = (v.notes || '').trim()
+    const rep = v.user_id ? (repNames[v.user_id] || null) : null
+    let stop: TimelineStop
+    if (dayOrders?.length) stop = stopFromOrders(acct, day, dayOrders, v)
+    else {
+      const base = { id: v.id, accountId: acct, name: nameOf(acct), type: typeOf(acct), status: v.status, rep, visitedAt: v.visited_at }
+      const np = placementsByAcctDay.get(key)?.[0]
+      if (v.status === 'Menu Feature Won' && np) stop = { ...base, kind: 'placement', label: 'Menu feature', text: `${stripProductName(np.product_name)} on the ${(PLACEMENT_LOCATION_LABEL[np.placement_type || ''] || 'menu').toLowerCase()}` }
+      else if (v.status === 'Menu Feature Won' || v.status === 'New Placement') stop = { ...base, kind: 'placement', label: v.status === 'New Placement' ? 'New placement' : 'Menu feature', text: notes }
+      else if (v.status === 'Tasted') stop = { ...base, kind: 'tasting', label: 'Tasting', text: notes }
+      else if (v.status === 'Will Order Soon' || v.status === 'Needs Follow Up') stop = { ...base, kind: 'followup', label: 'Follow-up', text: notes }
+      else if (v.status === 'Not Interested') stop = { ...base, kind: 'passed', label: 'Passed', text: notes }
+      else stop = { ...base, kind: 'visit', label: null, text: notes }
+    }
+    const l = dayMap.get(day) || []; l.push(stop); dayMap.set(day, l)
+  }
+  // Orders placed on a day with no visit logged for that account still happened in the field.
+  for (const [key, list] of ordersByAcctDay) {
+    if (covered.has(key)) continue
+    const [acct, day] = key.split('__')
+    if (!acct || !day) continue
+    const l = dayMap.get(day) || []; l.push(stopFromOrders(acct, day, list, null)); dayMap.set(day, l)
+  }
+  const dayOrderTotal = new Map<string, number>()
+  for (const o of orders) { const k = mtDayKey(orderDateMs(o)); dayOrderTotal.set(k, round2((dayOrderTotal.get(k) || 0) + orderValue(o))) }
+  const timeline: TimelineDay[] = [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([date, stops]) => ({
+    date, weekday: fmtWeekday(date), label: fmtShort(date),
+    stops: stops.sort((a, b) => (a.kind === 'order' || a.kind === 'placement' ? 0 : 1) - (b.kind === 'order' || b.kind === 'placement' ? 0 : 1) || a.name.localeCompare(b.name)),
+    orderTotal: dayOrderTotal.get(date) || 0,
+  }))
+
+  // ── Map ──
+  const visitedEver = new Set(allVisits.map(v => v.account_id).filter(Boolean) as string[])
+  const visitedInPeriod = new Set(visitedIds)
+  const orderedInPeriod = new Set(orderedIds)
+  const periodValueByAccount = new Map<string, number>()
+  for (const o of orders) { const k = orderAccountKey(o); periodValueByAccount.set(k, round2((periodValueByAccount.get(k) || 0) + orderValue(o))) }
+  const placedIds = new Set(activePlacements.map(p => p.account_id).filter(Boolean) as string[])
+  const mapAccounts: MapAccount[] = (input.accounts || [])
+    .filter(a => typeof a.lat === 'number' && typeof a.lng === 'number' && a.lat !== 0 && a.lng !== 0 && (visitedEver.has(a.id) || placedIds.has(a.id)))
+    .map(a => ({
+      id: a.id, name: a.name, type: a.account_type ?? null, lat: a.lat as number, lng: a.lng as number,
+      hasPlacement: placedIds.has(a.id), visitedInPeriod: visitedInPeriod.has(a.id), visitedEver: visitedEver.has(a.id), orderedInPeriod: orderedInPeriod.has(a.id),
+      lastVisit: lastVisitByAccount.get(a.id) || null, onShelf: onShelfByAccount.get(a.id) || 0, periodValue: periodValueByAccount.get(a.id) || 0,
     }))
 
-  // ── Top accounts this period ──
-  // Seeded from orders AND visits: an account that ordered heavily but wasn't
-  // visited in the window is still one of the period's most important accounts.
-  const acctMap = new Map<string, TopAccount>()
-  const touch = (key: string, name: string): TopAccount => {
-    let a = acctMap.get(key)
-    if (!a) { a = { id: key, name, visits: 0, wins: 0, orders: 0, orderValue: 0 }; acctMap.set(key, a) }
-    if (a.name === 'Account' && name !== 'Account') a.name = name
-    return a
+  const report: PeriodReport = {
+    range, nowMs, staff,
+    trackingStart, trackingStartLabel: trackingStart ? fmtMonthLong(trackingStart) : null, trackingStartMon: trackingStart ? fmtMon(trackingStart) : null,
+    visits, priorVisits, orders, priorOrders, allVisits, allOrders, activePlacements, accountInfo, repNames,
+    measures, sparklines, allTime, secondary, cumulative, funnel,
+    accountsLedger: { period: accountRows(visits, orders), all: accountRows(allVisits, allOrders) },
+    ordersLedger: { period: orderRows(orders), all: orderRows(allOrders) },
+    productsLedger: { period: productRows(orders), all: productRows(allOrders) },
+    placements, placementLocations, events, eventSummary,
+    timeline, timelineStops: sum(timeline.map(d => d.stops.length)),
+    mapAccounts,
   }
-  for (const o of orders) {
-    // Orders keyed to a name-only delivery target still belong to someone.
-    const key = o.account_id || (o.deliver_to_name ? `name:${o.deliver_to_name}` : '')
-    if (!key) continue
-    const a = touch(key, o.accounts?.name || o.deliver_to_name || 'Account')
-    a.orders++
-    a.orderValue += orderValue(o)
-  }
-  for (const v of visits) {
-    if (!v.account_id) continue
-    const a = touch(v.account_id, v.accounts?.name || 'Account')
-    a.visits++
-    if (WIN_STATUSES.has(v.status)) a.wins++
-  }
-  // Dollars ordered leads the ranking — it is the outcome the brand is paying for.
-  const topAccounts = [...acctMap.values()]
-    .map(a => ({ ...a, orderValue: Math.round(a.orderValue) }))
-    .sort((a, b) => b.orderValue - a.orderValue || b.wins - a.wins || b.visits - a.visits || a.name.localeCompare(b.name))
-    .slice(0, 8)
+  return report
+}
 
-  // ── Snapshot (as of today) ──
-  const active  = input.placements.filter(p => !p.lost_at)
-  const onShelfPlac = active.filter(p => p.status === 'on_shelf' || p.status === 'reordering')
-  const pipeline = PIPELINE_ORDER
-    .map(s => ({ status: s, label: PIPELINE_LABEL[s], count: active.filter(p => p.status === s).length }))
-    .filter(p => p.count > 0)
+// ── Account drawer ────────────────────────────────────────────────────────────
 
-  const visitedIds = new Set(visits.map(v => v.account_id).filter(Boolean) as string[])
-  const buyingIds  = new Set([
-    ...onShelfPlac.map(p => p.account_id),
-    ...orders.map(o => o.account_id),
-  ].filter(Boolean) as string[])
-  const buyingVisited = [...visitedIds].filter(id => buyingIds.has(id)).length
-  const reach = { pct: visitedIds.size ? Math.round((buyingVisited / visitedIds.size) * 100) : null, buying: buyingVisited, visited: visitedIds.size }
-
-  // Repeat business is measured from orders, not placements: an account can reorder
-  // for months without anyone logging a shelf placement for it, and tying the metric
-  // to placement hygiene made real reorders invisible.
-  const ordersPerAccount = new Map<string, number>()
-  for (const o of visibleOrders) {
-    const key = o.account_id || (o.deliver_to_name ? `name:${o.deliver_to_name}` : '')
-    if (!key) continue
-    ordersPerAccount.set(key, (ordersPerAccount.get(key) || 0) + 1)
-  }
-  const orderingCount = ordersPerAccount.size
-  const repeatAccounts = [...ordersPerAccount.values()].filter(n => n >= 2).length
-  const repeat = {
-    pct: orderingCount ? Math.round((repeatAccounts / orderingCount) * 100) : null,
-    repeatAccounts, ordering: orderingCount,
-  }
-
+export function getAccountDetail(report: PeriodReport, accountId: string): AccountDetail | null {
+  const info = report.accountInfo[accountId]
+  const isNameKey = accountId.startsWith('name:')
+  if (!info && !isNameKey) return null
+  const name = info?.name || accountId.slice(5)
+  const visits = report.allVisits.filter(v => v.account_id === accountId && (report.staff || v.status !== 'Not Interested'))
+  const orders = report.allOrders.filter(o => orderAccountKey(o) === accountId)
+  const onShelf = report.activePlacements.filter(p => p.account_id === accountId && (p.status === 'on_shelf' || p.status === 'reordering'))
+  const firstVisit = visits.length ? mtDayKey(Math.min(...visits.map(v => toMs(v.visited_at)))) : null
+  const rows = report.ordersLedger.all.filter(r => r.accountId === accountId)
   return {
-    range, visits, priorVisits, orders, events,
-    kpis: {
-      visits:          delta(visits.length, priorVisits.length),
-      accountsReached: delta(uniqueAccounts(visits), uniqueAccounts(priorVisits)),
-      wins:            delta(wins.length, priorWins.length),
-      winRate:         delta(winRate, priorWinRate),
-      inProgress:      delta(inProgress, priorInProgress),
-      orders:          delta(orders.length, priorOrders.length),
-      orderValue:      delta(orderValueSum(orders), orderValueSum(priorOrders)),
-      newPlacements:   delta(newPlac, priorNewPlac),
-      events:          delta(events.length, priorEvents.length),
-    },
-    hasOrderValue,
-    trend, trendGranularity: granularity,
-    outcomes, topAccounts,
-    snapshot: { activePlacements: active.length, onShelf: onShelfPlac.length, pipeline, reach, repeat },
+    id: accountId, name, type: info?.type ?? null, firstVisit,
+    ordersAllTime: orders.length, valueAllTime: round2(sum(orders.map(orderValue))), onShelfNow: onShelf.length,
+    onShelf: onShelf.map(p => ({ id: p.id, product: stripProductName(p.product_name), location: PLACEMENT_LOCATION_LABEL[p.placement_type || ''] || 'Shelf', since: mtDayKey(toMs(p.created_at)), stage: p.status === 'reordering' ? 'Reordering' : 'On shelf' })),
+    orders: rows,
+    visits: visits.slice(0, 10).map(v => ({
+      id: v.id, date: mtDayKey(toMs(v.visited_at)), notes: (v.notes || '').trim(), status: v.status,
+      label: CLIENT_OUTCOME_LABEL[v.status] || 'Visit', rep: v.user_id ? (report.repNames[v.user_id] || null) : null,
+      win: ['Just Ordered', 'New Placement', 'Menu Feature Won'].includes(v.status),
+    })),
   }
 }
 
-// ── Formatting helpers shared by UI + PDF ─────────────────────────────────────
+// ── Formatting shared by screen and PDF ───────────────────────────────────────
 
-export function formatDelta(d: Delta, unit: 'count' | 'pts' | 'dollars' = 'count'): string {
-  if (d.dir === 'flat') return 'No change'
-  const sign = d.diff > 0 ? '+' : '−'
+export function formatDelta(d: Delta, unit: 'count' | 'dollars' = 'count'): string {
+  if (d.dir === 'flat') return '— no change'
   const abs = Math.abs(d.diff)
-  if (unit === 'pts') return `${sign}${abs} pts`
-  if (unit === 'dollars') return `${sign}$${abs.toLocaleString()}`
-  return d.pct !== null ? `${sign}${Math.abs(d.pct)}%` : `${sign}${abs}`
+  const num = unit === 'dollars' ? '$' + Math.round(abs).toLocaleString('en-US') : String(abs)
+  return d.dir === 'up' ? `▲ +${num}` : `▼ −${num}`
 }
 
-export function compactMoney(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 10_000)    return `$${Math.round(n / 1000)}K`
-  if (n >= 1000)      return `$${(n / 1000).toFixed(1)}K`
-  return `$${Math.round(n).toLocaleString()}`
+export function formatPdfDelta(d: Delta, unit: 'count' | 'dollars', compareLabel: string): string {
+  const abs = Math.abs(d.diff)
+  const num = unit === 'dollars' ? '$' + Math.round(abs).toLocaleString('en-US') : String(abs)
+  const sign = d.dir === 'down' ? '−' : '+'
+  return `${sign}${num} vs ${compareLabel}`
+}
+
+// ── PDF data (monthly and quarterly) ──────────────────────────────────────────
+
+export interface MonthlyPdfData {
+  monthKey: string
+  label: string                       // "October 2026"
+  compareLabel: string                // "previous month"
+  accountsVisited: Delta
+  visits: number
+  orders: Delta
+  value: Delta
+  weeks: { label: string; value: number }[]
+  topAccounts: { name: string; orders: number; value: number }[]
+  products: { name: string; cases: number; bottles: number }[]
+  placements: { onShelf: number; reorderingAccounts: number; newThisMonth: number; tastings: number }
+}
+
+export interface QuarterlyPdfData {
+  year: number
+  q: number
+  label: string                       // "Q3 2026"
+  months: { key: string; label: string; accountsVisited: number; orders: number; value: number; newPlacements: number; tastings: number }[]
+  totals: { accountsVisited: number; orders: number; value: number; newPlacements: number; tastings: number }
+  topAccounts: { name: string; orders: number; value: number }[]
+  products: { name: string; cases: number; bottles: number }[]
+}
+
+type PdfSource = Omit<ReportInput, 'range' | 'staff' | 'repNames'>
+
+export function buildMonthlyPdfData(src: PdfSource, monthKey: string): MonthlyPdfData {
+  const range = resolveRange({ mode: 'month', anchor: monthKey, customStart: '', customEnd: '' }, src.nowMs)
+  const r = buildPeriodReport({ ...src, range, staff: false })
+  const weeks: { label: string; value: number }[] = []
+  for (let i = 0; i < 5; i++) {
+    const ws = addDays(range.startKey, i * 7)
+    if (ws > range.fullEndKey) break
+    const we = addDays(ws, 6) > range.fullEndKey ? range.fullEndKey : addDays(ws, 6)
+    const value = round2(sum(r.orders.filter(o => { const k = mtDayKey(orderDateMs(o)); return k >= ws && k <= we }).map(orderValue)))
+    weeks.push({ label: fmtShort(ws), value })
+  }
+  const productTotals = r.productsLedger.period.slice().sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || b.value - a.value)
+  return {
+    monthKey, label: range.label, compareLabel: range.compareLabel,
+    accountsVisited: r.measures.accountsVisited, visits: r.measures.visits, orders: r.measures.orders, value: r.measures.orderValue,
+    weeks,
+    topAccounts: r.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 10).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
+    products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),
+    placements: { onShelf: r.secondary.onShelf, reorderingAccounts: r.secondary.reorderingAccounts, newThisMonth: r.secondary.newPlacements, tastings: r.secondary.tastings },
+  }
+}
+
+export function buildQuarterlyPdfData(src: PdfSource, year: number, q: number): QuarterlyPdfData {
+  const first = quarterFirstMonth(year, q)
+  const qRange = resolveRange({ mode: 'quarter', anchor: first, customStart: '', customEnd: '' }, src.nowMs)
+  const qr = buildPeriodReport({ ...src, range: qRange, staff: false })
+  const months = [0, 1, 2].map(i => {
+    const key = addMonths(first, i)
+    const mr = buildPeriodReport({ ...src, range: resolveRange({ mode: 'month', anchor: key, customStart: '', customEnd: '' }, src.nowMs), staff: false })
+    return { key, label: fmtMon(key), accountsVisited: mr.measures.accountsVisited.current, orders: mr.measures.orders.current, value: mr.measures.orderValue.current, newPlacements: mr.secondary.newPlacements, tastings: mr.secondary.tastings }
+  })
+  const productTotals = qr.productsLedger.period.slice().sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || b.value - a.value)
+  return {
+    year, q, label: qRange.label, months,
+    totals: {
+      accountsVisited: qr.measures.accountsVisited.current, orders: qr.measures.orders.current, value: qr.measures.orderValue.current,
+      newPlacements: qr.secondary.newPlacements, tastings: qr.secondary.tastings,
+    },
+    topAccounts: qr.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 8).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
+    products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),
+  }
 }
