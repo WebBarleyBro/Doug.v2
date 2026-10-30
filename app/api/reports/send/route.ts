@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
     const user = await getAuthUserFromRequest(req)
     if (!user) return fail(401, 'UNAUTHORIZED', 'Please sign in again.')
     if (!['owner', 'admin'].includes(user.role)) return fail(403, 'FORBIDDEN', 'Owners and admins only.')
-    callerEmail = user.email || null
+    // Logins created before the rename still use @barley-bros.com; tests go to the Western Peak inbox.
+    callerEmail = user.email ? user.email.replace(/@barley-bros\.com$/i, '@westernpeak.org') : null
   }
   const mode = isCron ? 'send' : (url.searchParams.get('mode') || 'dry')
   if (!['dry', 'pdf', 'test', 'send', 'history'].includes(mode)) return fail(400, 'BAD_REQUEST', 'Unknown mode.')
