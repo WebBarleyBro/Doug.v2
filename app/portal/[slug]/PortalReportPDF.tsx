@@ -120,7 +120,7 @@ function ProductsTable({ rows }: { rows: { name: string; retail: boolean; cases:
 export function MonthlyReportPDF({ data, clientName, preparedOn }: { data: MonthlyPdfData; clientName: string; preparedOn: string }) {
   registerPortalFonts()
   const figs: [string, string, string][] = [
-    ['Accounts worked', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} ordered · ${data.visitedInPerson} visited`],
+    ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} placed orders · ${data.visitedInPerson} in person`],
     ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
     ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
   ]
@@ -167,7 +167,7 @@ export function QuarterlyReportPDF({ data, clientName, preparedOn }: { data: Qua
             {data.months.map(m => <Text key={m.key} style={{ ...s.gCell, ...s.gHead }}>{m.label}</Text>)}
             <Text style={{ ...s.gTot, ...s.gHead, fontWeight: 600 }}>Q{data.q}</Text>
           </View>
-          {row('Accounts worked', 'accountsWorked', String)}
+          {row('Accounts visited', 'accountsWorked', String)}
           {row('Orders', 'orders', String)}
           {row('Order value', 'value', money)}
           {row('New accounts', 'newAccounts', String)}

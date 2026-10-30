@@ -12,7 +12,7 @@ import { clientLogoUrl, WESTERN_PEAK_LOGO_SCREEN_URL } from '../../lib/constants
 import {
   type PeriodSelection, type PeriodReport, type PdfSource,
   resolveRange, parseHash, toHash, stepSelection, defaultSelection, buildPeriodReport, getAccountDetail,
-  buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthLong, fmtMonthShort, fmtShortYear, quarterOf, quarterFirstMonth, addMonths, mtDayKey, isoDayKey,
+  buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthShort, fmtShortYear, quarterOf, quarterFirstMonth, addMonths, mtDayKey, isoDayKey,
 } from './portal-metrics'
 import {
   C, FS, FM, FIRM, accentTokens, PortalStyles, Seg, Btn, Panel, MeasuresBlock, CumulativeChart, Funnel, Ledger, AccountsPanel, EventsPanel, Timeline,
@@ -66,7 +66,8 @@ export default function ClientPortalPage() {
   const [fileErr, setFileErr] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const emptySuggest = { name: '', address: '', reason: '', notes: '' }
+  const emptySuggest = { name: '', address: '', reason: '', notes: '', contactName: '', contactRole: '', contactPhone: '', contactEmail: '' }
+  const venueInputRef = useRef<HTMLInputElement>(null)
   const [suggestForm, setSuggestForm] = useState(emptySuggest)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -129,6 +130,36 @@ export default function ClientPortalPage() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  // ── Google Places search on the Suggest an account venue field ────────────────
+  // Picking a result fills Venue and Address. Listeners and the dropdown are removed
+  // when the drawer closes so nothing leaks between openings.
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    if (drawer !== 'suggest' || submitted || !key) return
+    const w = window as any
+    let ac: any = null
+    let alive = true
+    const init = () => {
+      if (!alive || ac || !venueInputRef.current) return
+      ac = new w.google.maps.places.Autocomplete(venueInputRef.current, { types: ['establishment'], componentRestrictions: { country: 'us' }, fields: ['name', 'formatted_address'] })
+      ac.addListener('place_changed', () => {
+        const p = ac.getPlace()
+        setSuggestForm(f => ({ ...f, name: p?.name || f.name, address: p?.formatted_address || f.address }))
+      })
+    }
+    if (!document.getElementById('gm-script')) {
+      const sc = document.createElement('script'); sc.id = 'gm-script'; sc.async = true
+      sc.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
+      document.head.appendChild(sc)
+    }
+    const iv = setInterval(() => { if (w.google?.maps?.places) { clearInterval(iv); init() } }, 100)
+    return () => {
+      alive = false; clearInterval(iv)
+      if (ac && w.google?.maps?.event) w.google.maps.event.clearInstanceListeners(ac)
+      document.querySelectorAll('.pac-container').forEach(el => el.remove())
+    }
+  }, [drawer, submitted])
+
   // ── Account menu ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!menuOpen) return
@@ -184,6 +215,8 @@ export default function ClientPortalPage() {
       await submitClientSuggestion({
         client_slug: slug, suggestion_type: 'account', name: suggestForm.name.trim(), address: suggestForm.address || undefined,
         reason: suggestForm.reason, notes: suggestForm.notes || undefined,
+        contact_person: suggestForm.contactName.trim() || undefined, contact_category: suggestForm.contactRole.trim() || undefined,
+        contact_phone: suggestForm.contactPhone.trim() || undefined, contact_email: suggestForm.contactEmail.trim() || undefined,
         submitted_by_name: userProfile?.name || undefined, submitted_by_email: userProfile?.email || undefined,
       })
       fetch('/api/client-suggestion-notify', {
@@ -191,6 +224,8 @@ export default function ClientPortalPage() {
         body: JSON.stringify({
           client_name: data?.client?.name || slug, suggestion_type: 'account', name: suggestForm.name, address: suggestForm.address,
           reason: SUGGESTION_REASONS.find(r => r.value === suggestForm.reason)?.label, notes: suggestForm.notes,
+          contact_name: suggestForm.contactName || undefined, contact_role: suggestForm.contactRole || undefined,
+          contact_email: suggestForm.contactEmail || undefined, contact_phone: suggestForm.contactPhone || undefined,
           submitted_by: userProfile?.name || userProfile?.email,
         }),
       }).catch(() => {})
@@ -264,7 +299,6 @@ export default function ClientPortalPage() {
   const activeOnMap = report.mapAccounts.filter(a => a.active).length
   const hasEvents = report.events.length > 0
   const updatedAt = new Date(loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })
-  const sinceLabel = client?.since_date ? fmtMonthLong(String(client.since_date).slice(0, 7)) : null
   const accountDetail = drawer && typeof drawer === 'object' && 'account' in drawer ? getAccountDetail(report, drawer.account) : null
   const orderDetail = drawer && typeof drawer === 'object' && 'order' in drawer ? report.ordersLedger.all.find(o => o.id === drawer.order) || null : null
   const today = mtDayKey(loadedAt)
@@ -344,7 +378,6 @@ export default function ClientPortalPage() {
               : <div style={{ width: 50, height: 50, borderRadius: 12, background: accent.accentSoft, color: accent.accentInk, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 20, border: `1px solid ${C.line}` }}>{(client?.name || '?')[0]}</div>}
             <div>
               <h1 style={{ fontSize: 'clamp(26px, 3vw, 34px)', fontWeight: 600, letterSpacing: '-0.025em', margin: 0, lineHeight: 1.05 }}>{client?.name}</h1>
-              <div style={{ fontSize: 13, color: C.mute, marginTop: 6 }}>{[sinceLabel ? `Represented since ${sinceLabel}` : null, client?.territory].filter(Boolean).join(' · ')}</div>
             </div>
           </div>
           <div className="pt-id-right">
@@ -419,12 +452,12 @@ export default function ClientPortalPage() {
       )}
 
       {drawer === 'suggest' && (
-        <Drawer title="Suggest an account" sub="We add it to the route and it shows up in your activity once visited." onClose={closeDrawer}>
+        <Drawer title="Suggest an account" onClose={closeDrawer}>
           {submitted ? (
             <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(143,211,180,.12)', color: C.up, fontSize: 13.5 }}>Sent to {FIRM.contactFirst}.</div>
           ) : (
             <>
-              <Field label="Venue"><input value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder="Name" /></Field>
+              <Field label="Venue"><input ref={venueInputRef} value={suggestForm.name} onChange={e => setSuggestForm(f => ({ ...f, name: e.target.value }))} placeholder="Start typing to search" autoComplete="off" /></Field>
               <Field label="Address or town"><input value={suggestForm.address} onChange={e => setSuggestForm(f => ({ ...f, address: e.target.value }))} placeholder="Optional" /></Field>
               <Field label="Why this one">
                 <select value={suggestForm.reason} onChange={e => setSuggestForm(f => ({ ...f, reason: e.target.value }))}>
@@ -433,6 +466,13 @@ export default function ClientPortalPage() {
                 </select>
               </Field>
               <Field label="Notes"><textarea rows={3} value={suggestForm.notes} onChange={e => setSuggestForm(f => ({ ...f, notes: e.target.value }))} /></Field>
+              <h3 style={{ ...upperLabel, fontSize: 11.5, letterSpacing: '.05em', margin: '8px 0 0' }}>Contact at this venue <span style={{ textTransform: 'none', letterSpacing: 0 }}>(optional)</span></h3>
+              <Field label="Name"><input value={suggestForm.contactName} onChange={e => setSuggestForm(f => ({ ...f, contactName: e.target.value }))} placeholder="Who should we ask for?" /></Field>
+              <Field label="Role"><input value={suggestForm.contactRole} onChange={e => setSuggestForm(f => ({ ...f, contactRole: e.target.value }))} placeholder="Bar manager, buyer, owner…" /></Field>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                <Field label="Phone"><input type="tel" value={suggestForm.contactPhone} onChange={e => setSuggestForm(f => ({ ...f, contactPhone: e.target.value }))} /></Field>
+                <Field label="Email"><input type="email" value={suggestForm.contactEmail} onChange={e => setSuggestForm(f => ({ ...f, contactEmail: e.target.value }))} /></Field>
+              </div>
               {suggestErr && <div style={{ color: C.dn, fontSize: 13 }}>{suggestErr}</div>}
               <Btn primary disabled={submitting} onClick={handleSuggest} style={{ alignSelf: 'flex-start' }}>{submitting ? 'Sending…' : 'Send'}</Btn>
             </>

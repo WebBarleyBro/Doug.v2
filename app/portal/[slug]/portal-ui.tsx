@@ -119,6 +119,7 @@ export function PortalStyles({ accent }: { accent: Accent }) {
       .pt-field{display:flex;flex-direction:column;gap:5px;font-size:13px;color:${C.ink2}}
       .pt-field input,.pt-field select,.pt-field textarea{background:${C.raised};border:1px solid ${C.line};border-radius:8px;color:${C.ink};padding:10px 11px;font:inherit;font-size:14px;width:100%}
       .pt-menu button:hover{background:${C.hover}}
+      .pac-container{z-index:1000!important;font-family:${FS}}
 
       .pt-pin{border-radius:50%;background:${C.bar};position:relative}
       .pt-pin.placed{width:6px;height:6px;opacity:.9}
@@ -339,9 +340,9 @@ export function MeasuresBlock({ report }: { report: PeriodReport }) {
         {report.trackingStartLabel && <span style={{ ...upperLabel, fontSize: 12, letterSpacing: '.05em' }}>Tracking since {report.trackingStartLabel}</span>}
       </div>
       <div className="pt-m3">
-        <Measure label="Accounts worked" value={measures.accountsWorked.current} d={measures.accountsWorked} compareLabel={range.compareLabel}
+        <Measure label="Accounts visited" value={measures.accountsWorked.current} d={measures.accountsWorked} compareLabel={range.compareLabel}
           spark={sparklines.accountsWorked} sparkLabels={sparklines.months.map(m => m.label)}
-          foot={`${measures.orderedAccounts.toLocaleString('en-US')} ordered · ${measures.visitedInPerson.toLocaleString('en-US')} visited`} />
+          foot={`${measures.orderedAccounts.toLocaleString('en-US')} placed orders · ${measures.visitedInPerson.toLocaleString('en-US')} visited in person`} />
         <Measure label="Orders" value={measures.orders.current} d={measures.orders} compareLabel={range.compareLabel}
           spark={sparklines.orders} sparkLabels={sparklines.months.map(m => m.label)}
           foot={`${allTime.orders.toLocaleString('en-US')} orders since ${mon} · ${allTime.orderingAccounts.toLocaleString('en-US')} accounts have ordered`} />
@@ -462,12 +463,12 @@ export function Funnel({ report }: { report: PeriodReport }) {
   const { funnel, range } = report
   const denom = Math.max(1, funnel.worked, funnel.ordered)
   const rows = [
-    { label: 'Accounts worked', n: funnel.worked, small: `${funnel.visitedInPerson} visited · ${funnel.priorWorked} in the ${range.compareLabel}` },
+    { label: 'Accounts visited', n: funnel.worked, small: `${funnel.visitedInPerson} in person · ${funnel.priorWorked} in the ${range.compareLabel}` },
     { label: 'Placed an order', n: funnel.ordered, small: `${funnel.firstTime} ordering for the first time · ${funnel.priorOrdered} in the ${range.compareLabel}` },
     { label: 'Have ordered more than once', n: funnel.repeat, small: `of the ${funnel.ordered} that ordered` },
   ]
   return (
-    <Panel title="From account to order" sub={funnel.conversionPct === null ? undefined : `${funnel.conversionPct}% of accounts worked placed an order`} style={{ display: 'flex', flexDirection: 'column' }}>
+    <Panel title="From account to order" sub={funnel.conversionPct === null ? undefined : `${funnel.conversionPct}% of accounts visited placed an order`} style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
         {rows.map((r, i) => (
           <div key={r.label} style={{ display: 'grid', gap: 6 }}>
@@ -705,6 +706,13 @@ function rowsFor(stops: TimelineStop[], filter: FeedFilter): FeedRow[] {
   return out
 }
 
+// "2 orders" / "1 order · 1 visit" / "3 placements": what actually happened that day.
+function dayCounts(rows: FeedRow[]): string {
+  const n = (k: FeedRow['kind']) => rows.filter(r => r.kind === k).length
+  const part = (count: number, word: string) => (count ? `${count} ${word}${count === 1 ? '' : 's'}` : '')
+  return [part(n('order'), 'order'), part(n('placement'), 'placement'), part(n('visit'), 'visit')].filter(Boolean).join(' · ')
+}
+
 function FeedLine({ row, firm, showNewTag, onClick }: { row: FeedRow; firm: boolean; showNewTag: boolean; onClick: () => void }) {
   const s = row.stop
   const sep = <span style={{ color: C.faint }}> · </span>
@@ -745,7 +753,7 @@ export function Timeline({ report, firm, onOpenOrder, onOpenAccount }: { report:
             <div key={d.date} className="pt-tl-day">
               <div className="pt-tl-date">
                 {d.weekday}
-                <small style={{ display: 'block', color: C.mute, fontSize: 11.5, marginTop: 2 }}>{d.label} · {d.rows.length} stop{d.rows.length === 1 ? '' : 's'}{d.orderTotal ? ` · ${money(d.orderTotal)}` : ''}</small>
+                <small style={{ display: 'block', color: C.mute, fontSize: 11.5, marginTop: 2 }}>{[d.label, dayCounts(d.rows), d.orderTotal ? money(d.orderTotal) : ''].filter(Boolean).join(' · ')}</small>
               </div>
               <div className="pt-tl-stops">
                 {d.rows.map(r => (
@@ -925,7 +933,7 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
         {[
-          ['Accounts worked', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} ordered · ${data.visitedInPerson} visited`],
+          ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} placed orders · ${data.visitedInPerson} in person`],
           ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
           ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
         ].map(([k, v, c]) => (
@@ -976,7 +984,7 @@ export function QuarterlyPreview({ data, clientName, preparedOn }: { data: Quart
         <div style={{ ...cell, ...pg.h5, borderBottom: '1px solid #eee', margin: 0 }} />
         {data.months.map(m => <div key={m.key} style={{ ...cell, ...pg.h5, margin: 0 }}>{m.label}</div>)}
         <div style={{ ...cell, ...pg.h5, margin: 0, fontWeight: 600, background: '#f4f4f5' }}>Q{data.q}</div>
-        {row('Accounts worked', 'accountsWorked', String)}{row('Orders', 'orders', String)}{row('Order value', 'value', money)}{row('New accounts', 'newAccounts', String)}{row('Tastings', 'tastings', String)}
+        {row('Accounts visited', 'accountsWorked', String)}{row('Orders', 'orders', String)}{row('Order value', 'value', money)}{row('New accounts', 'newAccounts', String)}{row('Tastings', 'tastings', String)}
       </div>
       <div><h5 style={pg.h5}>Order value by month</h5><PreviewBars bars={data.months.map(m => ({ label: m.label, value: m.value }))} max={Math.max(1, ...data.months.map(m => m.value))} /></div>
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, flex: 1, minHeight: 0 }}>
