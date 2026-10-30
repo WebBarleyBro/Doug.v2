@@ -4,7 +4,7 @@ Every value the client portal shows is computed in `app/portal/[slug]/portal-met
 
 Rules from `PORTAL_SPEC.md` v1.2 and the October 30 review that shape every query:
 
-- **An order is not a visit.** "Accounts worked" is the union of accounts with a visit row and accounts with a client-visible order. The split ("{o} ordered · {v} visited") is always shown with it.
+- **An order is not a visit.** The "Accounts visited" measure counts the union of accounts with a visit row and accounts with a client-visible order. The split ("{o} placed orders · {v} visited in person") is always shown with it.
 - **Client-visible orders** are `purchase_orders.status IN ('sent', 'fulfilled')`. The order date is `COALESCE(sent_at, created_at)`.
 - **Distributors are not venues.** An account with `account_kind = 'distributor'` (added by migration 069), or whose name contains "Distribut" until 069 runs, is left out of every account count, the accounts ledger, the funnel and the map. Its orders still count in Orders and Order value.
 - **The `placements` table is never read.** "Active" means a client-visible order in the 90 days ending at the period end.
@@ -75,7 +75,7 @@ SELECT least((SELECT min(day) FROM v), (SELECT min(day) FROM o_all)) AS tracking
 
 ## 2. Measures block
 
-### Accounts worked: 8, previous month 24, ▼ −16
+### Accounts visited: 8, previous month 24, ▼ −16
 
 ```sql
 SELECT
@@ -83,7 +83,7 @@ SELECT
   (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN q_start AND q_end) AS prior;    -- 24
 ```
 
-Footnote "{o} ordered · {v} visited":
+Footnote "{o} placed orders · {v} visited in person":
 
 ```sql
 SELECT (SELECT count(DISTINCT account_id) FROM o, params WHERE day BETWEEN p_start AND p_end) AS ordered,  -- 8
@@ -130,7 +130,7 @@ SELECT m.month,
        (SELECT round(coalesce(sum(value), 0), 2) FROM o_all WHERE date_trunc('month', day) = m.month) AS order_value
 FROM generate_series(date '2026-05-01', date '2026-10-01', interval '1 month') AS m(month)
 ORDER BY m.month;
--- accounts worked: 24, 20, 33, 25, 24, 8
+-- accounts visited: 24, 20, 33, 25, 24, 8
 -- orders:           8,  9, 18, 12, 11, 17
 -- order value: 1757.33, 2216.60, 8058.08, 3318.55, 3611.47, 13142.54
 ```
@@ -191,7 +191,7 @@ SELECT
      WHERE f.n_orders >= 2 AND EXISTS (SELECT 1 FROM o WHERE o.account_id = f.account_id AND o.day BETWEEN p_start AND p_end)) AS repeat,  -- 6
   (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN q_start AND q_end) AS prior_worked, -- 24
   (SELECT count(DISTINCT account_id) FROM o, params WHERE day BETWEEN q_start AND q_end) AS prior_ordered;     -- 9
--- subtitle: round(ordered / worked * 100) = 100% of accounts worked placed an order
+-- subtitle: round(ordered / worked * 100) = 100% of accounts visited placed an order
 ```
 
 ## 5. Account map
@@ -370,7 +370,7 @@ Clicking an order or placement row opens the Order drawer: account, date, PO, st
 
 ## 11. PDF
 
-The monthly PDF uses the Section 2 measures for the month, weekly order value (weeks start on the 1st, 8th, 15th, 22nd and 29th), the top 10 venue accounts by value, the top 6 products by cases, and the Accounts block. October 2026 by week: $759.92, $9,225.12, $1,957.50, $1,200.00, $0. The quarterly PDF repeats the measures per month with a quarter total. Q3 2026: 72 accounts worked (previous quarter 49), 41 orders (23), $14,988.10 ($4,913.61).
+The monthly PDF uses the Section 2 measures for the month, weekly order value (weeks start on the 1st, 8th, 15th, 22nd and 29th), the top 10 venue accounts by value, the top 6 products by cases, and the Accounts block. October 2026 by week: $759.92, $9,225.12, $1,957.50, $1,200.00, $0. The quarterly PDF repeats the measures per month with a quarter total. Q3 2026: 72 accounts visited (previous quarter 49), 41 orders (23), $14,988.10 ($4,913.61).
 
 ```sql
 SELECT params.p_start + 7 * w AS week_start,

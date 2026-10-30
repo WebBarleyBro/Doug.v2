@@ -120,6 +120,7 @@ export function clientLogoUrl(client: { slug: string; logo_url?: string | null }
 // as-is on dark surfaces. The source PNG is 6000×2000 (3:1).
 export const WESTERN_PEAK_LOGO_URL = 'https://res.cloudinary.com/dhg83nxda/image/upload/v1789595866/Western._5000_x_2000_px_i4gp1i.png'
 // Same artwork resized for screen use (keeps a 5000px PNG off the page).
-export const WESTERN_PEAK_LOGO_SCREEN_URL = 'https://res.cloudinary.com/dhg83nxda/image/upload/w_400,f_png/v1789595866/Western._5000_x_2000_px_i4gp1i.png'
+// Trimmed of transparent margins and sized for up to 3× displays at 44px tall.
+export const WESTERN_PEAK_LOGO_SCREEN_URL = 'https://res.cloudinary.com/dhg83nxda/image/upload/e_trim,h_132,f_png/v1789595866/Western._5000_x_2000_px_i4gp1i.png'
 // For white backgrounds (PDF): the cream wordmark recolored to near-black; the orange "a" is unchanged.
 export const WESTERN_PEAK_LOGO_ON_LIGHT_URL = 'https://res.cloudinary.com/dhg83nxda/image/upload/e_replace_color:111111:60:fdfbf0,w_600,f_png/v1789595866/Western._5000_x_2000_px_i4gp1i.png'

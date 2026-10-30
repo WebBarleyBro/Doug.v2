@@ -315,7 +315,7 @@ export default function ClientPortalPage() {
         {isStaff && (
           <div className="pt-staffbar" aria-label="Staff preview">
             <span style={{ ...upperLabel, fontSize: 11, color: accent.accentInk, letterSpacing: '.08em' }}>Staff preview</span>
-            <Seg ariaLabel="Viewer" value={view} onChange={v => setView(v as 'client' | 'firm')} style={{ transform: 'scale(.92)', transformOrigin: 'right center' }}
+            <Seg ariaLabel="Viewer" value={view} onChange={v => setView(v as 'client' | 'firm')}
               options={[{ value: 'client', label: 'Client view' }, { value: 'firm', label: `${FIRM.name} view` }]} />
           </div>
         )}
@@ -324,7 +324,7 @@ export default function ClientPortalPage() {
         <div className="pt-bar">
           <div className="pt-brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={WESTERN_PEAK_LOGO_SCREEN_URL} alt="Western Peak" style={{ height: 28, width: 'auto', display: 'block' }} />
+            <img src={WESTERN_PEAK_LOGO_SCREEN_URL} alt="Western Peak" className="pt-logo" />
             <span className="pt-brand-label" style={{ ...upperLabel, fontSize: 11, whiteSpace: 'nowrap' }}>Brand report</span>
           </div>
           <div className="pt-tools">

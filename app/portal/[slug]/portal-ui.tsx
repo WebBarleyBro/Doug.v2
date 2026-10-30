@@ -43,9 +43,9 @@ export function PortalStyles({ accent }: { accent: Accent }) {
   return (
     <style>{`
       .pt-root{background:${C.bg};color:${C.ink};font-family:${FS};font-size:14.5px;line-height:1.45;min-height:100vh;
-        padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:64px;overflow-x:clip}
+        padding-left:max(clamp(16px,4vw,48px),env(safe-area-inset-left,0px));padding-right:max(clamp(16px,4vw,48px),env(safe-area-inset-right,0px));padding-bottom:64px;overflow-x:clip}
       .pt-root *{box-sizing:border-box;min-width:0}
-      .pt-wrap{max-width:1180px;margin:0 auto}
+      .pt-wrap{max-width:1440px;margin:0 auto}
       .pt-root button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
       .pt-root button:disabled{cursor:default}
       .pt-root button:focus-visible,.pt-root a:focus-visible,.pt-root input:focus-visible,.pt-root select:focus-visible,.pt-root textarea:focus-visible{outline:2px solid ${accent.accent};outline-offset:2px}
@@ -55,8 +55,11 @@ export function PortalStyles({ accent }: { accent: Accent }) {
       .pt-root ::-webkit-scrollbar{width:7px;height:7px}.pt-root ::-webkit-scrollbar-thumb{background:rgba(242,243,245,.13);border-radius:4px}
 
       .pt-staffbar{height:36px;display:flex;align-items:center;justify-content:flex-end;gap:10px;border-bottom:1px solid ${C.line2};font-size:12px;color:${C.mute}}
-      .pt-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid ${C.line};position:sticky;top:0;background:${C.bg};z-index:5}
-      .pt-brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+      .pt-staffbar button{padding:3px 10px!important;min-height:26px!important;font-size:12px!important}
+      .pt-bar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 0;border-bottom:1px solid ${C.line};position:sticky;top:0;background:${C.bg};z-index:5}
+      .pt-brand{display:flex;align-items:center;gap:14px;flex-shrink:0}
+      .pt-logo{height:44px;width:auto;display:block}
+      @media (max-width:1279px){.pt-logo{height:38px}}
       .pt-tools{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;justify-content:flex-end}
       .pt-tools-row{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;justify-content:flex-end}
       @media (max-width:1180px){.pt-brand-label{display:none}}
@@ -65,7 +68,7 @@ export function PortalStyles({ accent }: { accent: Accent }) {
         .pt-tools{flex-direction:column;align-items:flex-end;gap:8px}
         .pt-tools-row{flex-wrap:wrap}
       }
-      .pt-id{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:36px 0 20px;flex-wrap:wrap}
+      .pt-id{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:clamp(20px,3vw,32px) 0 18px;flex-wrap:wrap}
       .pt-id-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
       .pt-m3{display:grid;grid-template-columns:repeat(3,1fr)}
       .pt-mx{padding:20px 22px 18px;border-right:1px solid ${C.line};display:flex;flex-direction:column;gap:6px}
@@ -153,6 +156,17 @@ export function PortalStyles({ accent }: { accent: Accent }) {
         .pt-acc-wide{grid-template-columns:1fr;gap:0}.pt-acc-wide h3{margin-top:20px!important}
       }
       @media (max-width:560px){.pt-brand-label{display:none}}
+      @media (max-width:560px){
+        .pt-logo{height:32px}
+        .pt-bar{position:relative;flex-direction:column;align-items:stretch;gap:12px;padding:12px 0 14px}
+        .pt-tools{align-items:stretch;width:100%}
+        .pt-tools-row{flex-wrap:wrap;justify-content:stretch}
+        .pt-tools-row > *{flex:1 1 auto}
+        .pt-tools-row > [role=group]{display:flex!important}
+        .pt-tools-row > [role=group] > *{flex:1 1 auto;text-align:center;justify-content:center}
+        .pt-tools-row > button{justify-content:center}
+        .pt-tools-row > div:last-child{flex:0 0 auto;position:absolute!important;top:10px;right:0}
+      }
       @media (max-width:560px){
         .pt-val{font-size:36px!important}.pt-stages{grid-template-columns:1fr}.pt-stage{border-right:0;border-bottom:1px solid ${C.line}}.pt-stage:last-child{border-bottom:0}
         .pt-panel{padding:16px}.pt-hb{grid-template-columns:110px 1fr 48px}.pt-search{min-width:0!important;width:100%}
