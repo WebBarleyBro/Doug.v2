@@ -1459,7 +1459,8 @@ export async function getPortalData(clientSlug: string) {
   const accounts: any[] = []
   for (let i = 0; i < accountIds.length; i += 100) {
     const { data } = await sb.from('accounts')
-      .select('id, name, account_type, address, lat, lng')
+      // '*' so account_kind is picked up once migration 069 adds it, without breaking before.
+      .select('*')
       .in('id', accountIds.slice(i, i + 100))
     accounts.push(...(data || []))
   }

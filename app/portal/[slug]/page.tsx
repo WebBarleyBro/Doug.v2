@@ -8,14 +8,14 @@ import { UserRound, Loader2 } from 'lucide-react'
 import { getSupabase } from '../../lib/supabase'
 import { getPortalData, submitClientSuggestion, getClientFiles, uploadClientFile } from '../../lib/data'
 import type { ClientFile, ClientFileType } from '../../lib/types'
-import { clientLogoUrl } from '../../lib/constants'
+import { clientLogoUrl, WESTERN_PEAK_LOGO_SCREEN_URL } from '../../lib/constants'
 import {
   type PeriodSelection, type PeriodReport, type PdfSource,
   resolveRange, parseHash, toHash, stepSelection, defaultSelection, buildPeriodReport, getAccountDetail,
   buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthLong, fmtMonthShort, fmtShortYear, quarterOf, quarterFirstMonth, addMonths, mtDayKey, isoDayKey,
 } from './portal-metrics'
 import {
-  C, FS, FM, FIRM, accentTokens, PortalStyles, Mark, Seg, Btn, Panel, MeasuresBlock, CumulativeChart, Funnel, Ledger, StockedPanel, EventsPanel, Timeline,
+  C, FS, FM, FIRM, accentTokens, PortalStyles, Seg, Btn, Panel, MeasuresBlock, CumulativeChart, Funnel, Ledger, AccountsPanel, EventsPanel, Timeline,
   Drawer, Field, AccountDrawer, MonthlyPreview, QuarterlyPreview, mono, upperLabel,
 } from './portal-ui'
 import PortalMap from './PortalMap'
@@ -260,7 +260,8 @@ export default function ClientPortalPage() {
   const logoUrl = client ? clientLogoUrl(client) : null
   const mapToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
   const showMap = !!mapToken && report.mapAccounts.length > 0
-  const stockedOnMap = report.mapAccounts.filter(a => a.stocked).length
+  const activeOnMap = report.mapAccounts.filter(a => a.active).length
+  const hasEvents = report.events.length > 0
   const updatedAt = new Date(loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })
   const sinceLabel = client?.since_date ? fmtMonthLong(String(client.since_date).slice(0, 7)) : null
   const accountDetail = drawer && typeof drawer === 'object' ? getAccountDetail(report, drawer.account) : null
@@ -274,52 +275,60 @@ export default function ClientPortalPage() {
     <div className="pt-root">
       <PortalStyles accent={accent} />
       <div className="pt-wrap">
+        {/* ── Staff bar: rendered only for owner/admin/rep/intern (role check, not CSS) ── */}
+        {isStaff && (
+          <div className="pt-staffbar" aria-label="Staff preview">
+            <span style={{ ...upperLabel, fontSize: 11, color: accent.accentInk, letterSpacing: '.08em' }}>Staff preview</span>
+            <Seg ariaLabel="Viewer" value={view} onChange={v => setView(v as 'client' | 'firm')} style={{ transform: 'scale(.92)', transformOrigin: 'right center' }}
+              options={[{ value: 'client', label: 'Client view' }, { value: 'firm', label: `${FIRM.name} view` }]} />
+          </div>
+        )}
+
         {/* ── Toolbar ── */}
         <div className="pt-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 11, fontWeight: 600, fontSize: 14 }}>
-            <Mark />
-            <span>{FIRM.name}<small style={{ display: 'block', fontSize: 11, color: C.mute, fontWeight: 400, letterSpacing: '.04em' }}>Brand report</small></span>
+          <div className="pt-brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={WESTERN_PEAK_LOGO_SCREEN_URL} alt="Western Peak" style={{ height: 28, width: 'auto', display: 'block' }} />
+            <span className="pt-brand-label" style={{ ...upperLabel, fontSize: 11, whiteSpace: 'nowrap' }}>Brand report</span>
           </div>
           <div className="pt-tools">
-            <Seg ariaLabel="Period" value={sel.mode} onChange={m => setSel(s => ({ ...s, mode: m, anchor: s.anchor || todayMonth }))}
-              options={[{ value: '30d', label: 'Last 30 days' }, { value: 'month', label: 'Month' }, { value: 'quarter', label: 'Quarter' }, { value: 'custom', label: 'Custom' }]} />
-            {(sel.mode === 'month' || sel.mode === 'quarter') && (
-              <span role="group" aria-label="Move period" style={{ display: 'inline-flex', border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', background: C.surface }}>
-                <button type="button" onClick={() => setSel(s => stepSelection(s, -1))} aria-label="Previous" style={{ padding: '7px 12px', fontSize: 13, color: C.ink2, borderRight: `1px solid ${C.line}` }}>‹</button>
-                <span style={{ ...mono, fontSize: 12.5, minWidth: 88, textAlign: 'center', padding: '7px 10px', color: C.ink }}>{range.navLabel}</span>
-                <button type="button" onClick={() => setSel(s => stepSelection(s, 1))} disabled={!range.canNext} aria-label="Next" style={{ padding: '7px 12px', fontSize: 13, color: range.canNext ? C.ink2 : C.faint, borderLeft: `1px solid ${C.line}` }}>›</button>
-              </span>
-            )}
-            {sel.mode === 'custom' && (
-              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                <input type="date" value={sel.customStart} max={sel.customEnd || today} aria-label="From" onChange={e => setSel(s => ({ ...s, customStart: e.target.value }))}
-                  style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 8, color: C.ink, padding: '7px 9px', fontSize: 13, fontFamily: FM }} />
-                <span style={{ color: C.mute }}>to</span>
-                <input type="date" value={sel.customEnd} min={sel.customStart} max={today} aria-label="To" onChange={e => setSel(s => ({ ...s, customEnd: e.target.value }))}
-                  style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 8, color: C.ink, padding: '7px 9px', fontSize: 13, fontFamily: FM }} />
-              </span>
-            )}
-            <Btn onClick={() => setDrawer('files')}>Files</Btn>
-            <Btn onClick={() => { setSubmitted(false); setSuggestErr(''); setDrawer('suggest') }}>Suggest an account</Btn>
-            <Btn primary onClick={openReport}>Download report</Btn>
-            {isStaff && (
-              <>
-                <span style={{ ...upperLabel, fontSize: 10.5, color: accent.accentInk, letterSpacing: '.08em', padding: '4px 8px', border: `1px solid ${accent.accentSoft}`, borderRadius: 6 }}>Preview</span>
-                <Seg ariaLabel="Viewer" value={view} onChange={v => setView(v as 'client' | 'firm')} options={[{ value: 'client', label: 'Client view' }, { value: 'firm', label: `${FIRM.name} view` }]} />
-              </>
-            )}
-            <div ref={menuRef} style={{ position: 'relative' }}>
-              <button type="button" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu" aria-haspopup="menu" aria-expanded={menuOpen}
-                style={{ width: 36, height: 36, border: `1px solid ${C.line}`, borderRadius: 8, display: 'grid', placeItems: 'center', color: C.ink2, background: C.surface }}>
-                <UserRound size={16} />
-              </button>
-              {menuOpen && (
-                <div role="menu" className="pt-menu" style={{ position: 'absolute', right: 0, top: 42, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, padding: 6, minWidth: 190, zIndex: 20, boxShadow: '0 12px 32px rgba(0,0,0,.5)' }}>
-                  <div style={{ padding: '8px 10px', fontSize: 12, color: C.mute, borderBottom: `1px solid ${C.line2}`, marginBottom: 4 }}>{userProfile?.name || userProfile?.email}</div>
-                  <button role="menuitem" type="button" onClick={() => { setMenuOpen(false); setShowChangePw(true); setPwError(''); setPwSuccess(false); setNewPw(''); setConfirmPw('') }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 7, fontSize: 13.5 }}>Change password</button>
-                  <button role="menuitem" type="button" onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 7, fontSize: 13.5 }}>Sign out</button>
-                </div>
+            <div className="pt-tools-row">
+              <Seg ariaLabel="Period" value={sel.mode} onChange={m => setSel(s => ({ ...s, mode: m, anchor: s.anchor || todayMonth }))}
+                options={[{ value: '30d', label: 'Last 30 days' }, { value: 'month', label: 'Month' }, { value: 'quarter', label: 'Quarter' }, { value: 'custom', label: 'Custom' }]} />
+              {(sel.mode === 'month' || sel.mode === 'quarter') && (
+                <span role="group" aria-label="Move period" style={{ display: 'inline-flex', border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', background: C.surface, flexShrink: 0 }}>
+                  <button type="button" onClick={() => setSel(s => stepSelection(s, -1))} aria-label="Previous" style={{ padding: '7px 12px', fontSize: 13, color: C.ink2, borderRight: `1px solid ${C.line}` }}>‹</button>
+                  <span style={{ ...mono, fontSize: 12.5, minWidth: 80, textAlign: 'center', padding: '7px 8px', color: C.ink, whiteSpace: 'nowrap' }}>{range.navLabel}</span>
+                  <button type="button" onClick={() => setSel(s => stepSelection(s, 1))} disabled={!range.canNext} aria-label="Next" style={{ padding: '7px 12px', fontSize: 13, color: range.canNext ? C.ink2 : C.faint, borderLeft: `1px solid ${C.line}` }}>›</button>
+                </span>
               )}
+              {sel.mode === 'custom' && (
+                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <input type="date" value={sel.customStart} max={sel.customEnd || today} aria-label="From" onChange={e => setSel(s => ({ ...s, customStart: e.target.value }))}
+                    style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 8, color: C.ink, padding: '7px 8px', fontSize: 13, fontFamily: FM }} />
+                  <span style={{ color: C.mute }}>to</span>
+                  <input type="date" value={sel.customEnd} min={sel.customStart} max={today} aria-label="To" onChange={e => setSel(s => ({ ...s, customEnd: e.target.value }))}
+                    style={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 8, color: C.ink, padding: '7px 8px', fontSize: 13, fontFamily: FM }} />
+                </span>
+              )}
+            </div>
+            <div className="pt-tools-row">
+              <Btn onClick={() => setDrawer('files')}>Files</Btn>
+              <Btn onClick={() => { setSubmitted(false); setSuggestErr(''); setDrawer('suggest') }}>Suggest an account</Btn>
+              <Btn primary onClick={openReport}>Download report</Btn>
+              <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
+                <button type="button" onClick={() => setMenuOpen(o => !o)} aria-label="Account menu" aria-haspopup="menu" aria-expanded={menuOpen}
+                  style={{ width: 36, height: 36, border: `1px solid ${C.line}`, borderRadius: 8, display: 'grid', placeItems: 'center', color: C.ink2, background: C.surface }}>
+                  <UserRound size={16} />
+                </button>
+                {menuOpen && (
+                  <div role="menu" className="pt-menu" style={{ position: 'absolute', right: 0, top: 42, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, padding: 6, minWidth: 190, zIndex: 20, boxShadow: '0 12px 32px rgba(0,0,0,.5)' }}>
+                    <div style={{ padding: '8px 10px', fontSize: 12, color: C.mute, borderBottom: `1px solid ${C.line2}`, marginBottom: 4 }}>{userProfile?.name || userProfile?.email}</div>
+                    <button role="menuitem" type="button" onClick={() => { setMenuOpen(false); setShowChangePw(true); setPwError(''); setPwSuccess(false); setNewPw(''); setConfirmPw('') }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 7, fontSize: 13.5 }}>Change password</button>
+                    <button role="menuitem" type="button" onClick={() => getSupabase().auth.signOut().then(() => { window.location.href = '/login' })} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 7, fontSize: 13.5 }}>Sign out</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -350,17 +359,21 @@ export default function ClientPortalPage() {
         </div>
 
         {showMap && (
-          <Panel title="Account map" sub={`${report.mapAccounts.length} account${report.mapAccounts.length === 1 ? '' : 's'} · ${stockedOnMap} stocked`}>
+          <Panel title="Account map" sub={`${report.mapAccounts.length} account${report.mapAccounts.length === 1 ? '' : 's'} · ${activeOnMap} active`}>
             <PortalMap accounts={report.mapAccounts} onSelect={openAccount} token={mapToken} />
           </Panel>
         )}
 
-        <Ledger report={report} firm={firm} accent={accent} onOpenAccount={openAccount} />
+        <Ledger report={report} firm={firm} onOpenAccount={openAccount} />
 
-        <div className="pt-row2">
-          <StockedPanel report={report} />
-          <EventsPanel report={report} />
-        </div>
+        {hasEvents ? (
+          <div className="pt-row2">
+            <AccountsPanel report={report} />
+            <EventsPanel report={report} />
+          </div>
+        ) : (
+          <AccountsPanel report={report} wide />
+        )}
 
         <Timeline report={report} firm={firm} />
 

@@ -5,8 +5,8 @@ import assert from 'node:assert/strict'
 import {
   type PortalVisit, type PortalOrder, type ReportInput,
   resolveRange, parseHash, toHash, stepSelection, defaultSelection,
-  dedupeByAccountDay, delta, formatDelta, cadenceFor, buildPeriodReport, buildMonthlyPdfData, buildQuarterlyPdfData,
-  mtDayKey, mtStartOfDayMs, addDays, lineQty, describeOrder, getAccountDetail,
+  dedupeByAccountDay, delta, formatDelta, frequencyFor, buildPeriodReport, buildMonthlyPdfData, buildQuarterlyPdfData,
+  mtDayKey, mtStartOfDayMs, addDays, lineQty, describeOrder, getAccountDetail, isDistributorAccount,
 } from '../portal-metrics'
 
 // Noon Mountain Time, Friday October 30 2026.
@@ -118,18 +118,51 @@ test('cumulative series bucket by MT day; a late-night Sep 30 order lands in the
   assert.equal(r.measures.orders.current, 2)               // draft never counts
 })
 
-// ── An order implies a visit ──────────────────────────────────────────────────
+// ── Accounts worked: visit or order, with the split kept separate ─────────────
 
-test('accounts visited is the union of visited and ordered accounts; the footnote keeps visits logged separate', () => {
+test('accounts worked is the union of visited and ordered venue accounts; the split is reported alongside', () => {
   const r = buildPeriodReport(base({
-    visits: [visit('v1', 'accA', '2026-10-05T18:00:00'), visit('v2', 'accA', '2026-10-06T18:00:00')],
+    visits: [visit('v1', 'accA', '2026-10-05T18:00:00'), visit('v2', 'accA', '2026-10-06T18:00:00'), visit('v3', 'accZ', '2026-10-06T18:00:00')],
     orders: [order('o1', 'accA', '2026-10-05T20:00:00Z', 100), order('o2', 'accB', '2026-10-07T20:00:00Z', 40), order('o3', 'accC', '2026-09-07T20:00:00Z', 40)],
   }))
-  assert.equal(r.measures.accountsVisited.current, 2)     // A (visited + ordered) and B (ordered only)
-  assert.equal(r.measures.accountsVisited.prior, 1)       // C ordered in September
-  assert.equal(r.measures.visits, 2)                      // two visit rows logged
-  assert.equal(r.allTime.accounts, 3)
-  assert.deepEqual(r.sparklines.accountsVisited.slice(-2), [1, 2])   // Sep: C; Oct: A, B
+  assert.equal(r.measures.accountsWorked.current, 3)      // A (visited + ordered), B (ordered only), Z (visited only)
+  assert.equal(r.measures.visitedInPerson, 2); assert.equal(r.measures.orderedAccounts, 2)
+  assert.equal(r.measures.accountsWorked.prior, 1)        // C ordered in September
+  assert.equal(r.measures.visits, 3)                      // three visit rows logged
+  assert.equal(r.allTime.accounts, 4)
+  assert.deepEqual(r.sparklines.accountsWorked.slice(-2), [1, 3])
+})
+
+// ── Distributor accounts ──────────────────────────────────────────────────────
+
+test('distributor accounts count in orders and value but not in account measures, ledger, funnel or map', () => {
+  assert.equal(isDistributorAccount({ kind: 'distributor', name: 'Acme' }), true)
+  assert.equal(isDistributorAccount({ kind: null, name: 'Chieftain Distribution' }), true)
+  assert.equal(isDistributorAccount({ kind: 'venue', name: 'The Forge' }), false)
+  const r = buildPeriodReport(base({
+    visits: [visit('v1', 'accA', '2026-10-05T18:00:00')],
+    orders: [
+      order('o1', 'accA', '2026-10-05T20:00:00Z', 100),
+      order('d1', 'dist', '2026-10-10T20:00:00Z', 5000, 'sent', [{ product_name: 'Rye', cases: 20, total: 5000 }]),
+      order('d2', 'dist', '2026-10-12T20:00:00Z', 1000, 'sent', [{ product_name: 'Rye', cases: 4, total: 1000 }]),
+    ],
+    accounts: [
+      { id: 'accA', name: 'Account accA', account_type: 'on_premise', lat: 40.5, lng: -105.1 },
+      { id: 'dist', name: 'Chieftain Distribution', account_type: 'off_premise', account_kind: 'distributor', lat: 40.6, lng: -105.0 },
+    ],
+  }))
+  assert.equal(r.measures.orders.current, 3); assert.equal(r.measures.orderValue.current, 6100)
+  assert.equal(r.measures.accountsWorked.current, 1); assert.equal(r.measures.orderedAccounts, 1)
+  assert.equal(r.funnel.worked, 1); assert.equal(r.funnel.ordered, 1); assert.equal(r.funnel.firstTime, 1); assert.equal(r.funnel.repeat, 0)
+  assert.equal(r.active.accounts, 1); assert.equal(r.active.reorderingAccounts, 0); assert.equal(r.active.orderingAccounts, 1); assert.equal(r.active.newAccounts, 1)
+  assert.deepEqual(r.accountsLedger.period.map(a => a.id), ['accA'])
+  assert.deepEqual(r.distributorOrders, { period: { count: 2, value: 6000 }, all: { count: 2, value: 6000 } })
+  assert.deepEqual(r.mapAccounts.map(a => a.id), ['accA'])
+  assert.equal(r.ordersLedger.period.length, 3)
+  assert.equal(r.productsLedger.period.find(p => p.name === 'Rye')?.accounts, 0)
+  assert.equal(r.active.byProduct.find(p => p.name === 'Rye'), undefined)
+  assert.equal(r.timelineStops, 3)                        // distributor orders still appear as stops
+  assert.equal(r.allTime.accounts, 1); assert.equal(r.allTime.orders, 3)
 })
 
 // ── Funnel first-time logic ───────────────────────────────────────────────────
@@ -141,20 +174,20 @@ test('funnel: first-time means the earliest order ever falls in the period; repe
       order('o1', 'accA', '2026-09-10T15:00:00Z', 100),     // A ordered before
       order('o2', 'accA', '2026-10-12T15:00:00Z', 100),     // A again (repeat, not first-time)
       order('o3', 'accB', '2026-10-13T15:00:00Z', 80),      // B first ever order this period
-      order('o4', 'accD', '2026-10-14T15:00:00Z', 60),      // D ordered without a visit → still visited
+      order('o4', 'accD', '2026-10-14T15:00:00Z', 60),      // D ordered without a visit → worked, not visited
     ],
   }))
-  assert.equal(r.funnel.visited, 4); assert.equal(r.funnel.visits, 4)
+  assert.equal(r.funnel.worked, 4); assert.equal(r.funnel.visitedInPerson, 3); assert.equal(r.funnel.visits, 4)
   assert.equal(r.funnel.ordered, 3); assert.equal(r.funnel.firstTime, 2); assert.equal(r.funnel.repeat, 1)
-  assert.equal(r.funnel.priorVisited, 1); assert.equal(r.funnel.priorOrdered, 1)
+  assert.equal(r.funnel.priorWorked, 1); assert.equal(r.funnel.priorOrdered, 1)
   assert.equal(r.funnel.conversionPct, 75)
-  assert.equal(r.stocked.newAccounts, 2)
+  assert.equal(r.active.newAccounts, 2)
   assert.equal(buildPeriodReport(base()).funnel.conversionPct, null)
 })
 
-// ── Stocked window ────────────────────────────────────────────────────────────
+// ── Active window ─────────────────────────────────────────────────────────────
 
-test('stocked = ordered in the 90 days ending at the period end; by-product counts distinct accounts', () => {
+test('active = ordered in the 90 days ending at the period end; by-product counts distinct accounts', () => {
   const r = buildPeriodReport(base({
     range: month('2026-09'),   // window = Jul 3 .. Sep 30
     orders: [
@@ -165,27 +198,25 @@ test('stocked = ordered in the 90 days ending at the period end; by-product coun
       order('later', 'accC', '2026-10-02T15:00:00Z', 10),                                  // after the period end
     ],
   }))
-  assert.equal(r.stocked.windowStartKey, '2026-07-03'); assert.equal(r.stocked.windowEndKey, '2026-09-30')
-  assert.equal(r.stocked.accounts, 2)
-  assert.deepEqual(r.stocked.byProduct, [{ name: 'Rye', retail: false, accounts: 2 }, { name: 'Ridge Mountain Gin', retail: true, accounts: 1 }])
-  assert.equal(r.stocked.reorderingAccounts, 2); assert.equal(r.stocked.orderingAccounts, 3)
-  assert.equal(r.productsLedger.all.find(p => p.name === 'Rye')?.stockedAt, 2)
-  const a = r.mapAccounts // no accounts input → empty
-  assert.equal(a.length, 0)
+  assert.equal(r.active.windowStartKey, '2026-07-03'); assert.equal(r.active.windowEndKey, '2026-09-30')
+  assert.equal(r.active.accounts, 2)
+  assert.deepEqual(r.active.byProduct, [{ name: 'Rye', retail: false, accounts: 2 }, { name: 'Ridge Mountain Gin', retail: true, accounts: 1 }])
+  assert.equal(r.active.reorderingAccounts, 2); assert.equal(r.active.orderingAccounts, 3)
+  assert.equal(r.productsLedger.all.find(p => p.name === 'Rye')?.activeAt, 2)
+  assert.equal(r.mapAccounts.length, 0)   // no accounts input → empty
 })
 
-// ── Cadence ───────────────────────────────────────────────────────────────────
+// ── Order frequency ───────────────────────────────────────────────────────────
 
-test('cadence flags: on pace ≤ avg gap, slipping ≤ 1.5×, otherwise overdue; nothing below 2 orders', () => {
+test('order frequency: average gap vs days since; late only when the account is past its own average; nothing below 2 orders', () => {
   const d = (daysAgo: number) => NOW - daysAgo * 86400000
-  assert.equal(cadenceFor([d(10)], NOW), null)
-  assert.equal(cadenceFor([d(80), d(50), d(20)], NOW)?.flag, 'on pace')     // avg 30, since 20
-  assert.equal(cadenceFor([d(100), d(70), d(40)], NOW)?.flag, 'slipping')   // avg 30, since 40
-  assert.equal(cadenceFor([d(120), d(90), d(60)], NOW)?.flag, 'overdue')    // avg 30, since 60
-  assert.equal(cadenceFor([d(90), d(60), d(30)], NOW)?.flag, 'on pace')     // since == avg counts as on pace
+  assert.equal(frequencyFor([d(10)], NOW), null)
+  assert.deepEqual(frequencyFor([d(80), d(50), d(20)], NOW), { sinceDays: 20, avgGapDays: 30, late: false })
+  assert.deepEqual(frequencyFor([d(100), d(70), d(40)], NOW), { sinceDays: 40, avgGapDays: 30, late: true })
+  assert.equal(frequencyFor([d(90), d(60), d(30)], NOW)?.late, false)     // since == avg is not late
 })
 
-test('cadence and rep names only exist on staff reports', () => {
+test('order frequency and rep names only exist on staff reports', () => {
   const input = base({
     visits: [visit('v1', 'accA', '2026-10-05T18:00:00')],
     orders: [order('o1', 'accA', '2026-09-10T15:00:00Z', 100), order('o2', 'accA', '2026-10-12T15:00:00Z', 100)],
@@ -193,11 +224,11 @@ test('cadence and rep names only exist on staff reports', () => {
   })
   const client = buildPeriodReport({ ...input, staff: false })
   const firm = buildPeriodReport({ ...input, staff: true })
-  assert.equal(client.accountsLedger.period[0].cadence, undefined)
+  assert.equal(client.accountsLedger.period[0].frequency, undefined)
   assert.equal(client.timeline.flatMap(d => d.stops).find(s => s.id === 'v1')?.rep, null)
   assert.equal(getAccountDetail(client, 'accA')?.visits[0].rep, null)
-  assert.ok(firm.accountsLedger.period[0].cadence)
-  assert.equal(firm.accountsLedger.all[0].cadence?.flag, 'on pace')
+  assert.ok(firm.accountsLedger.period[0].frequency)
+  assert.equal(firm.accountsLedger.all[0].frequency?.avgGapDays, 32)
   assert.equal(firm.timeline.flatMap(d => d.stops).find(s => s.id === 'v1')?.rep, 'Chase')
   assert.equal(getAccountDetail(firm, 'accA')?.visits[0].rep, 'Chase')
 })
@@ -208,7 +239,7 @@ test('Not Interested counts as a visit but never appears in the client timeline 
   const input = base({ visits: [visit('v1', 'accA', '2026-10-05T18:00:00', 'Not Interested'), visit('v2', 'accB', '2026-10-06T18:00:00')] })
   const client = buildPeriodReport({ ...input, staff: false })
   const firm = buildPeriodReport({ ...input, staff: true })
-  assert.equal(client.measures.accountsVisited.current, 2)
+  assert.equal(client.measures.accountsWorked.current, 2)
   assert.equal(client.timelineStops, 1)
   assert.equal(getAccountDetail(client, 'accA')?.visits.length, 0)
   assert.equal(firm.timelineStops, 2)
@@ -217,7 +248,7 @@ test('Not Interested counts as a visit but never appears in the client timeline 
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
-test('timeline merges a visit with that day\'s orders, marks first orders, and keeps visit-less orders', () => {
+test('timeline merges a visit with that day\'s orders ("Ordered"), keeps visit-less orders as "Order" stops, marks first orders', () => {
   const r = buildPeriodReport(base({
     visits: [
       visit('v1', 'accA', '2026-10-05T18:00:00', 'Just Ordered'),
@@ -241,7 +272,7 @@ test('timeline merges a visit with that day\'s orders, marks first orders, and k
   const e = r.timeline.find(x => x.date === '2026-10-06')!.stops[0]
   assert.equal(e.kind, 'placement'); assert.equal(e.label, 'Menu feature'); assert.equal(e.text, 'On the fall menu')
   const oct7 = r.timeline.find(x => x.date === '2026-10-07')!
-  assert.equal(oct7.stops[0].kind, 'order'); assert.equal(oct7.stops[0].text, '3 btl Rye · first order here'); assert.equal(oct7.stops[0].status, null)
+  assert.equal(oct7.stops[0].kind, 'order'); assert.equal(oct7.stops[0].label, 'Order'); assert.equal(oct7.stops[0].text, '3 btl Rye · first order here'); assert.equal(oct7.stops[0].status, null)
   assert.equal(r.timelineStops, 5)
   assert.equal(r.timeline[0].date, '2026-10-07')   // newest day first
 })
@@ -266,7 +297,7 @@ test('ledgers: units as stored, retail suffix stripped, value from line totals, 
   const o = r.ordersLedger.period[0]
   assert.equal(o.products, '2 cs Ridge Mountain Gin, 2 btl Rye'); assert.equal(o.statusLabel, 'Fulfilled'); assert.equal(o.total, 205.9); assert.equal(o.date, '2026-10-12')
   const gin = r.productsLedger.period.find(p => p.name === 'Ridge Mountain Gin')!
-  assert.equal(gin.retail, true); assert.equal(gin.cases, 2); assert.equal(gin.value, 120); assert.equal(gin.accounts, 1); assert.equal(gin.stockedAt, 1)
+  assert.equal(gin.retail, true); assert.equal(gin.cases, 2); assert.equal(gin.value, 120); assert.equal(gin.accounts, 1); assert.equal(gin.activeAt, 1)
   const rye = r.productsLedger.period.find(p => p.name === 'Rye')!
   assert.equal(rye.cases, 0); assert.equal(rye.bottles, 2); assert.equal(rye.value, 85.9)
   assert.equal(r.productsLedger.all.length, 3)   // the retail gin SKU is its own row
@@ -298,10 +329,10 @@ test('tracking start, all-time rollups, reordering accounts, six-month sparkline
   assert.equal(r.trackingStart, '2026-04-16'); assert.equal(r.trackingStartLabel, 'April 2026'); assert.equal(r.trackingStartMon, 'Apr')
   assert.deepEqual(r.allTime, { accounts: 2, orders: 3, value: 180, orderingAccounts: 2, reorderingAccounts: 1, avgOrder: 60 })
   assert.deepEqual(r.sparklines.months.map(m => m.label), ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'])
-  assert.deepEqual(r.sparklines.accountsVisited, [0, 1, 0, 1, 0, 1])
+  assert.deepEqual(r.sparklines.accountsWorked, [0, 1, 0, 1, 0, 1])
   assert.deepEqual(r.sparklines.orderValue, [0, 0, 0, 50, 0, 30])
-  // The 90-day window ending Oct 30 starts Aug 2, so A's Aug 1 order no longer counts as stocked.
-  assert.deepEqual(r.mapAccounts.map(a => [a.id, a.stocked, a.orderedInPeriod, a.lastVisit]), [['accA', false, false, '2026-08-01'], ['accB', true, true, '2026-10-01']])
+  // The 90-day window ending Oct 30 starts Aug 2, so A's Aug 1 order no longer counts as active.
+  assert.deepEqual(r.mapAccounts.map(a => [a.id, a.active, a.orderedInPeriod, a.lastVisit]), [['accA', false, false, '2026-08-01'], ['accB', true, true, '2026-10-01']])
   assert.equal(buildPeriodReport(base()).trackingStart, null)
 })
 
@@ -329,7 +360,7 @@ test('events: planned stops and "other" are hidden, tasting sign-ups are summed'
   }))
   assert.deepEqual(r.events.map(e => [e.account, e.typeLabel, e.consumers]), [['Training', 'Staff training', 0], ['The Forge', 'Tasting', 23]])
   assert.deepEqual(r.eventSummary, { tastings: 1, consumers: 23, other: 1 })
-  assert.equal(r.stocked.tastings, 1)
+  assert.equal(r.active.tastings, 1)
 })
 
 // ── PDF data ──────────────────────────────────────────────────────────────────
@@ -344,12 +375,12 @@ test('monthly PDF weeks start on the 1st and quarterly totals equal the sum of m
   assert.equal(m.label, 'October 2026')
   assert.deepEqual(m.weeks.map(w => w.label), ['Oct 1', 'Oct 8', 'Oct 15', 'Oct 22', 'Oct 29'])
   assert.deepEqual(m.weeks.map(w => w.value), [0, 60, 0, 0, 10])
-  assert.equal(m.orders.current, 2); assert.equal(m.orders.prior, 1); assert.equal(m.visits, 1); assert.equal(m.accountsVisited.current, 2)
+  assert.equal(m.orders.current, 2); assert.equal(m.orders.prior, 1); assert.equal(m.visitedInPerson, 1); assert.equal(m.orderedAccounts, 2); assert.equal(m.accountsWorked.current, 2)
   assert.deepEqual(m.topAccounts.map(a => a.name), ['Account accB', 'Account accA'])
-  assert.deepEqual(m.stocked, { accounts: 2, reorderingAccounts: 2, newThisMonth: 0, tastings: 0 })
+  assert.deepEqual(m.active, { accounts: 2, reorderingAccounts: 2, newThisMonth: 0, tastings: 0 })
   const q = buildQuarterlyPdfData(src, 2026, 3)
   assert.equal(q.label, 'Q3 2026')
   assert.deepEqual(q.months.map(x => x.label), ['Jul', 'Aug', 'Sep'])
-  assert.equal(q.totals.orders, 2); assert.equal(q.totals.value, 140); assert.equal(q.totals.accountsVisited, 2); assert.equal(q.totals.newAccounts, 2)
+  assert.equal(q.totals.orders, 2); assert.equal(q.totals.value, 140); assert.equal(q.totals.accountsWorked, 2); assert.equal(q.totals.newAccounts, 2)
   assert.equal(q.months.reduce((s, x) => s + x.orders, 0), q.totals.orders)
 })

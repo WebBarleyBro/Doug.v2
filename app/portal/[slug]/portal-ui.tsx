@@ -4,6 +4,7 @@
 // computes a number — every value comes from a PeriodReport (portal-metrics.ts).
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { WESTERN_PEAK_LOGO_ON_LIGHT_URL } from '../../lib/constants'
 import {
   type PeriodReport, type Delta, type AccountRow, type OrderRow, type ProductRow, type TimelineStop, type AccountDetail,
   type MonthlyPdfData, type QuarterlyPdfData,
@@ -24,13 +25,13 @@ export const FM = 'var(--pf-mono), "DM Mono", ui-monospace, Menlo, monospace'
 
 export const FIRM = { name: 'Western Peak', contact: 'Chase Frakes', contactFirst: 'Chase', city: 'Fort Collins, Colorado' }
 
-export interface Accent { accent: string; accentInk: string; accentSoft: string }
+export interface Accent { accent: string; accentInk: string; accentSoft: string; accentLine: string }
 export function accentTokens(hex: string | null | undefined): Accent {
   const h = hex && /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#8fb6d9'
   const n = parseInt(h.slice(1), 16)
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
   const mix = (c: number) => Math.round(c + (255 - c) * 0.3)
-  return { accent: h, accentInk: `rgb(${mix(r)},${mix(g)},${mix(b)})`, accentSoft: `rgba(${r},${g},${b},.14)` }
+  return { accent: h, accentInk: `rgb(${mix(r)},${mix(g)},${mix(b)})`, accentSoft: `rgba(${r},${g},${b},.14)`, accentLine: `rgba(${r},${g},${b},.6)` }
 }
 
 export const mono: React.CSSProperties = { fontFamily: FM, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }
@@ -53,18 +54,31 @@ export function PortalStyles({ accent }: { accent: Accent }) {
       .pt-root select option{background:${C.raised};color:${C.ink}}
       .pt-root ::-webkit-scrollbar{width:7px;height:7px}.pt-root ::-webkit-scrollbar-thumb{background:rgba(242,243,245,.13);border-radius:4px}
 
-      .pt-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid ${C.line};flex-wrap:wrap;position:sticky;top:0;background:${C.bg};z-index:5}
-      .pt-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .pt-staffbar{height:36px;display:flex;align-items:center;justify-content:flex-end;gap:10px;border-bottom:1px solid ${C.line2};font-size:12px;color:${C.mute}}
+      .pt-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid ${C.line};position:sticky;top:0;background:${C.bg};z-index:5}
+      .pt-brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+      .pt-tools{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;justify-content:flex-end}
+      .pt-tools-row{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;justify-content:flex-end}
+      @media (max-width:1180px){.pt-brand-label{display:none}}
+      @media (max-width:1023px){
+        .pt-bar{align-items:flex-start}
+        .pt-tools{flex-direction:column;align-items:flex-end;gap:8px}
+        .pt-tools-row{flex-wrap:wrap}
+      }
       .pt-id{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:36px 0 20px;flex-wrap:wrap}
       .pt-id-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
       .pt-m3{display:grid;grid-template-columns:repeat(3,1fr)}
       .pt-mx{padding:20px 22px 18px;border-right:1px solid ${C.line};display:flex;flex-direction:column;gap:6px}
+      .pt-mx-body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:end}
+      .pt-mx-num{display:flex;flex-direction:column;gap:6px}
       .pt-mx:last-child{border-right:0}
       .pt-m4{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid ${C.line}}
       .pt-ms{padding:13px 22px;border-right:1px solid ${C.line};display:flex;flex-direction:column;gap:2px}
       .pt-ms:last-child{border-right:0}
       .pt-row32{display:grid;grid-template-columns:3fr 2fr;gap:14px;align-items:stretch}
       .pt-row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+      .pt-acc-wide{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+      .pt-acc-wide h3{margin-top:0!important}
       .pt-panel{background:${C.surface};border:1px solid ${C.line};border-radius:14px;padding:20px 22px;margin-top:14px}
       .pt-stages{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid ${C.line};border-radius:10px;overflow:hidden}
       .pt-stage{padding:12px 14px;border-right:1px solid ${C.line};background:${C.raised}}
@@ -80,6 +94,7 @@ export function PortalStyles({ accent }: { accent: Accent }) {
       .pt-table td{padding:10px 10px 10px 0;border-bottom:1px solid ${C.line2};vertical-align:middle}
       .pt-table tbody tr.click{cursor:pointer} .pt-table tbody tr.click:hover td{background:rgba(242,243,245,.025)}
       .pt-table tr:last-child td{border-bottom:0}
+      .pt-table tr.late td:first-child{box-shadow:inset 2px 0 0 ${accent.accentLine};padding-left:10px}
       .pt-table td.r,.pt-table th.r{text-align:right;padding-right:0}
 
       .pt-tl-day{display:grid;grid-template-columns:120px 1fr;gap:18px;padding:0 0 22px;position:relative}
@@ -130,7 +145,10 @@ export function PortalStyles({ accent }: { accent: Accent }) {
         .pt-m4{grid-template-columns:1fr 1fr}.pt-ms:nth-child(2){border-right:0}.pt-ms:nth-child(1),.pt-ms:nth-child(2){border-bottom:1px solid ${C.line}}
         .pt-row32,.pt-row2{grid-template-columns:1fr}.pt-id-right{align-items:flex-start}.pt-kv{grid-template-columns:1fr}
         .pt-tl-day{grid-template-columns:1fr;gap:6px}.pt-tl-date{position:static}
+        .pt-mx-body{grid-template-columns:1fr;gap:6px}
+        .pt-acc-wide{grid-template-columns:1fr;gap:0}.pt-acc-wide h3{margin-top:20px!important}
       }
+      @media (max-width:560px){.pt-brand-label{display:none}}
       @media (max-width:560px){
         .pt-val{font-size:36px!important}.pt-stages{grid-template-columns:1fr}.pt-stage{border-right:0;border-bottom:1px solid ${C.line}}.pt-stage:last-child{border-bottom:0}
         .pt-panel{padding:16px}.pt-hb{grid-template-columns:110px 1fr 48px}.pt-search{min-width:0!important;width:100%}
@@ -141,14 +159,6 @@ export function PortalStyles({ accent }: { accent: Accent }) {
 }
 
 // ── Primitives ────────────────────────────────────────────────────────────────
-
-export function Mark() {
-  return (
-    <span aria-hidden="true" style={{ width: 24, height: 24, border: `1.5px solid ${C.ink}`, borderRadius: '50%', position: 'relative', flexShrink: 0, display: 'inline-block' }}>
-      <span style={{ position: 'absolute', left: 4, right: 4, bottom: 5, borderBottom: `1.5px solid ${C.ink}`, transform: 'rotate(-32deg)' }} />
-    </span>
-  )
-}
 
 export function Seg<T extends string>({ options, value, onChange, ariaLabel, style }: {
   options: { value: T; label: React.ReactNode; disabled?: boolean; ariaLabel?: string }[]
@@ -265,7 +275,7 @@ export function DeltaText({ d, unit = 'count', compareLabel }: { d: Delta; unit?
 }
 
 export function Sparkline({ values, labels }: { values: number[]; labels: string[] }) {
-  const w = 200, h = 38
+  const w = 200, h = 64
   const mx = Math.max(1, ...values)
   const n = Math.max(2, values.length)
   const pts = values.map((v, i) => [i * (w / (n - 1)), h - 10 - (v / mx) * (h - 16)] as [number, number])
@@ -273,12 +283,12 @@ export function Sparkline({ values, labels }: { values: number[]; labels: string
   const last = pts[pts.length - 1]
   const labelIdx = [0, Math.floor((labels.length - 1) / 2), labels.length - 1].filter((v, i, a) => a.indexOf(v) === i)
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true" style={{ width: '100%', height: 38, display: 'block', marginTop: 6, overflow: 'visible' }}>
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true" style={{ width: '100%', height: 64, display: 'block', overflow: 'visible' }}>
       <path d={`${line}L${w},${h - 10}L0,${h - 10}Z`} fill={C.bar} opacity={0.08} />
       <path d={line} fill="none" stroke={C.bar} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       {last && <circle cx={Math.min(197, last[0])} cy={last[1]} r={2.5} fill={C.bar} />}
       {labelIdx.map(i => (
-        <text key={i} x={i * (w / (n - 1))} y={37} textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'} style={{ fontFamily: FM, fontSize: 9, fill: C.mute }}>{labels[i]}</text>
+        <text key={i} x={i * (w / (n - 1))} y={h - 1} textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'} style={{ fontFamily: FM, fontSize: 9, fill: C.mute }}>{labels[i]}</text>
       ))}
     </svg>
   )
@@ -292,9 +302,13 @@ export function Measure({ label, value, prefix, d, unit, compareLabel, spark, sp
   return (
     <div className="pt-mx">
       <div style={{ fontSize: 13.5, color: C.ink2, fontWeight: 500 }}>{label}</div>
-      <CountUp value={value} prefix={prefix} className="pt-val" style={{ fontSize: 44, lineHeight: 1, fontWeight: 500, letterSpacing: '-0.03em' }} />
-      <DeltaText d={d} unit={unit} compareLabel={compareLabel} />
-      <Sparkline values={spark} labels={sparkLabels} />
+      <div className="pt-mx-body">
+        <div className="pt-mx-num">
+          <CountUp value={value} prefix={prefix} className="pt-val" style={{ fontSize: 44, lineHeight: 1, fontWeight: 500, letterSpacing: '-0.03em' }} />
+          <DeltaText d={d} unit={unit} compareLabel={compareLabel} />
+        </div>
+        <Sparkline values={spark} labels={sparkLabels} />
+      </div>
       <div style={{ fontSize: 12, color: C.mute, lineHeight: 1.4 }}>{foot}</div>
     </div>
   )
@@ -313,7 +327,7 @@ export function SecondaryCell({ k, v, small }: { k: string; v: number; small?: s
 }
 
 export function MeasuresBlock({ report }: { report: PeriodReport }) {
-  const { range, measures, sparklines, allTime, stocked } = report
+  const { range, measures, sparklines, allTime, active } = report
   const mon = report.trackingStartMon || '—'
   return (
     <section aria-label="Key measures" style={{ border: `1px solid ${C.line}`, borderRadius: 14, background: C.surface, overflow: 'hidden' }}>
@@ -322,9 +336,9 @@ export function MeasuresBlock({ report }: { report: PeriodReport }) {
         {report.trackingStartLabel && <span style={{ ...upperLabel, fontSize: 12, letterSpacing: '.05em' }}>Tracking since {report.trackingStartLabel}</span>}
       </div>
       <div className="pt-m3">
-        <Measure label="Accounts visited" value={measures.accountsVisited.current} d={measures.accountsVisited} compareLabel={range.compareLabel}
-          spark={sparklines.accountsVisited} sparkLabels={sparklines.months.map(m => m.label)}
-          foot={`${allTime.accounts.toLocaleString('en-US')} accounts since ${mon} · ${measures.visits.toLocaleString('en-US')} visit${measures.visits === 1 ? '' : 's'} logged`} />
+        <Measure label="Accounts worked" value={measures.accountsWorked.current} d={measures.accountsWorked} compareLabel={range.compareLabel}
+          spark={sparklines.accountsWorked} sparkLabels={sparklines.months.map(m => m.label)}
+          foot={`${measures.orderedAccounts.toLocaleString('en-US')} ordered · ${measures.visitedInPerson.toLocaleString('en-US')} visited`} />
         <Measure label="Orders" value={measures.orders.current} d={measures.orders} compareLabel={range.compareLabel}
           spark={sparklines.orders} sparkLabels={sparklines.months.map(m => m.label)}
           foot={`${allTime.orders.toLocaleString('en-US')} orders since ${mon} · ${allTime.orderingAccounts.toLocaleString('en-US')} accounts have ordered`} />
@@ -333,10 +347,10 @@ export function MeasuresBlock({ report }: { report: PeriodReport }) {
           foot={`${money(allTime.value)} since ${mon} · ${money(allTime.avgOrder)} average order`} />
       </div>
       <div className="pt-m4">
-        <SecondaryCell k="Stocked accounts" v={stocked.accounts} small="ordered in the last 90 days" />
-        <SecondaryCell k="Reordering accounts" v={stocked.reorderingAccounts} small={`of ${stocked.orderingAccounts} that ordered`} />
-        <SecondaryCell k="New accounts" v={stocked.newAccounts} small={range.label} />
-        <SecondaryCell k="Tastings held" v={stocked.tastings} small={range.label} />
+        <SecondaryCell k="Active accounts" v={active.accounts} small="ordered in the last 90 days" />
+        <SecondaryCell k="Reordering accounts" v={active.reorderingAccounts} small={`of ${active.orderingAccounts} that ordered`} />
+        <SecondaryCell k="New accounts" v={active.newAccounts} small={range.label} />
+        <SecondaryCell k="Tastings held" v={active.tastings} small={range.label} />
       </div>
     </section>
   )
@@ -443,14 +457,14 @@ function addDaysKey(key: string, n: number): string { const d = new Date(key + '
 
 export function Funnel({ report }: { report: PeriodReport }) {
   const { funnel, range } = report
-  const denom = Math.max(1, funnel.visited, funnel.ordered)
+  const denom = Math.max(1, funnel.worked, funnel.ordered)
   const rows = [
-    { label: 'Accounts visited', n: funnel.visited, small: `${funnel.visits} visit${funnel.visits === 1 ? '' : 's'} logged · ${funnel.priorVisited} in the ${range.compareLabel}` },
+    { label: 'Accounts worked', n: funnel.worked, small: `${funnel.visitedInPerson} visited · ${funnel.priorWorked} in the ${range.compareLabel}` },
     { label: 'Placed an order', n: funnel.ordered, small: `${funnel.firstTime} ordering for the first time · ${funnel.priorOrdered} in the ${range.compareLabel}` },
     { label: 'Have ordered more than once', n: funnel.repeat, small: `of the ${funnel.ordered} that ordered` },
   ]
   return (
-    <Panel title="From visit to order" sub={funnel.conversionPct === null ? undefined : `${funnel.conversionPct}% of accounts visited placed an order`} style={{ display: 'flex', flexDirection: 'column' }}>
+    <Panel title="From account to order" sub={funnel.conversionPct === null ? undefined : `${funnel.conversionPct}% of accounts worked placed an order`} style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
         {rows.map((r, i) => (
           <div key={r.label} style={{ display: 'grid', gap: 6 }}>
@@ -473,7 +487,7 @@ export function Funnel({ report }: { report: PeriodReport }) {
 type LedgerTab = 'accounts' | 'orders' | 'products'
 type Scope = 'period' | 'all'
 
-export function Ledger({ report, firm, accent, onOpenAccount }: { report: PeriodReport; firm: boolean; accent: Accent; onOpenAccount: (id: string) => void }) {
+export function Ledger({ report, firm, onOpenAccount }: { report: PeriodReport; firm: boolean; onOpenAccount: (id: string) => void }) {
   const [tab, setTab] = useState<LedgerTab>('accounts')
   const [scope, setScope] = useState<Scope>('period')
   const [q, setQ] = useState('')
@@ -485,6 +499,7 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
   const accounts = scoped ? report.accountsLedger.period : report.accountsLedger.all
   const orders = scoped ? report.ordersLedger.period : report.ordersLedger.all
   const products = scoped ? report.productsLedger.period : report.productsLedger.all
+  const dist = scoped ? report.distributorOrders.period : report.distributorOrders.all
   const sinceLabel = report.trackingStart ? `Since ${report.trackingStart.slice(0, 4) ? new Date(report.trackingStart + 'T12:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' }) : ''}` : 'All time'
 
   const pick = (t: LedgerTab) => { setTab(t); setSortKey(t === 'orders' ? 'date' : 'value'); setSortDir(-1); setAll(false) }
@@ -506,7 +521,7 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
   if (tab === 'accounts') {
     const keyOf: Record<string, (r: AccountRow) => string | number | null> = {
       name: r => r.name, last: r => r.lastVisit || '', visits: r => r.visits, orders: r => r.orders, value: r => r.value, all: r => r.allTimeValue, lastOrder: r => r.lastOrder || '',
-      cadence: r => (r.cadence ? r.cadence.sinceDays : -1),
+      frequency: r => (r.frequency ? r.frequency.sinceDays - r.frequency.avgGapDays : -Infinity),
     }
     const list = accounts.filter(r => r.name.toLowerCase().includes(query)).sort((a, b) => cmp((keyOf[sortKey] || keyOf.value)(a), (keyOf[sortKey] || keyOf.value)(b)))
     const mxv = Math.max(1, ...list.map(r => (scoped ? r.value : r.allTimeValue)))
@@ -514,11 +529,11 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
     head = (
       <tr>
         {th('name', 'Account', false, true)}{th('last', 'Last visit', true)}{th('visits', 'Visits', true)}{th('orders', 'Orders', true)}{th('value', 'Value', true)}
-        {scoped && th('all', 'All-time', true)}{th('lastOrder', 'Last order', true)}{firm && th('cadence', 'Cadence', true)}
+        {scoped && th('all', 'All-time', true)}{th('lastOrder', 'Last order', true)}{firm && th('frequency', 'Order frequency', true)}
       </tr>
     )
     rows = list.map(r => (
-      <tr key={r.id} className="click" onClick={() => onOpenAccount(r.id)}>
+      <tr key={r.id} className={`click${firm && r.frequency?.late ? ' late' : ''}`} onClick={() => onOpenAccount(r.id)}>
         <td>{r.name}<span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 1 }}>{r.type === 'off_premise' ? 'Retail' : 'On-premise'}</span></td>
         <td className="r" style={{ ...mono, color: C.ink2, whiteSpace: 'nowrap' }}>{r.lastVisit ? (scoped ? fmtShort(r.lastVisit) : fmtShortYear(r.lastVisit)) : '—'}</td>
         <td className="r" style={mono}>{r.visits || '—'}</td>
@@ -527,8 +542,8 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
         {scoped && <td className="r" style={{ ...mono, color: C.ink2 }}>{r.allTimeValue ? money(r.allTimeValue) : '—'}</td>}
         <td className="r" style={{ ...mono, color: C.ink2, whiteSpace: 'nowrap' }}>{r.lastOrder ? (scoped ? fmtShort(r.lastOrder) : fmtShortYear(r.lastOrder)) : '—'}</td>
         {firm && (
-          <td className="r" style={{ whiteSpace: 'nowrap' }}>
-            {r.cadence ? <><span style={{ ...mono, color: C.ink2, marginRight: 8 }}>{r.cadence.sinceDays}d</span><Tag kind={r.cadence.flag === 'on pace' ? 'plain' : r.cadence.flag === 'slipping' ? 'acc' : 'warn'} accent={accent}>{r.cadence.flag}</Tag></> : ''}
+          <td className="r" style={{ ...mono, whiteSpace: 'nowrap', fontSize: 12.5, color: r.frequency?.late ? C.ink : C.mute }}>
+            {r.frequency ? `every ${r.frequency.avgGapDays} days · last ${r.frequency.sinceDays}d ago` : ''}
           </td>
         )}
       </tr>
@@ -550,12 +565,12 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
       </tr>
     ))
   } else {
-    const keyOf: Record<string, (r: ProductRow) => string | number> = { name: r => r.name, cases: r => r.cases + r.bottles / 1000, value: r => r.value, accts: r => r.accounts, stocked: r => r.stockedAt }
+    const keyOf: Record<string, (r: ProductRow) => string | number> = { name: r => r.name, cases: r => r.cases + r.bottles / 1000, value: r => r.value, accts: r => r.accounts, active: r => r.activeAt }
     const list = products.filter(r => r.name.toLowerCase().includes(query)).sort((a, b) => cmp((keyOf[sortKey] || keyOf.value)(a), (keyOf[sortKey] || keyOf.value)(b)))
     const mxc = Math.max(1, ...list.map(r => r.cases))
     const cases = list.reduce((s, r) => s + r.cases, 0), bottles = list.reduce((s, r) => s + r.bottles, 0)
     sub = `${cases} case${cases === 1 ? '' : 's'}${bottles ? `, ${bottles} bottle${bottles === 1 ? '' : 's'}` : ''} · ${list.length} product${list.length === 1 ? '' : 's'}`
-    head = <tr>{th('name', 'Product', false, true)}{th('cases', 'Cases', true)}{th('value', 'Value', true)}{th('accts', 'Accounts ordering', true)}{th('stocked', 'Stocked at', true)}</tr>
+    head = <tr>{th('name', 'Product', false, true)}{th('cases', 'Cases', true)}{th('value', 'Value', true)}{th('accts', 'Accounts ordering', true)}{th('active', 'Active at', true)}</tr>
     rows = list.map(r => (
       <tr key={r.name + (r.retail ? '-r' : '')}>
         <td>{r.name}{r.retail && <span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 1 }}>Retail size</span>}</td>
@@ -565,7 +580,7 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
         </td>
         <td className="r" style={{ ...mono, whiteSpace: 'nowrap' }}>{money(r.value)}</td>
         <td className="r" style={mono}>{r.accounts}</td>
-        <td className="r" style={mono}>{r.stockedAt || '—'}</td>
+        <td className="r" style={mono}>{r.activeAt || '—'}</td>
       </tr>
     ))
   }
@@ -593,22 +608,28 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
         {rows.length ? <table className="pt-table"><thead>{head}</thead><tbody>{shown}</tbody></table> : <Empty>Nothing matches.</Empty>}
       </div>
       <ShowMore total={rows.length} shown={12} open={all} onToggle={() => setAll(v => !v)} />
+      {tab === 'accounts' && dist.count > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.line2}`, fontSize: 13, color: C.mute }}>
+          Distributor orders · <span style={{ ...mono, color: C.ink2 }}>{dist.count}</span> · <span style={{ ...mono, color: C.ink2 }}>{money(dist.value)}</span>
+        </div>
+      )}
     </Panel>
   )
 }
 
-// ── Stocked accounts (derived from order history, never the placements table) ──
+// ── Accounts (derived from order history, never the placements table) ──────────
 
-export function StockedPanel({ report }: { report: PeriodReport }) {
-  const { stocked, range } = report
-  const mx = Math.max(1, ...stocked.byProduct.map(p => p.accounts))
+export function AccountsPanel({ report, wide }: { report: PeriodReport; wide?: boolean }) {
+  const { active, range } = report
+  const mx = Math.max(1, ...active.byProduct.map(p => p.accounts))
   const cells = [
-    { k: 'Stocked', v: stocked.accounts, hint: 'Ordered in the last 90 days' },
-    { k: 'Reordering', v: stocked.reorderingAccounts, hint: 'Two or more orders, all time' },
-    { k: 'New', v: stocked.newAccounts, hint: `First order in ${range.label}` },
+    { k: 'Active', v: active.accounts, hint: 'Ordered in the last 90 days' },
+    { k: 'Reordering', v: active.reorderingAccounts, hint: 'Two or more orders, all time' },
+    { k: 'New', v: active.newAccounts, hint: `First order in ${range.label}` },
   ]
   return (
-    <Panel title="Stocked accounts" sub={`${stocked.accounts} account${stocked.accounts === 1 ? '' : 's'} ordered in the last 90 days`}>
+    <Panel title="Accounts" sub={`${active.accounts} account${active.accounts === 1 ? '' : 's'} ordered in the last 90 days`}>
+      <div className={wide ? 'pt-acc-wide' : undefined}>
       <div className="pt-stages">
         {cells.map(s => (
           <div key={s.k} className="pt-stage">
@@ -618,10 +639,11 @@ export function StockedPanel({ report }: { report: PeriodReport }) {
           </div>
         ))}
       </div>
+      <div>
       <SectionLabel>By product</SectionLabel>
-      {stocked.byProduct.length === 0 ? <div style={{ fontSize: 13, color: C.mute }}>No orders in the last 90 days.</div> : (
+      {active.byProduct.length === 0 ? <div style={{ fontSize: 13, color: C.mute }}>No orders in the last 90 days.</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {stocked.byProduct.map(p => (
+          {active.byProduct.map(p => (
             <div key={p.name + (p.retail ? '-r' : '')} className="pt-hb">
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}{p.retail && <span style={{ color: C.mute }}> · retail</span>}</span>
               <div style={{ height: 8, background: C.line2, borderRadius: 3, overflow: 'hidden' }}><i style={{ display: 'block', height: '100%', background: C.bar2, borderRadius: '0 3px 3px 0', width: `${(p.accounts / mx) * 100}%` }} /></div>
@@ -630,6 +652,8 @@ export function StockedPanel({ report }: { report: PeriodReport }) {
           ))}
         </div>
       )}
+      </div>
+      </div>
     </Panel>
   )
 }
@@ -669,14 +693,14 @@ export function Timeline({ report, firm }: { report: PeriodReport; firm: boolean
   const [filter, setFilter] = useState<FeedFilter>('all')
   const [all, setAll] = useState(false)
   const { range } = report
-  const isWin = (s: TimelineStop) => s.kind === 'order' || s.kind === 'placement'
+  const isWin = (s: TimelineStop) => s.kind === 'order'
   const days = useMemo(() => report.timeline.map(d => ({ ...d, stops: d.stops.filter(s => filter === 'all' || (filter === 'orders' ? isWin(s) : !isWin(s))) })).filter(d => d.stops.length), [report.timeline, filter])
   const total = days.reduce((s, d) => s + d.stops.length, 0)
   let budget = all ? Infinity : 16
   const visible = days.map(d => { const take = d.stops.slice(0, Math.max(0, budget)); budget -= take.length; return { ...d, stops: take } }).filter(d => d.stops.length)
   return (
     <Panel title="Field activity" sub={`${report.measures.visits} visit${report.measures.visits === 1 ? '' : 's'} · ${report.orders.length} order${report.orders.length === 1 ? '' : 's'} in ${range.label}`}
-      right={<Seg ariaLabel="Show" value={filter} onChange={f => { setFilter(f); setAll(false) }} options={[{ value: 'all', label: 'Everything' }, { value: 'orders', label: 'Orders and placements' }, { value: 'visits', label: 'Visits only' }]} />}>
+      right={<Seg ariaLabel="Show" value={filter} onChange={f => { setFilter(f); setAll(false) }} options={[{ value: 'all', label: 'Everything' }, { value: 'orders', label: 'Orders' }, { value: 'visits', label: 'Visits only' }]} />}>
       {visible.length === 0 ? <Empty>Nothing in this range.</Empty> : (
         <div style={{ paddingLeft: 4 }}>
           {visible.map(d => (
@@ -782,7 +806,7 @@ export function AccountDrawer({ detail, firm, onClose }: { detail: AccountDetail
       </div>
       <div>
         <SectionLabel style={{ marginTop: 6 }}>Visits</SectionLabel>
-        {detail.visits.length === 0 ? <Empty>No visits logged yet.</Empty> : detail.visits.map(v => (
+        {detail.visits.length === 0 ? <Empty>No visits yet.</Empty> : detail.visits.map(v => (
           <div key={v.id} className="pt-file">
             <div>{v.notes || <span style={{ color: C.mute }}>No note</span>}<small style={{ display: 'block', color: C.mute, fontSize: 12, marginTop: 2 }}>{fmtShortYear(v.date)}{firm && v.rep ? ` · ${v.rep}` : ''}</small></div>
             <Tag kind={v.win ? 'solid' : 'plain'}>{firm ? v.status : v.label}</Tag>
@@ -825,11 +849,15 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
     <div style={pg.page}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #111', paddingBottom: 8 }}>
         <div><div style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' }}>{clientName}</div><div style={{ fontSize: 9, color: '#666' }}>Brand report · {data.label}</div></div>
-        <div style={{ fontSize: 9, color: '#666', textAlign: 'right' }}>{FIRM.name}<br />Prepared {preparedOn}</div>
+        <div style={{ fontSize: 9, color: '#666', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={WESTERN_PEAK_LOGO_ON_LIGHT_URL} alt={FIRM.name} style={{ height: 22, width: 'auto', display: 'block' }} />
+          <span>Prepared {preparedOn}</span>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
         {[
-          ['Accounts visited', String(data.accountsVisited.current), `${formatPdfDelta(data.accountsVisited, 'count', data.compareLabel)} · ${data.visits} visits`],
+          ['Accounts worked', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} ordered · ${data.visitedInPerson} visited`],
           ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
           ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
         ].map(([k, v, c]) => (
@@ -846,9 +874,9 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
         </div>
         <div><h5 style={pg.h5}>Products ordered</h5>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name + (p.retail ? '-r' : '')}><td style={pg.td}>{p.name}{p.retail ? ' · retail' : ''}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
-          <h5 style={{ ...pg.h5, marginTop: 10 }}>Stocked accounts</h5>
+          <h5 style={{ ...pg.h5, marginTop: 10 }}>Accounts</h5>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
-            {[['Ordered in the last 90 days', data.stocked.accounts], ['Reordering accounts', data.stocked.reorderingAccounts], ['New this month', data.stocked.newThisMonth], ['Tastings', data.stocked.tastings]].map(([k, v]) => <tr key={String(k)}><td style={pg.td}>{k}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{v}</td></tr>)}
+            {[['Active (ordered in the last 90 days)', data.active.accounts], ['Reordering', data.active.reorderingAccounts], ['New this month', data.active.newThisMonth], ['Tastings', data.active.tastings]].map(([k, v]) => <tr key={String(k)}><td style={pg.td}>{k}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{v}</td></tr>)}
           </tbody></table>
         </div>
       </div>
@@ -859,7 +887,7 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
 
 export function QuarterlyPreview({ data, clientName, preparedOn }: { data: QuarterlyPdfData; clientName: string; preparedOn: string }) {
   const cell: React.CSSProperties = { padding: '5px 6px', borderBottom: '1px solid #eee', fontSize: 9 }
-  const row = (label: string, k: 'accountsVisited' | 'orders' | 'value' | 'newAccounts' | 'tastings', fmt: (n: number) => string) => (
+  const row = (label: string, k: 'accountsWorked' | 'orders' | 'value' | 'newAccounts' | 'tastings', fmt: (n: number) => string) => (
     <React.Fragment key={k}>
       <div style={cell}>{label}</div>
       {data.months.map(m => <div key={m.key} style={{ ...cell, ...pg.m }}>{fmt(m[k])}</div>)}
@@ -870,13 +898,17 @@ export function QuarterlyPreview({ data, clientName, preparedOn }: { data: Quart
     <div style={pg.page}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #111', paddingBottom: 8 }}>
         <div><div style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.02em' }}>{clientName}</div><div style={{ fontSize: 9, color: '#666' }}>Quarterly report · {data.label}</div></div>
-        <div style={{ fontSize: 9, color: '#666', textAlign: 'right' }}>{FIRM.name}<br />Prepared {preparedOn}</div>
+        <div style={{ fontSize: 9, color: '#666', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={WESTERN_PEAK_LOGO_ON_LIGHT_URL} alt={FIRM.name} style={{ height: 22, width: 'auto', display: 'block' }} />
+          <span>Prepared {preparedOn}</span>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1.1fr' }}>
         <div style={{ ...cell, ...pg.h5, borderBottom: '1px solid #eee', margin: 0 }} />
         {data.months.map(m => <div key={m.key} style={{ ...cell, ...pg.h5, margin: 0 }}>{m.label}</div>)}
         <div style={{ ...cell, ...pg.h5, margin: 0, fontWeight: 600, background: '#f4f4f5' }}>Q{data.q}</div>
-        {row('Accounts visited', 'accountsVisited', String)}{row('Orders', 'orders', String)}{row('Order value', 'value', money)}{row('New accounts', 'newAccounts', String)}{row('Tastings', 'tastings', String)}
+        {row('Accounts worked', 'accountsWorked', String)}{row('Orders', 'orders', String)}{row('Order value', 'value', money)}{row('New accounts', 'newAccounts', String)}{row('Tastings', 'tastings', String)}
       </div>
       <div><h5 style={pg.h5}>Order value by month</h5><PreviewBars bars={data.months.map(m => ({ label: m.label, value: m.value }))} max={Math.max(1, ...data.months.map(m => m.value))} /></div>
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, flex: 1, minHeight: 0 }}>

@@ -1,7 +1,7 @@
 'use client'
-// Mapbox map of the brand's accounts. Marker styles follow the spec: stocked
-// accounts (ordered in the last 90 days) are the brightest, accounts visited in
-// the period but not stocked are dimmer, accounts visited earlier are faintest,
+// Mapbox map of the brand's accounts (distributors excluded). Marker styles follow
+// the spec: active accounts (ordered in the last 90 days) are the brightest, accounts
+// visited in the period but not active are dimmer, accounts visited earlier are faintest,
 // and any account that ordered in the period gets a pulsing ring. Clicking a
 // marker opens the account drawer.
 
@@ -56,7 +56,7 @@ export default function PortalMap({ accounts, onSelect, token }: { accounts: Map
       el.setAttribute('aria-label', a.name)
       el.style.cssText = 'width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:none;border:0;padding:0'
       const dot = document.createElement('span')
-      dot.className = `pt-pin ${a.stocked ? 'placed' : a.visitedInPeriod ? 'visited' : 'earlier'}${a.orderedInPeriod ? ' ordered' : ''}`
+      dot.className = `pt-pin ${a.active ? 'placed' : a.visitedInPeriod ? 'visited' : 'earlier'}${a.orderedInPeriod ? ' ordered' : ''}`
       el.appendChild(dot)
       el.addEventListener('mouseenter', (e: MouseEvent) => setHover({ a, x: e.clientX, y: e.clientY }))
       el.addEventListener('mousemove', (e: MouseEvent) => setHover({ a, x: e.clientX, y: e.clientY }))
@@ -76,7 +76,7 @@ export default function PortalMap({ accounts, onSelect, token }: { accounts: Map
         <Tip x={hover.x} y={hover.y}>
           <b>{hover.a.name}</b> <span style={{ color: C.mute }}>· {hover.a.type === 'off_premise' ? 'Retail' : 'On-premise'}</span><br />
           <span style={{ fontFamily: FM, color: C.ink2 }}>Last visit {hover.a.lastVisit ? fmtShortYear(hover.a.lastVisit) : '—'}</span><br />
-          <span style={{ fontFamily: FM, color: C.ink2 }}>{hover.a.productsStocked} product{hover.a.productsStocked === 1 ? '' : 's'} stocked · {money(hover.a.periodValue)} ordered</span>
+          <span style={{ fontFamily: FM, color: C.ink2 }}>{hover.a.productsActive} product{hover.a.productsActive === 1 ? '' : 's'} active · {money(hover.a.periodValue)} ordered</span>
         </Tip>
       )}
     </>

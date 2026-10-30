@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn, getCurrentUserWithProfile } from '../lib/auth'
 import { t, inputStyle, labelStyle } from '../lib/theme'
+import { WESTERN_PEAK_LOGO_SCREEN_URL } from '../lib/constants'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -50,20 +51,11 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: '360px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: '16px',
-            background: `linear-gradient(135deg, ${t.gold} 0%, #b8891e 100%)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '28px', fontWeight: '800', color: '#0f0f0d',
-            margin: '0 auto 16px',
-            boxShadow: `0 8px 32px rgba(212,168,67,0.25)`,
-          }}>D</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={WESTERN_PEAK_LOGO_SCREEN_URL} alt="Western Peak" style={{ height: 56, width: 'auto', display: 'block', margin: '0 auto 16px' }} />
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
             Doug
           </h1>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '4px' }}>
-            Western Peak
-          </p>
         </div>
 
         {/* Form */}

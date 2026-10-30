@@ -3,7 +3,8 @@
 // the on-screen preview shows), so the PDF can never disagree with the page.
 
 import React from 'react'
-import { Document, Page, Text, View, StyleSheet, Svg, Rect, Line, Font } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Svg, Rect, Line, Font, Image } from '@react-pdf/renderer'
+import { WESTERN_PEAK_LOGO_ON_LIGHT_URL } from '../../lib/constants'
 import { type MonthlyPdfData, type QuarterlyPdfData, formatPdfDelta, money, moneyK, unitLabel } from './portal-metrics'
 
 export const FIRM_NAME = 'Western Peak'
@@ -82,7 +83,11 @@ function Header({ clientName, line, preparedOn }: { clientName: string; line: st
   return (
     <View style={s.hd}>
       <View><Text style={s.name}>{clientName}</Text><Text style={s.sub}>{line}</Text></View>
-      <Text style={s.pr}>{FIRM_NAME}{'\n'}Prepared {preparedOn}</Text>
+      <View style={{ alignItems: 'flex-end' }}>
+        {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop */}
+        <Image src={WESTERN_PEAK_LOGO_ON_LIGHT_URL} style={{ height: 22, width: 66, objectFit: 'contain', marginBottom: 3 }} />
+        <Text style={s.pr}>Prepared {preparedOn}</Text>
+      </View>
     </View>
   )
 }
@@ -115,7 +120,7 @@ function ProductsTable({ rows }: { rows: { name: string; retail: boolean; cases:
 export function MonthlyReportPDF({ data, clientName, preparedOn }: { data: MonthlyPdfData; clientName: string; preparedOn: string }) {
   registerPortalFonts()
   const figs: [string, string, string][] = [
-    ['Accounts visited', String(data.accountsVisited.current), `${formatPdfDelta(data.accountsVisited, 'count', data.compareLabel)} · ${data.visits} visits`],
+    ['Accounts worked', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} ordered · ${data.visitedInPerson} visited`],
     ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
     ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
   ]
@@ -131,8 +136,8 @@ export function MonthlyReportPDF({ data, clientName, preparedOn }: { data: Month
           <View style={s.col3}><Text style={s.h5}>Top accounts</Text><AccountsTable rows={data.topAccounts} /></View>
           <View style={s.col2}>
             <Text style={s.h5}>Products ordered</Text><ProductsTable rows={data.products} />
-            <Text style={{ ...s.h5, marginTop: 10 }}>Stocked accounts</Text>
-            {[['Ordered in the last 90 days', data.stocked.accounts], ['Reordering accounts', data.stocked.reorderingAccounts], ['New this month', data.stocked.newThisMonth], ['Tastings', data.stocked.tastings]].map(([k, v]) => (
+            <Text style={{ ...s.h5, marginTop: 10 }}>Accounts</Text>
+            {[['Active (ordered in the last 90 days)', data.active.accounts], ['Reordering', data.active.reorderingAccounts], ['New this month', data.active.newThisMonth], ['Tastings', data.active.tastings]].map(([k, v]) => (
               <View key={String(k)} style={s.tr}><Text style={{ ...s.td, flex: 3 }}>{k}</Text><Text style={{ ...s.tdM, flex: 1 }}>{v}</Text></View>
             ))}
           </View>
@@ -145,7 +150,7 @@ export function MonthlyReportPDF({ data, clientName, preparedOn }: { data: Month
 
 export function QuarterlyReportPDF({ data, clientName, preparedOn }: { data: QuarterlyPdfData; clientName: string; preparedOn: string }) {
   registerPortalFonts()
-  const row = (label: string, k: 'accountsVisited' | 'orders' | 'value' | 'newAccounts' | 'tastings', fmt: (n: number) => string) => (
+  const row = (label: string, k: 'accountsWorked' | 'orders' | 'value' | 'newAccounts' | 'tastings', fmt: (n: number) => string) => (
     <View key={k} style={s.gRow}>
       <Text style={s.gLabel}>{label}</Text>
       {data.months.map(m => <Text key={m.key} style={s.gCell}>{fmt(m[k])}</Text>)}
@@ -162,7 +167,7 @@ export function QuarterlyReportPDF({ data, clientName, preparedOn }: { data: Qua
             {data.months.map(m => <Text key={m.key} style={{ ...s.gCell, ...s.gHead }}>{m.label}</Text>)}
             <Text style={{ ...s.gTot, ...s.gHead, fontWeight: 600 }}>Q{data.q}</Text>
           </View>
-          {row('Accounts visited', 'accountsVisited', String)}
+          {row('Accounts worked', 'accountsWorked', String)}
           {row('Orders', 'orders', String)}
           {row('Order value', 'value', money)}
           {row('New accounts', 'newAccounts', String)}

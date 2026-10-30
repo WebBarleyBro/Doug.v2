@@ -59,3 +59,13 @@ AND (SELECT count(*) FROM products
 CREATE UNIQUE INDEX IF NOT EXISTS uq_products_client_name_active
   ON products (client_slug, lower(name))
   WHERE active;
+
+-- ─── (d) accounts.account_kind: tell distributors apart from venues ──────────────────
+-- A distributor (e.g. Chieftain Distribution) receives orders but is not a bar or store
+-- the field works. The portal excludes distributor accounts from account counts, the
+-- accounts ledger, top accounts, the funnel and the map; their orders still count in
+-- Orders and Order value. Until this runs, the portal treats any account whose name
+-- contains "Distribut" as a distributor.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS account_kind text NOT NULL DEFAULT 'venue'
+  CHECK (account_kind IN ('venue', 'distributor'));
+UPDATE accounts SET account_kind = 'distributor' WHERE name ILIKE '%Chieftain Distribution%';
