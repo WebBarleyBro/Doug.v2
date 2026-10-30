@@ -3,13 +3,13 @@
 // the on-screen preview shows), so the PDF can never disagree with the page.
 
 import React from 'react'
-import { Document, Page, Text, View, StyleSheet, Svg, Rect, Line, Font, Image } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, Svg, Rect, Line, Font, Image, Link } from '@react-pdf/renderer'
 import { WESTERN_PEAK_LOGO_ON_LIGHT_URL } from '../../lib/constants'
 import { type MonthlyPdfData, type QuarterlyPdfData, formatPdfDelta, money, moneyK, unitLabel } from './portal-metrics'
 
 export const FIRM_NAME = 'Western Peak'
 export const FIRM_CITY = 'Fort Collins, Colorado'
-export const FIRM_CONTACT = 'Chase Frakes'
+export const FIRM_CONTACT_EMAIL = 'chase@westernpeak.org'
 
 const SANS = 'Schibsted Grotesk'
 const MONO = 'DM Mono'
@@ -93,7 +93,7 @@ function Header({ clientName, line, preparedOn }: { clientName: string; line: st
 }
 
 function Footer() {
-  return <View style={s.ft}><Text>{FIRM_NAME} · {FIRM_CITY}</Text><Text>Questions: {FIRM_CONTACT}</Text></View>
+  return <View style={s.ft}><Text>{FIRM_NAME} · {FIRM_CITY}</Text><Text>Questions: <Link src={`mailto:${FIRM_CONTACT_EMAIL}`} style={{ color: '#777', textDecoration: 'none' }}>{FIRM_CONTACT_EMAIL}</Link></Text></View>
 }
 
 function AccountsTable({ rows }: { rows: { name: string; orders: number; value: number }[] }) {

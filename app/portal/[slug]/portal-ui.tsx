@@ -23,7 +23,7 @@ export const C = {
 export const FS = 'var(--pf-sans), "Schibsted Grotesk", -apple-system, "Segoe UI", sans-serif'
 export const FM = 'var(--pf-mono), "DM Mono", ui-monospace, Menlo, monospace'
 
-export const FIRM = { name: 'Western Peak', contact: 'Chase Frakes', contactFirst: 'Chase', city: 'Fort Collins, Colorado' }
+export const FIRM = { name: 'Western Peak', contact: 'Chase Frakes', contactFirst: 'Chase', contactEmail: 'chase@westernpeak.org', city: 'Fort Collins, Colorado' }
 
 export interface Accent { accent: string; accentInk: string; accentSoft: string; accentLine: string }
 export function accentTokens(hex: string | null | undefined): Accent {
@@ -970,7 +970,7 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
           </tbody></table>
         </div>
       </div>
-      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#777', borderTop: '1px solid #ddd', paddingTop: 6 }}><span>{FIRM.name} · {FIRM.city}</span><span>Questions: {FIRM.contact}</span></div>
+      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#777', borderTop: '1px solid #ddd', paddingTop: 6 }}><span>{FIRM.name} · {FIRM.city}</span><span>Questions: {FIRM.contactEmail}</span></div>
     </div>
   )
 }
@@ -1010,7 +1010,7 @@ export function QuarterlyPreview({ data, clientName, preparedOn }: { data: Quart
           <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name + (p.retail ? '-r' : '')}><td style={pg.td}>{p.name}{p.retail ? ' · retail' : ''}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
         </div>
       </div>
-      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#777', borderTop: '1px solid #ddd', paddingTop: 6 }}><span>{FIRM.name} · {FIRM.city}</span><span>Questions: {FIRM.contact}</span></div>
+      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#777', borderTop: '1px solid #ddd', paddingTop: 6 }}><span>{FIRM.name} · {FIRM.city}</span><span>Questions: {FIRM.contactEmail}</span></div>
     </div>
   )
 }
