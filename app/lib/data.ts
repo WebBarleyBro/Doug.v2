@@ -1409,7 +1409,8 @@ export async function getPortalData(clientSlug: string) {
   const client = await getClient(clientSlug)
   if (!client) return null
 
-  const [visits, placements, orders, eventsRes, suggestionsRes, campaignsRes, registrationsRes, consumersRes] = await Promise.all([
+  // The placements table is not read: stocked accounts are derived from order history.
+  const [visits, orders, eventsRes, suggestionsRes, campaignsRes, registrationsRes, consumersRes] = await Promise.all([
     // Every visit for the brand: the portal's "since tracking start" numbers and the
     // tracking start itself are computed from the full history, not a window.
     fetchAllPages<any>((from, to) =>
@@ -1417,15 +1418,6 @@ export async function getPortalData(clientSlug: string) {
         .select(PORTAL_VISIT_SELECT)
         .eq('client_slug', clientSlug)
         .order('visited_at', { ascending: false })
-        .range(from, to)
-    ),
-    // Lost placements are included so period stats can tell "won this month" from
-    // "still active"; the portal itself only ever displays active ones.
-    fetchAllPages<any>((from, to) =>
-      sb.from('placements')
-        .select('id, account_id, product_name, placement_type, status, price_point, created_at, lost_at, accounts(id, name, address)')
-        .eq('client_slug', clientSlug)
-        .order('created_at', { ascending: false })
         .range(from, to)
     ),
     fetchAllPages<any>((from, to) =>
@@ -1459,10 +1451,9 @@ export async function getPortalData(clientSlug: string) {
       .eq('client_id', client.id),
   ])
 
-  // Accounts tied to this brand (visited, placed or ordered), with coordinates for the map.
+  // Accounts tied to this brand (a visit or an order for the slug), with coordinates for the map.
   const accountIds = [...new Set([
     ...visits.map((v: any) => v.account_id),
-    ...placements.map((p: any) => p.account_id),
     ...orders.map((o: any) => o.account_id),
   ].filter(Boolean))] as string[]
   const accounts: any[] = []
@@ -1481,7 +1472,6 @@ export async function getPortalData(clientSlug: string) {
   return {
     client,
     visits,
-    placements,
     orders,
     events: eventsRes.data || [],
     accounts,

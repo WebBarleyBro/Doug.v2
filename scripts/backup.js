@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Western Peak / Doug — database backup (read-only).
 //
 // Connects to Supabase Postgres, reads every table in the public schema, and

@@ -2,11 +2,16 @@
 // drawer and the PDF read from the same PeriodReport so the numbers always agree.
 // Nothing in here touches the DOM or the database; everything takes an explicit
 // `nowMs` so it can be unit-tested against a fixture.
+//
+// Two rules from the spec shape everything below:
+//   - An order implies a visit: an account with an order on a day counts as visited that day.
+//   - The placements table is never read; "stocked" means ordered in the last 90 days.
 
 import { resolveTotal } from '../../lib/formatters'
 
 const TZ = 'America/Denver'
 export const DAY_MS = 86400000
+export const STOCKED_WINDOW_DAYS = 90
 
 // ── Input row shapes (what getPortalData returns) ─────────────────────────────
 
@@ -20,18 +25,6 @@ export interface PortalVisit {
   status: string
   notes?: string | null
   accounts?: PortalAccountRef | null
-}
-
-export interface PortalPlacement {
-  id: string
-  account_id: string | null
-  product_name: string
-  placement_type?: string | null
-  status: string
-  price_point?: number | null
-  created_at: string
-  lost_at?: string | null
-  accounts?: { id: string; name: string } | null
 }
 
 export interface PortalLineItem {
@@ -287,17 +280,9 @@ export const CLIENT_OUTCOME_LABEL: Record<string, string> = {
   'Just Ordered': 'Ordered', 'New Placement': 'New placement', 'Menu Feature Won': 'Menu feature',
   'Will Order Soon': 'Follow-up', 'Needs Follow Up': 'Follow-up', 'Tasted': 'Tasting', 'General Check-In': 'Visit',
 }
-export const PLACEMENT_LOCATION_LABEL: Record<string, string> = {
-  well: 'Well', shelf: 'Back bar / shelf', menu: 'Menu', cocktail: 'Cocktail', retail: 'Retail shelf', seasonal: 'Seasonal',
-}
-export const PLACEMENT_STAGES: { status: string; label: string; hint: string }[] = [
-  { status: 'committed', label: 'Committed', hint: 'Buyer said yes' },
-  { status: 'ordered', label: 'Ordered', hint: 'First order in' },
-  { status: 'on_shelf', label: 'On shelf', hint: 'Stocked or on menu' },
-  { status: 'reordering', label: 'Reordering', hint: 'Two or more orders' },
-]
+// Event types the client sees. planned_stop and other are hidden.
 export const EVENT_TYPE_LABEL: Record<string, string> = {
-  tasting: 'Tasting', brand_dinner: 'Brand dinner', meeting: 'Buyer meeting', training: 'Staff training', milestone: 'Milestone', other: 'Event',
+  tasting: 'Tasting', brand_dinner: 'Brand dinner', meeting: 'Buyer meeting', training: 'Staff training', milestone: 'Milestone',
 }
 export function accountTypeLabel(t: string | null | undefined): string { return t === 'off_premise' ? 'Retail' : 'On-premise' }
 export function accountTypeLower(t: string | null | undefined): string { return t === 'off_premise' ? 'retail' : 'on-premise' }
@@ -353,6 +338,7 @@ export function lineValue(l: PortalLineItem): number {
   const { cases, bottles } = lineQty(l)
   return price * (cases + bottles)
 }
+// "2 cs Ridge Mountain Gin" / "3 btl Rye" — units exactly as stored, never converted.
 export function describeLine(l: PortalLineItem): string {
   const { cases, bottles } = lineQty(l)
   const parts = [cases ? `${cases} cs` : '', bottles ? `${bottles} btl` : ''].filter(Boolean).join(' + ')
@@ -360,7 +346,10 @@ export function describeLine(l: PortalLineItem): string {
 }
 export function describeOrder(o: PortalOrder): string {
   const lines = (o.po_line_items || []).map(describeLine).filter(Boolean)
-  return lines.length ? lines.join(', ') : (o.deliver_to_name ? 'Order' : 'Order')
+  return lines.length ? lines.join(', ') : 'Order'
+}
+export function unitLabel(p: { cases: number; bottles: number }): string {
+  return [p.cases ? `${p.cases} cs` : '', p.bottles ? `${p.bottles} btl` : ''].filter(Boolean).join(' + ') || '—'
 }
 
 // Cadence: average gap between an account's orders vs days since the last one.
@@ -386,13 +375,13 @@ export interface AccountRow {
   id: string
   name: string
   type: string | null
-  lastVisit: string | null     // YYYY-MM-DD (MT)
-  visits: number
+  lastVisit: string | null     // YYYY-MM-DD (MT): latest of visit or order
+  lastOrder: string | null     // YYYY-MM-DD (MT)
+  visits: number               // visit rows logged (deduped)
   orders: number
   value: number
   allTimeValue: number
   allTimeOrders: number
-  onShelf: number
   cadence?: { sinceDays: number; avgGapDays: number; flag: CadenceFlag } | null
 }
 
@@ -415,8 +404,8 @@ export interface ProductRow {
   cases: number
   bottles: number
   value: number
-  accounts: number
-  onShelf: number
+  accounts: number             // distinct accounts ordering it in scope
+  stockedAt: number            // distinct accounts with it in an order in the last 90 days
 }
 
 export interface EventRow { id: string; date: string; account: string; type: string; typeLabel: string; consumers: number }
@@ -440,14 +429,14 @@ export interface TimelineDay { date: string; weekday: string; label: string; sto
 
 export interface MapAccount {
   id: string; name: string; type: string | null; lat: number; lng: number
-  hasPlacement: boolean; visitedInPeriod: boolean; visitedEver: boolean; orderedInPeriod: boolean
-  lastVisit: string | null; onShelf: number; periodValue: number
+  stocked: boolean; orderedInPeriod: boolean; visitedInPeriod: boolean
+  lastVisit: string | null; productsStocked: number; periodValue: number
 }
 
 export interface AccountDetail {
-  id: string; name: string; type: string | null; firstVisit: string | null
-  ordersAllTime: number; valueAllTime: number; onShelfNow: number
-  onShelf: { id: string; product: string; location: string; since: string; stage: string }[]
+  id: string; name: string; type: string | null; firstVisit: string | null; lastOrder: string | null
+  ordersAllTime: number; valueAllTime: number
+  products: { name: string; cases: number; bottles: number; lastOrdered: string }[]
   orders: OrderRow[]
   visits: { id: string; date: string; notes: string; status: string; label: string; rep: string | null; win: boolean }[]
 }
@@ -465,25 +454,31 @@ export interface PeriodReport {
   priorOrders: PortalOrder[]
   allVisits: PortalVisit[]                  // deduped, all time
   allOrders: PortalOrder[]                  // client-visible, all time
-  activePlacements: PortalPlacement[]
   accountInfo: Record<string, { name: string; type: string | null }>
   repNames: Record<string, string>          // empty unless built for staff
   measures: {
-    accountsVisited: Delta
-    visits: number
+    accountsVisited: Delta                  // visited OR ordered (an order implies a visit)
+    visits: number                          // visit rows logged in period (deduped)
     orders: Delta
     orderValue: Delta
   }
   sparklines: SparkSeries
   allTime: { accounts: number; orders: number; value: number; orderingAccounts: number; reorderingAccounts: number; avgOrder: number }
-  secondary: { onShelf: number; reorderingAccounts: number; orderingAccounts: number; newPlacements: number; tastings: number }
+  stocked: {
+    windowStartKey: string                  // first day of the 90-day window ending at the period end
+    windowEndKey: string
+    accounts: number                        // accounts with a client-visible order in the window
+    reorderingAccounts: number              // 2+ orders all time
+    orderingAccounts: number                // ever ordered
+    newAccounts: number                     // first ever order in the period
+    tastings: number
+    byProduct: { name: string; retail: boolean; accounts: number }[]   // top 8 by distinct accounts in the window
+  }
   cumulative: { current: CumulativePoint[]; prior: { date: string; value: number }[]; axisDays: number }
   funnel: { visited: number; visits: number; ordered: number; firstTime: number; repeat: number; priorVisited: number; priorOrdered: number; conversionPct: number | null }
   accountsLedger: { period: AccountRow[]; all: AccountRow[] }
   ordersLedger: { period: OrderRow[]; all: OrderRow[] }
   productsLedger: { period: ProductRow[]; all: ProductRow[] }
-  placements: { active: number; accounts: number; stages: { status: string; label: string; hint: string; count: number }[] }
-  placementLocations: { type: string; label: string; count: number }[]
   events: EventRow[]
   eventSummary: { tastings: number; consumers: number; other: number }
   timeline: TimelineDay[]
@@ -493,7 +488,6 @@ export interface PeriodReport {
 
 export interface ReportInput {
   visits: PortalVisit[]
-  placements: PortalPlacement[]
   orders: PortalOrder[]
   events: PortalEvent[]
   accounts?: PortalAccount[]
@@ -531,7 +525,6 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   }
   for (const a of input.accounts || []) touchInfo(a.id, a.name, a.account_type)
   for (const v of input.visits) touchInfo(v.account_id, v.accounts?.name, v.accounts?.account_type)
-  for (const p of input.placements) touchInfo(p.account_id, p.accounts?.name)
   for (const o of input.orders) touchInfo(o.account_id, o.accounts?.name || o.deliver_to_name)
   const nameOf = (id: string) => accountInfo[id]?.name || (id.startsWith('name:') ? id.slice(5) : 'Account')
   const typeOf = (id: string) => accountInfo[id]?.type ?? null
@@ -540,19 +533,24 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const allVisits = dedupeByAccountDay(input.visits)
   const visits = allVisits.filter(v => within(toMs(v.visited_at), range.startMs, range.endMs))
   const priorVisits = allVisits.filter(v => within(toMs(v.visited_at), range.priorStartMs, range.priorEndMs))
-  const distinctAccounts = (list: PortalVisit[]) => uniq(list.map(v => v.account_id).filter(Boolean) as string[])
+  const visitAccounts = (list: PortalVisit[]) => list.map(v => v.account_id).filter(Boolean) as string[]
 
   // ── Orders ──
   const allOrders = input.orders.filter(isClientVisibleOrder).sort((a, b) => orderDateMs(b) - orderDateMs(a))
   const orders = allOrders.filter(o => within(orderDateMs(o), range.startMs, range.endMs))
   const priorOrders = allOrders.filter(o => within(orderDateMs(o), range.priorStartMs, range.priorEndMs))
   const valueOf = (list: PortalOrder[]) => round2(sum(list.map(orderValue)))
+  const orderAccounts = (list: PortalOrder[]) => list.map(orderAccountKey).filter(Boolean)
+
+  // An order implies a visit: "accounts visited" is the union of both sources.
+  const reached = (V: PortalVisit[], O: PortalOrder[]) => uniq([...visitAccounts(V), ...orderAccounts(O)])
 
   // Orders per account, all time, oldest first (for first-order and cadence logic)
   const ordersByAccount = new Map<string, PortalOrder[]>()
   for (const o of allOrders) { const k = orderAccountKey(o); if (!k) continue; const l = ordersByAccount.get(k) || []; l.push(o); ordersByAccount.set(k, l) }
   for (const l of ordersByAccount.values()) l.sort((a, b) => orderDateMs(a) - orderDateMs(b))
   const firstOrderMs = (acct: string) => { const l = ordersByAccount.get(acct); return l?.length ? orderDateMs(l[0]) : NaN }
+  const lastOrderKey = (acct: string) => { const l = ordersByAccount.get(acct); return l?.length ? mtDayKey(orderDateMs(l[l.length - 1])) : null }
 
   // ── Tracking start ──
   const firstVisitMs = allVisits.length ? Math.min(...allVisits.map(v => toMs(v.visited_at))) : NaN
@@ -560,24 +558,35 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const trackingMs = [firstVisitMs, firstOrder].filter(n => !Number.isNaN(n))
   const trackingStart = trackingMs.length ? mtDayKey(Math.min(...trackingMs)) : null
 
-  // ── Placements ──
-  const activePlacements = input.placements.filter(p => !p.lost_at)
-  const onShelfPlacements = activePlacements.filter(p => p.status === 'on_shelf' || p.status === 'reordering')
-  const onShelfByAccount = new Map<string, number>()
-  for (const p of onShelfPlacements) if (p.account_id) onShelfByAccount.set(p.account_id, (onShelfByAccount.get(p.account_id) || 0) + 1)
-  const onShelfByProduct = new Map<string, number>()
-  for (const p of onShelfPlacements) { const n = stripProductName(p.product_name); onShelfByProduct.set(n, (onShelfByProduct.get(n) || 0) + 1) }
-  const newPlacements = input.placements.filter(p => within(toMs(p.created_at), range.startMs, range.endMs)).length
+  // ── Stocked: ordered in the 90 days ending at the period end ──
+  const windowEndKey = range.endKey
+  const windowStartKey = addDays(windowEndKey, -(STOCKED_WINDOW_DAYS - 1))
+  const windowStartMs = mtStartOfDayMs(windowStartKey), windowEndMs = range.endMs
+  const windowOrders = allOrders.filter(o => within(orderDateMs(o), windowStartMs, windowEndMs))
+  const stockedIds = new Set(orderAccounts(windowOrders))
+  const stockedByProduct = new Map<string, { retail: boolean; accts: Set<string> }>()
+  const productsByStockedAccount = new Map<string, Set<string>>()
+  for (const o of windowOrders) {
+    const k = orderAccountKey(o); if (!k) continue
+    for (const l of (o.po_line_items || [])) {
+      const name = stripProductName(l.product_name); if (!name) continue
+      let e = stockedByProduct.get(name); if (!e) { e = { retail: isRetailSku(l.product_name), accts: new Set() }; stockedByProduct.set(name, e) }
+      e.accts.add(k)
+      const ps = productsByStockedAccount.get(k) || new Set<string>(); ps.add(name); productsByStockedAccount.set(k, ps)
+    }
+  }
+  const stockedAtByProduct = new Map<string, number>()
+  for (const [name, e] of stockedByProduct) stockedAtByProduct.set(name, e.accts.size)
 
   // ── Events ──
   const consumers = input.tastingConsumers || {}
   const periodEvents = input.events
-    .filter(e => e.status !== 'cancelled' && e.event_type !== 'planned_stop' && within(toMs(e.start_time), range.startMs, range.endMs))
+    .filter(e => e.status !== 'cancelled' && !!EVENT_TYPE_LABEL[e.event_type || ''] && within(toMs(e.start_time), range.startMs, range.endMs))
     .sort((a, b) => toMs(b.start_time) - toMs(a.start_time))
   const events: EventRow[] = periodEvents.map(e => ({
     id: e.id, date: mtDayKey(toMs(e.start_time)),
     account: e.accounts?.name || (e.account_id ? nameOf(e.account_id) : '') || e.title || 'Event',
-    type: e.event_type || 'other', typeLabel: EVENT_TYPE_LABEL[e.event_type || 'other'] || 'Event',
+    type: e.event_type || 'other', typeLabel: EVENT_TYPE_LABEL[e.event_type || ''],
     consumers: consumers[e.id] || 0,
   }))
   const tastings = events.filter(e => e.type === 'tasting')
@@ -585,17 +594,21 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
 
   // ── Measures + sparklines ──
   const measures = {
-    accountsVisited: delta(distinctAccounts(visits).length, distinctAccounts(priorVisits).length),
+    accountsVisited: delta(reached(visits, orders).length, reached(priorVisits, priorOrders).length),
     visits: visits.length,
     orders: delta(orders.length, priorOrders.length),
     orderValue: delta(valueOf(orders), valueOf(priorOrders)),
   }
   const months = recentMonths(nowMs, 6)
+  const inMonth = (m: { startMs: number; endMs: number }) => ({
+    v: allVisits.filter(v => within(toMs(v.visited_at), m.startMs, m.endMs)),
+    o: allOrders.filter(o => within(orderDateMs(o), m.startMs, m.endMs)),
+  })
   const sparklines: SparkSeries = {
     months: months.map(m => ({ key: m.key, label: m.label })),
-    accountsVisited: months.map(m => distinctAccounts(allVisits.filter(v => within(toMs(v.visited_at), m.startMs, m.endMs))).length),
-    orders: months.map(m => allOrders.filter(o => within(orderDateMs(o), m.startMs, m.endMs)).length),
-    orderValue: months.map(m => valueOf(allOrders.filter(o => within(orderDateMs(o), m.startMs, m.endMs)))),
+    accountsVisited: months.map(m => { const x = inMonth(m); return reached(x.v, x.o).length }),
+    orders: months.map(m => inMonth(m).o.length),
+    orderValue: months.map(m => valueOf(inMonth(m).o)),
   }
 
   // ── All time ──
@@ -603,10 +616,29 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const reorderingAccounts = [...ordersByAccount.values()].filter(l => l.length >= 2).length
   const allValue = valueOf(allOrders)
   const allTime = {
-    accounts: distinctAccounts(allVisits).length, orders: allOrders.length, value: allValue,
+    accounts: reached(allVisits, allOrders).length, orders: allOrders.length, value: allValue,
     orderingAccounts, reorderingAccounts, avgOrder: allOrders.length ? round2(allValue / allOrders.length) : 0,
   }
-  const secondary = { onShelf: onShelfPlacements.length, reorderingAccounts, orderingAccounts, newPlacements, tastings: tastings.length }
+
+  // ── Funnel ──
+  const visitedIds = reached(visits, orders)
+  const orderedIds = uniq(orderAccounts(orders))
+  const firstTime = orderedIds.filter(id => within(firstOrderMs(id), range.startMs, range.endMs)).length
+  const funnel = {
+    visited: visitedIds.length, visits: visits.length, ordered: orderedIds.length,
+    firstTime,
+    repeat: orderedIds.filter(id => (ordersByAccount.get(id)?.length || 0) >= 2).length,
+    priorVisited: reached(priorVisits, priorOrders).length,
+    priorOrdered: uniq(orderAccounts(priorOrders)).length,
+    conversionPct: visitedIds.length ? Math.round(orderedIds.length / visitedIds.length * 100) : null,
+  }
+
+  const stocked = {
+    windowStartKey, windowEndKey,
+    accounts: stockedIds.size, reorderingAccounts, orderingAccounts, newAccounts: firstTime, tastings: tastings.length,
+    byProduct: [...stockedByProduct.entries()].map(([name, e]) => ({ name, retail: e.retail, accounts: e.accts.size }))
+      .sort((a, b) => b.accounts - a.accounts || a.name.localeCompare(b.name)).slice(0, 8),
+  }
 
   // ── Cumulative order value by day (current drawn to today, prior for its whole span) ──
   const todayKey = mtDayKey(nowMs)
@@ -625,21 +657,14 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     axisDays: range.days,
   }
 
-  // ── Funnel ──
-  const visitedIds = distinctAccounts(visits)
-  const orderedIds = uniq(orders.map(orderAccountKey).filter(Boolean))
-  const funnel = {
-    visited: visitedIds.length, visits: visits.length, ordered: orderedIds.length,
-    firstTime: orderedIds.filter(id => within(firstOrderMs(id), range.startMs, range.endMs)).length,
-    repeat: orderedIds.filter(id => (ordersByAccount.get(id)?.length || 0) >= 2).length,
-    priorVisited: distinctAccounts(priorVisits).length,
-    priorOrdered: uniq(priorOrders.map(orderAccountKey).filter(Boolean)).length,
-    conversionPct: visitedIds.length ? Math.round(orderedIds.length / visitedIds.length * 100) : null,
-  }
-
   // ── Ledgers ──
-  const lastVisitByAccount = new Map<string, string>()
-  for (const v of allVisits) { if (!v.account_id) continue; const k = mtDayKey(toMs(v.visited_at)); if (!lastVisitByAccount.has(v.account_id) || k > (lastVisitByAccount.get(v.account_id) as string)) lastVisitByAccount.set(v.account_id, k) }
+  const lastVisitRowByAccount = new Map<string, string>()
+  for (const v of allVisits) { if (!v.account_id) continue; const k = mtDayKey(toMs(v.visited_at)); if (!lastVisitRowByAccount.has(v.account_id) || k > (lastVisitRowByAccount.get(v.account_id) as string)) lastVisitRowByAccount.set(v.account_id, k) }
+  // "Last visit" is the latest of a visit row or an order (an order implies a visit).
+  const lastVisitOf = (id: string): string | null => {
+    const v = lastVisitRowByAccount.get(id) || null, o = lastOrderKey(id)
+    return !v ? o : !o ? v : (v > o ? v : o)
+  }
 
   const accountRows = (V: PortalVisit[], O: PortalOrder[]): AccountRow[] => {
     const rows = new Map<string, AccountRow>()
@@ -648,8 +673,8 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
       if (!r) {
         const all = ordersByAccount.get(id) || []
         r = {
-          id, name: nameOf(id), type: typeOf(id), lastVisit: lastVisitByAccount.get(id) || null,
-          visits: 0, orders: 0, value: 0, allTimeValue: valueOf(all), allTimeOrders: all.length, onShelf: onShelfByAccount.get(id) || 0,
+          id, name: nameOf(id), type: typeOf(id), lastVisit: lastVisitOf(id), lastOrder: lastOrderKey(id),
+          visits: 0, orders: 0, value: 0, allTimeValue: valueOf(all), allTimeOrders: all.length,
         }
         if (staff) r.cadence = cadenceFor(all.map(orderDateMs), nowMs)
         rows.set(id, r)
@@ -675,30 +700,18 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
       const name = stripProductName(l.product_name)
       if (!name) continue
       let r = rows.get(name)
-      if (!r) { r = { name, retail: isRetailSku(l.product_name), cases: 0, bottles: 0, value: 0, accounts: 0, onShelf: onShelfByProduct.get(name) || 0, acctSet: new Set() }; rows.set(name, r) }
+      if (!r) { r = { name, retail: isRetailSku(l.product_name), cases: 0, bottles: 0, value: 0, accounts: 0, stockedAt: stockedAtByProduct.get(name) || 0, acctSet: new Set() }; rows.set(name, r) }
       const q = lineQty(l)
       r.cases += q.cases; r.bottles += q.bottles; r.value = round2(r.value + lineValue(l))
       const k = orderAccountKey(o); if (k) r.acctSet.add(k)
     }
-    return [...rows.values()].map(r => ({ name: r.name, retail: r.retail, cases: r.cases, bottles: r.bottles, value: r.value, accounts: r.acctSet.size, onShelf: r.onShelf }))
+    return [...rows.values()].map(r => ({ name: r.name, retail: r.retail, cases: r.cases, bottles: r.bottles, value: r.value, accounts: r.acctSet.size, stockedAt: r.stockedAt }))
       .sort((a, b) => b.value - a.value || b.cases - a.cases || a.name.localeCompare(b.name))
   }
 
-  // ── Placements panel ──
-  const placements = {
-    active: activePlacements.length,
-    accounts: uniq(activePlacements.map(p => p.account_id).filter(Boolean)).length,
-    stages: PLACEMENT_STAGES.map(s => ({ ...s, count: activePlacements.filter(p => p.status === s.status).length })),
-  }
-  const locCount = new Map<string, number>()
-  for (const p of onShelfPlacements) { const t = p.placement_type || 'shelf'; locCount.set(t, (locCount.get(t) || 0) + 1) }
-  const placementLocations = [...locCount.entries()].map(([type, count]) => ({ type, label: PLACEMENT_LOCATION_LABEL[type] || type, count })).sort((a, b) => b.count - a.count)
-
-  // ── Timeline ──
+  // ── Timeline: union of visits and orders by account and MT day ──
   const ordersByAcctDay = new Map<string, PortalOrder[]>()
   for (const o of orders) { const k = `${orderAccountKey(o)}__${mtDayKey(orderDateMs(o))}`; const l = ordersByAcctDay.get(k) || []; l.push(o); ordersByAcctDay.set(k, l) }
-  const placementsByAcctDay = new Map<string, PortalPlacement[]>()
-  for (const p of input.placements) { if (!p.account_id) continue; const k = `${p.account_id}__${mtDayKey(toMs(p.created_at))}`; const l = placementsByAcctDay.get(k) || []; l.push(p); placementsByAcctDay.set(k, l) }
 
   const stopFromOrders = (acct: string, day: string, list: PortalOrder[], visit: PortalVisit | null): TimelineStop => {
     const total = round2(sum(list.map(orderValue)))
@@ -724,9 +737,8 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     if (dayOrders?.length) stop = stopFromOrders(acct, day, dayOrders, v)
     else {
       const base = { id: v.id, accountId: acct, name: nameOf(acct), type: typeOf(acct), status: v.status, rep, visitedAt: v.visited_at }
-      const np = placementsByAcctDay.get(key)?.[0]
-      if (v.status === 'Menu Feature Won' && np) stop = { ...base, kind: 'placement', label: 'Menu feature', text: `${stripProductName(np.product_name)} on the ${(PLACEMENT_LOCATION_LABEL[np.placement_type || ''] || 'menu').toLowerCase()}` }
-      else if (v.status === 'Menu Feature Won' || v.status === 'New Placement') stop = { ...base, kind: 'placement', label: v.status === 'New Placement' ? 'New placement' : 'Menu feature', text: notes }
+      if (v.status === 'Menu Feature Won') stop = { ...base, kind: 'placement', label: 'Menu feature', text: notes }
+      else if (v.status === 'New Placement') stop = { ...base, kind: 'placement', label: 'New placement', text: notes }
       else if (v.status === 'Tasted') stop = { ...base, kind: 'tasting', label: 'Tasting', text: notes }
       else if (v.status === 'Will Order Soon' || v.status === 'Needs Follow Up') stop = { ...base, kind: 'followup', label: 'Follow-up', text: notes }
       else if (v.status === 'Not Interested') stop = { ...base, kind: 'passed', label: 'Passed', text: notes }
@@ -734,7 +746,7 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     }
     const l = dayMap.get(day) || []; l.push(stop); dayMap.set(day, l)
   }
-  // Orders placed on a day with no visit logged for that account still happened in the field.
+  // Orders placed on a day with no visit row for that account still produce a stop.
   for (const [key, list] of ordersByAcctDay) {
     if (covered.has(key)) continue
     const [acct, day] = key.split('__')
@@ -750,33 +762,31 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   }))
 
   // ── Map ──
-  const visitedEver = new Set(allVisits.map(v => v.account_id).filter(Boolean) as string[])
+  const tiedIds = new Set(reached(allVisits, allOrders))
   const visitedInPeriod = new Set(visitedIds)
   const orderedInPeriod = new Set(orderedIds)
   const periodValueByAccount = new Map<string, number>()
   for (const o of orders) { const k = orderAccountKey(o); periodValueByAccount.set(k, round2((periodValueByAccount.get(k) || 0) + orderValue(o))) }
-  const placedIds = new Set(activePlacements.map(p => p.account_id).filter(Boolean) as string[])
   const mapAccounts: MapAccount[] = (input.accounts || [])
-    .filter(a => typeof a.lat === 'number' && typeof a.lng === 'number' && a.lat !== 0 && a.lng !== 0 && (visitedEver.has(a.id) || placedIds.has(a.id)))
+    .filter(a => typeof a.lat === 'number' && typeof a.lng === 'number' && a.lat !== 0 && a.lng !== 0 && tiedIds.has(a.id))
     .map(a => ({
       id: a.id, name: a.name, type: a.account_type ?? null, lat: a.lat as number, lng: a.lng as number,
-      hasPlacement: placedIds.has(a.id), visitedInPeriod: visitedInPeriod.has(a.id), visitedEver: visitedEver.has(a.id), orderedInPeriod: orderedInPeriod.has(a.id),
-      lastVisit: lastVisitByAccount.get(a.id) || null, onShelf: onShelfByAccount.get(a.id) || 0, periodValue: periodValueByAccount.get(a.id) || 0,
+      stocked: stockedIds.has(a.id), orderedInPeriod: orderedInPeriod.has(a.id), visitedInPeriod: visitedInPeriod.has(a.id),
+      lastVisit: lastVisitOf(a.id), productsStocked: productsByStockedAccount.get(a.id)?.size || 0, periodValue: periodValueByAccount.get(a.id) || 0,
     }))
 
-  const report: PeriodReport = {
+  return {
     range, nowMs, staff,
     trackingStart, trackingStartLabel: trackingStart ? fmtMonthLong(trackingStart) : null, trackingStartMon: trackingStart ? fmtMon(trackingStart) : null,
-    visits, priorVisits, orders, priorOrders, allVisits, allOrders, activePlacements, accountInfo, repNames,
-    measures, sparklines, allTime, secondary, cumulative, funnel,
+    visits, priorVisits, orders, priorOrders, allVisits, allOrders, accountInfo, repNames,
+    measures, sparklines, allTime, stocked, cumulative, funnel,
     accountsLedger: { period: accountRows(visits, orders), all: accountRows(allVisits, allOrders) },
     ordersLedger: { period: orderRows(orders), all: orderRows(allOrders) },
     productsLedger: { period: productRows(orders), all: productRows(allOrders) },
-    placements, placementLocations, events, eventSummary,
+    events, eventSummary,
     timeline, timelineStops: sum(timeline.map(d => d.stops.length)),
     mapAccounts,
   }
-  return report
 }
 
 // ── Account drawer ────────────────────────────────────────────────────────────
@@ -787,15 +797,26 @@ export function getAccountDetail(report: PeriodReport, accountId: string): Accou
   if (!info && !isNameKey) return null
   const name = info?.name || accountId.slice(5)
   const visits = report.allVisits.filter(v => v.account_id === accountId && (report.staff || v.status !== 'Not Interested'))
-  const orders = report.allOrders.filter(o => orderAccountKey(o) === accountId)
-  const onShelf = report.activePlacements.filter(p => p.account_id === accountId && (p.status === 'on_shelf' || p.status === 'reordering'))
-  const firstVisit = visits.length ? mtDayKey(Math.min(...visits.map(v => toMs(v.visited_at)))) : null
-  const rows = report.ordersLedger.all.filter(r => r.accountId === accountId)
+  const orders = report.allOrders.filter(o => orderAccountKey(o) === accountId)   // newest first
+  const firstMs = [...visits.map(v => toMs(v.visited_at)), ...orders.map(orderDateMs)].filter(n => !Number.isNaN(n))
+  const firstVisit = firstMs.length ? mtDayKey(Math.min(...firstMs)) : null
+  const products = new Map<string, { name: string; cases: number; bottles: number; lastOrdered: string }>()
+  for (const o of orders) {
+    const day = mtDayKey(orderDateMs(o))
+    for (const l of (o.po_line_items || [])) {
+      const n = stripProductName(l.product_name); if (!n) continue
+      const q = lineQty(l)
+      const p = products.get(n) || { name: n, cases: 0, bottles: 0, lastOrdered: day }
+      p.cases += q.cases; p.bottles += q.bottles; if (day > p.lastOrdered) p.lastOrdered = day
+      products.set(n, p)
+    }
+  }
   return {
     id: accountId, name, type: info?.type ?? null, firstVisit,
-    ordersAllTime: orders.length, valueAllTime: round2(sum(orders.map(orderValue))), onShelfNow: onShelf.length,
-    onShelf: onShelf.map(p => ({ id: p.id, product: stripProductName(p.product_name), location: PLACEMENT_LOCATION_LABEL[p.placement_type || ''] || 'Shelf', since: mtDayKey(toMs(p.created_at)), stage: p.status === 'reordering' ? 'Reordering' : 'On shelf' })),
-    orders: rows,
+    lastOrder: orders.length ? mtDayKey(orderDateMs(orders[0])) : null,
+    ordersAllTime: orders.length, valueAllTime: round2(sum(orders.map(orderValue))),
+    products: [...products.values()].sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || a.name.localeCompare(b.name)),
+    orders: report.ordersLedger.all.filter(r => r.accountId === accountId),
     visits: visits.slice(0, 10).map(v => ({
       id: v.id, date: mtDayKey(toMs(v.visited_at)), notes: (v.notes || '').trim(), status: v.status,
       label: CLIENT_OUTCOME_LABEL[v.status] || 'Visit', rep: v.user_id ? (report.repNames[v.user_id] || null) : null,
@@ -833,20 +854,20 @@ export interface MonthlyPdfData {
   weeks: { label: string; value: number }[]
   topAccounts: { name: string; orders: number; value: number }[]
   products: { name: string; cases: number; bottles: number }[]
-  placements: { onShelf: number; reorderingAccounts: number; newThisMonth: number; tastings: number }
+  stocked: { accounts: number; reorderingAccounts: number; newThisMonth: number; tastings: number }
 }
 
 export interface QuarterlyPdfData {
   year: number
   q: number
   label: string                       // "Q3 2026"
-  months: { key: string; label: string; accountsVisited: number; orders: number; value: number; newPlacements: number; tastings: number }[]
-  totals: { accountsVisited: number; orders: number; value: number; newPlacements: number; tastings: number }
+  months: { key: string; label: string; accountsVisited: number; orders: number; value: number; newAccounts: number; tastings: number }[]
+  totals: { accountsVisited: number; orders: number; value: number; newAccounts: number; tastings: number }
   topAccounts: { name: string; orders: number; value: number }[]
   products: { name: string; cases: number; bottles: number }[]
 }
 
-type PdfSource = Omit<ReportInput, 'range' | 'staff' | 'repNames'>
+export type PdfSource = Omit<ReportInput, 'range' | 'staff' | 'repNames'>
 
 export function buildMonthlyPdfData(src: PdfSource, monthKey: string): MonthlyPdfData {
   const range = resolveRange({ mode: 'month', anchor: monthKey, customStart: '', customEnd: '' }, src.nowMs)
@@ -866,7 +887,7 @@ export function buildMonthlyPdfData(src: PdfSource, monthKey: string): MonthlyPd
     weeks,
     topAccounts: r.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 10).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
     products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),
-    placements: { onShelf: r.secondary.onShelf, reorderingAccounts: r.secondary.reorderingAccounts, newThisMonth: r.secondary.newPlacements, tastings: r.secondary.tastings },
+    stocked: { accounts: r.stocked.accounts, reorderingAccounts: r.stocked.reorderingAccounts, newThisMonth: r.stocked.newAccounts, tastings: r.stocked.tastings },
   }
 }
 
@@ -877,14 +898,14 @@ export function buildQuarterlyPdfData(src: PdfSource, year: number, q: number): 
   const months = [0, 1, 2].map(i => {
     const key = addMonths(first, i)
     const mr = buildPeriodReport({ ...src, range: resolveRange({ mode: 'month', anchor: key, customStart: '', customEnd: '' }, src.nowMs), staff: false })
-    return { key, label: fmtMon(key), accountsVisited: mr.measures.accountsVisited.current, orders: mr.measures.orders.current, value: mr.measures.orderValue.current, newPlacements: mr.secondary.newPlacements, tastings: mr.secondary.tastings }
+    return { key, label: fmtMon(key), accountsVisited: mr.measures.accountsVisited.current, orders: mr.measures.orders.current, value: mr.measures.orderValue.current, newAccounts: mr.stocked.newAccounts, tastings: mr.stocked.tastings }
   })
   const productTotals = qr.productsLedger.period.slice().sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || b.value - a.value)
   return {
     year, q, label: qRange.label, months,
     totals: {
       accountsVisited: qr.measures.accountsVisited.current, orders: qr.measures.orders.current, value: qr.measures.orderValue.current,
-      newPlacements: qr.secondary.newPlacements, tastings: qr.secondary.tastings,
+      newAccounts: qr.stocked.newAccounts, tastings: qr.stocked.tastings,
     },
     topAccounts: qr.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 8).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
     products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),

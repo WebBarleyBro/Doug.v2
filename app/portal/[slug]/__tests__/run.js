@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Plain-node test runner for the portal metrics module. No test framework is
 // installed, so this registers a tiny TypeScript require hook (using the
 // project's own `typescript` package) and runs every *.test.ts in this folder
