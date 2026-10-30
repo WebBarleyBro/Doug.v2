@@ -9,13 +9,14 @@ import {
   AlertTriangle, StickyNote, Globe, Instagram,
 } from 'lucide-react'
 import { v3, v3input, v3label, healthColor, healthLabel } from '../../lib/theme'
-import { useV3Clients, useAdvancePlacement } from '../../lib/query'
+import { useV3Clients, useAdvancePlacement, useV3Profile } from '../../lib/query'
 import { useOpenLogVisit, useWinMoment, useV3Toast } from '../../lib/context'
 import { getSupabase } from '../../../lib/supabase'
 import { clientLogoUrl } from '../../../lib/constants'
 import { relativeTimeStr, formatShortDateMT } from '../../../lib/formatters'
 import { createPlacement } from '../../../lib/data'
 import type { Client } from '../../../lib/types'
+import { scanFields, firstNameOf, languageHeadline, languageDetail, LANGUAGE_BLOCKED_LABEL } from '../../../lib/language-guard'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -712,9 +713,17 @@ function EditVisitModal({ visit, accountId, onClose }: { visit: any; accountId: 
   const [notes, setNotes]          = useState(visit.notes ?? '')
   const [tastingNotes, setTasting] = useState(visit.tasting_notes ?? '')
   const [feedback, setFeedback]    = useState(visit.feedback ?? '')
+  const { data: profile } = useV3Profile()
+  // Edited notes go to the brand's portal too: same profanity block as logging a visit.
+  const languageHits = scanFields([
+    { label: 'the notes', value: notes },
+    { label: 'the tasting notes', value: tastingNotes },
+    { label: 'the buyer feedback', value: feedback },
+  ])
 
   const save = useMutation({
     mutationFn: async () => {
+      if (languageHits.length > 0) throw new Error(languageDetail(languageHits))
       const sb = getSupabase()
       const { error } = await sb.from('visits').update({
         status,
@@ -786,14 +795,21 @@ function EditVisitModal({ visit, accountId, onClose }: { visit: any; accountId: 
           </div>
         </div>
 
-        <button onClick={() => save.mutate()} disabled={save.isPending}
+        {languageHits.length > 0 && (
+          <div role="alert" style={{ marginTop: 18, padding: '12px 14px', borderRadius: v3.radius.md, background: 'rgba(224,102,74,0.12)', border: '1px solid rgba(224,102,74,0.45)' }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#e0664a', marginBottom: 4 }}>{languageHeadline(firstNameOf(profile as any))}</div>
+            <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.5 }}>{languageDetail(languageHits)}</div>
+          </div>
+        )}
+
+        <button onClick={() => save.mutate()} disabled={save.isPending || languageHits.length > 0}
           style={{
             marginTop: 24, width: '100%', padding: '13px',
-            background: save.isPending ? v3.bg.sheet : v3.amber,
-            color: '#000', border: 'none', borderRadius: v3.radius.md,
-            fontSize: '13px', fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase',
+            background: save.isPending || languageHits.length > 0 ? v3.bg.sheet : v3.amber,
+            color: languageHits.length > 0 ? 'rgba(255,255,255,0.45)' : '#000', border: 'none', borderRadius: v3.radius.md,
+            fontSize: '13px', fontWeight: 800, cursor: languageHits.length > 0 ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase',
           }}>
-          {save.isPending ? 'Saving…' : 'Save Visit'}
+          {save.isPending ? 'Saving…' : languageHits.length > 0 ? LANGUAGE_BLOCKED_LABEL : 'Save Visit'}
         </button>
       </div>
     </ModalBase>

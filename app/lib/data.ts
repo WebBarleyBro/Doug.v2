@@ -3,6 +3,16 @@ import { getSupabase } from './supabase'
 import { cached, invalidate, invalidatePrefix } from './cache'
 import { startOfMonthMT, endOfMonthMT, nDaysAgoMT, todayMT, daysAgoMT } from './formatters'
 import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from './commission'
+import { findProfanity } from './language-guard'
+
+// Visit notes are shown verbatim in the brand's portal. The screens block profanity
+// before saving; this is the backstop for any path that skips them.
+function assertCleanVisitText(fields: Record<string, unknown>) {
+  for (const key of ['notes', 'tasting_notes', 'feedback']) {
+    const words = findProfanity(typeof fields[key] === 'string' ? (fields[key] as string) : null)
+    if (words.length) throw new Error(`Visit ${key.replace('_', ' ')} can't be saved with “${words.join('”, “')}”. The brand reads these notes in their portal.`)
+  }
+}
 import type {
   Account, Client, Visit, Placement, PurchaseOrder, POLineItem,
   Contact, Task, Event, Campaign, CampaignMilestone, Product,
@@ -273,6 +283,8 @@ export async function logVisit(visit: {
   }
 
   const slugsToInsert = slugs.length > 0 ? slugs : [null]
+  assertCleanVisitText({ notes: visit.notes, tasting_notes: visit.tasting_notes, feedback: visit.feedback })
+  for (const n of Object.values(visit.client_notes || {})) assertCleanVisitText({ notes: n })
 
   // Insert one visit row per client slug, using per-client notes when provided
   const visitRows = slugsToInsert.map(slug => ({
@@ -345,6 +357,7 @@ export async function logVisit(visit: {
 
 export async function updateVisit(id: string, updates: Partial<Visit> & { client_slug?: string }) {
   const sb = getSupabase()
+  assertCleanVisitText(updates as Record<string, unknown>)
   const { error } = await sb.from('visits').update(updates).eq('id', id)
   if (error) throw error
   invalidate('followup-visits')
@@ -365,6 +378,7 @@ export async function deleteVisit(id: string, clientSlug?: string) {
 export async function updateVisitGroup(visitIds: string[], updates: Partial<Visit> & { client_slug?: string }) {
   const sb = getSupabase()
   if (!visitIds.length) return
+  assertCleanVisitText(updates as Record<string, unknown>)
   const { error } = await sb.from('visits').update(updates).in('id', visitIds)
   if (error) throw error
   invalidate('followup-visits')

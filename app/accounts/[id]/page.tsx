@@ -25,6 +25,7 @@ import { overdueColor } from '../../lib/theme'
 import { PLACEMENT_TYPES, PLACEMENT_TYPE_LABELS, VISIT_STATUSES } from '../../lib/constants'
 import type { UserProfile, Client, VisitStatus } from '../../lib/types'
 import { useIsMobile } from '../../lib/use-is-mobile'
+import { scanFields, languageDetail, LANGUAGE_BLOCKED_LABEL } from '../../lib/language-guard'
 
 declare global { interface Window { google: any } }
 
@@ -980,7 +981,15 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
     setEditing(true)
   }
 
+  // Edited notes go to the brand's portal too: same profanity block as logging a visit.
+  const languageHits = editing
+    ? (isMultiBrand && allRows
+        ? scanFields(allRows.map(r => ({ label: `the ${clients?.find((c: any) => c.slug === r.client_slug)?.name || r.client_slug} notes`, value: brandNotes[r.id] })))
+        : scanFields([{ label: 'the notes', value: form.notes }]))
+    : []
+
   async function handleSave() {
+    if (languageHits.length > 0) return
     setSaving(true)
     try {
       if (isMultiBrand && allRows) {
@@ -1040,10 +1049,15 @@ function VisitCard({ visit, allRows, clients, onDelete, onSave, isMobile = false
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'none' }} />
               </div>
             )}
+            {languageHits.length > 0 && (
+              <div role="alert" style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: t.status.dangerBg, border: '1px solid rgba(232,85,64,0.35)', fontSize: '12px', color: t.text.secondary, lineHeight: 1.5 }}>
+                {languageDetail(languageHits)}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setEditing(false)} style={btnSecondary}>Cancel</button>
-              <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }}>
-                {saving ? 'Saving...' : 'Save'}
+              <button onClick={handleSave} disabled={saving || languageHits.length > 0} style={{ ...btnPrimary, opacity: saving || languageHits.length > 0 ? 0.6 : 1 }}>
+                {saving ? 'Saving...' : languageHits.length > 0 ? LANGUAGE_BLOCKED_LABEL : 'Save'}
               </button>
             </div>
           </div>
