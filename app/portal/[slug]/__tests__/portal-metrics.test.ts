@@ -404,3 +404,12 @@ test('monthly PDF weeks start on the 1st and quarterly totals equal the sum of m
   assert.equal(q.totals.orders, 2); assert.equal(q.totals.value, 140); assert.equal(q.totals.accountsWorked, 2); assert.equal(q.totals.newAccounts, 2)
   assert.equal(q.months.reduce((s, x) => s + x.orders, 0), q.totals.orders)
 })
+
+test('profanity in notes is masked for clients but shown as written to staff', () => {
+  const input = base({ visits: [visit('v1', 'accA', '2026-10-05T18:00:00', 'General Check-In', { notes: 'It’s fucking Scott. Clear some shit out.' })] })
+  const client = buildPeriodReport({ ...input, staff: false })
+  const firm = buildPeriodReport({ ...input, staff: true })
+  assert.equal(client.timeline[0].stops[0].note, 'It’s f****** Scott. Clear some s*** out.')
+  assert.equal(getAccountDetail(client, 'accA')!.visits[0].notes, 'It’s f****** Scott. Clear some s*** out.')
+  assert.equal(firm.timeline[0].stops[0].note, 'It’s fucking Scott. Clear some shit out.')
+})

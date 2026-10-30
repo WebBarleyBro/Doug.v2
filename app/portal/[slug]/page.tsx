@@ -413,8 +413,8 @@ export default function ClientPortalPage() {
         <Timeline report={report} firm={firm} onOpenOrder={openOrder} onOpenAccount={openAccount} />
 
         <footer style={{ marginTop: 26, paddingTop: 16, borderTop: `1px solid ${C.line}`, fontSize: 12.5, color: C.mute, display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-          <span>Prepared by {FIRM.name} · Updates as the field logs it · Mountain Time</span>
-          <span>Questions: {FIRM.contact}</span>
+          <span>Prepared by {FIRM.name} · All times Mountain Time</span>
+          <span>Questions? Contact {FIRM.contact}</span>
         </footer>
       </div>
 
@@ -481,7 +481,7 @@ export default function ClientPortalPage() {
       )}
 
       {drawer === 'report' && (
-        <Drawer title="Report" sub="One page. Same numbers as the screen." onClose={closeDrawer}>
+        <Drawer title="Report" onClose={closeDrawer}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Seg ariaLabel="Report kind" value={reportKind} onChange={v => setReportKind(v as 'month' | 'quarter')} options={[{ value: 'month', label: 'Monthly' }, { value: 'quarter', label: 'Quarterly' }]} />
             {reportKind === 'month' ? (

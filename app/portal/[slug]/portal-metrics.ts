@@ -13,6 +13,10 @@
 //     accounts ledger, the funnel and the map.
 
 import { resolveTotal } from '../../lib/formatters'
+import { maskProfanity } from '../../lib/language-guard'
+
+// Clients never see profanity, including in notes saved before the check existed.
+const clientNote = (text: string | null | undefined, staff: boolean) => (staff ? (text || '').trim() : maskProfanity((text || '').trim()))
 
 const TZ = 'America/Denver'
 export const DAY_MS = 86400000
@@ -794,7 +798,7 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     if (!v.account_id || (!staff && v.status === 'Not Interested')) continue
     push(mtDayKey(toMs(v.visited_at)), {
       id: v.id, accountId: v.account_id, name: nameOf(v.account_id), type: typeOf(v.account_id), kind: 'visit',
-      note: (v.notes || '').trim(), status: staff ? v.status : null, rep: v.user_id ? (repNames[v.user_id] || null) : null,
+      note: clientNote(v.notes, staff), status: staff ? v.status : null, rep: v.user_id ? (repNames[v.user_id] || null) : null,
     })
   }
   const dayOrderTotal = new Map<string, number>()
@@ -862,7 +866,7 @@ export function getAccountDetail(report: PeriodReport, accountId: string): Accou
     products: [...products.values()].sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || a.name.localeCompare(b.name)),
     orders: report.ordersLedger.all.filter(r => r.accountId === accountId),
     visits: visits.slice(0, 10).map(v => ({
-      id: v.id, date: mtDayKey(toMs(v.visited_at)), notes: (v.notes || '').trim(), status: v.status,
+      id: v.id, date: mtDayKey(toMs(v.visited_at)), notes: clientNote(v.notes, report.staff), status: v.status,
       label: CLIENT_OUTCOME_LABEL[v.status] || 'Visit', rep: v.user_id ? (report.repNames[v.user_id] || null) : null,
       win: ['Just Ordered', 'New Placement', 'Menu Feature Won'].includes(v.status),
     })),
