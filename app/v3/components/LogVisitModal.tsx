@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Check, Plus, Package, User, ChevronDown, Calendar, GlassWater, Building2, Clock } from 'lucide-react'
 import { v3, v3input, v3label, WIN_STATUSES } from '../lib/theme'
 import { useV3Clients, useLogVisit, useV3Profile } from '../lib/query'
-import { scanFields, firstNameOf, languageHeadline, languageDetail } from '../../lib/language-guard'
+import { scanFields, firstNameOf, languageHeadline, languageDetail, LANGUAGE_BLOCKED_LABEL } from '../../lib/language-guard'
 import { useWinMoment, useV3Toast } from '../lib/context'
 import { useQueryClient } from '@tanstack/react-query'
 import { getSupabase } from '../../lib/supabase'
@@ -197,8 +197,8 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
 
   async function handleSubmit() {
     if (!canSubmit || saving) return
-    // Stop once so the wording gets a second look; saving again goes through.
-    if (languageHits.length > 0 && !languageAck) { setLanguageAck(true); return }
+    // Notes are shown to the brand in their portal: profanity blocks the save outright.
+    if (languageHits.length > 0) { setLanguageAck(true); langRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
     setSaving(true)
     setError('')
     try {
@@ -731,11 +731,6 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
               <div style={{ fontSize: '12px', color: v3.text.secondary, lineHeight: 1.5 }}>
                 {languageDetail(languageHits)}
               </div>
-              {languageAck && (
-                <div style={{ fontSize: '11.5px', color: v3.text.muted, marginTop: 6 }}>
-                  Tap Log Visit again to save it as written.
-                </div>
-              )}
             </div>
           )}
 
@@ -749,7 +744,7 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
           {/* ── SUBMIT ──────────────────────────────────────── */}
           <button
             onClick={handleSubmit}
-            disabled={!canSubmit || saving}
+            disabled={!canSubmit || saving || languageHits.length > 0}
             style={{
               width: '100%', padding: '14px',
               background: saved ? v3.status.success : canSubmit ? v3.amber : 'rgba(255,255,255,0.05)',
@@ -767,7 +762,7 @@ export default function LogVisitModal({ onClose, preAccount, onSuccess }: Props)
               : saving
               ? 'Saving…'
               : canSubmit
-              ? (languageHits.length > 0 && languageAck ? 'Log Visit anyway' : 'Log Visit')
+              ? (languageHits.length > 0 ? LANGUAGE_BLOCKED_LABEL : 'Log Visit')
               : !accountId ? 'Select an account'
               : !selectedSlugs.length ? 'Select a brand'
               : 'Select an outcome'

@@ -6,7 +6,7 @@ import { logVisit, getAccounts, getClients, getProducts, createPlacement } from 
 import { invalidatePrefix } from '../lib/cache'
 import { getSupabase } from '../lib/supabase'
 import { todayMT, isFutureDate, saveDateMT } from '../lib/formatters'
-import { scanFields, firstNameOf, languageHeadline, languageDetail } from '../lib/language-guard'
+import { scanFields, firstNameOf, languageHeadline, languageDetail, LANGUAGE_BLOCKED_LABEL } from '../lib/language-guard'
 import { getCurrentUserWithProfile } from '../lib/auth'
 import type { Account, Client, Product, VisitStatus, PlacementType, PlacementStatus } from '../lib/types'
 import AddAccountModal from './AddAccountModal'
@@ -240,8 +240,8 @@ export default function VisitLogModal({
       ? `Follow up in ${form.followup_days} days`
       : form.create_checkin ? 'General check-in reminder' : undefined
 
-    // Stop once so the wording gets a second look; saving again goes through.
-    if (languageHits.length > 0 && !languageAck) { setLanguageAck(true); return }
+    // Notes are shown to the brand in their portal: profanity blocks the save outright.
+    if (languageHits.length > 0) { setLanguageAck(true); langRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
 
     setSaving(true)
     try {
@@ -743,11 +743,6 @@ export default function VisitLogModal({
               <div style={{ fontSize: '12px', color: t.text.secondary, lineHeight: 1.5 }}>
                 {languageDetail(languageHits)}
               </div>
-              {languageAck && (
-                <div style={{ fontSize: '11.5px', color: t.text.muted, marginTop: '6px' }}>
-                  Press Log Visit again to save it as written.
-                </div>
-              )}
             </div>
           )}
 
@@ -762,13 +757,13 @@ export default function VisitLogModal({
             </div>
           )}
 
-          <button type="submit" disabled={saving || !form.account_id}
+          <button type="submit" disabled={saving || !form.account_id || languageHits.length > 0}
             style={{
               ...btnPrimary, width: '100%', justifyContent: 'center', padding: '13px', fontSize: '15px',
-              opacity: saving || !form.account_id ? 0.6 : 1,
-              cursor: saving || !form.account_id ? 'not-allowed' : 'pointer', marginTop: '8px',
+              opacity: saving || !form.account_id || languageHits.length > 0 ? 0.6 : 1,
+              cursor: saving || !form.account_id || languageHits.length > 0 ? 'not-allowed' : 'pointer', marginTop: '8px',
             }}>
-            {saving ? 'Saving...' : (languageHits.length > 0 && languageAck) ? 'Log Visit anyway' : 'Log Visit'}
+            {saving ? 'Saving...' : languageHits.length > 0 ? LANGUAGE_BLOCKED_LABEL : 'Log Visit'}
           </button>
         </form>
       )}
