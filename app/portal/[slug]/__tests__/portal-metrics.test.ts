@@ -269,11 +269,11 @@ test('ledgers: units as stored, retail suffix stripped, value from line totals, 
   assert.equal(gin.retail, true); assert.equal(gin.cases, 2); assert.equal(gin.value, 120); assert.equal(gin.accounts, 1); assert.equal(gin.stockedAt, 1)
   const rye = r.productsLedger.period.find(p => p.name === 'Rye')!
   assert.equal(rye.cases, 0); assert.equal(rye.bottles, 2); assert.equal(rye.value, 85.9)
-  assert.equal(r.productsLedger.all.length, 2)
+  assert.equal(r.productsLedger.all.length, 3)   // the retail gin SKU is its own row
   assert.equal(r.measures.orderValue.current, 205.9)
   const detail = getAccountDetail(r, 'accA')!
   assert.equal(detail.firstVisit, '2026-09-05'); assert.equal(detail.lastOrder, '2026-10-12'); assert.equal(detail.ordersAllTime, 2); assert.equal(detail.valueAllTime, 305.9)
-  assert.deepEqual(detail.products.map(p => [p.name, p.cases, p.bottles, p.lastOrdered]), [['Ridge Mountain Gin', 3, 0, '2026-10-12'], ['Rye', 0, 2, '2026-10-12']])
+  assert.deepEqual(detail.products.map(p => [p.name, p.retail, p.cases, p.bottles, p.lastOrdered]), [['Ridge Mountain Gin', true, 2, 0, '2026-10-12'], ['Ridge Mountain Gin', false, 1, 0, '2026-09-10'], ['Rye', false, 0, 2, '2026-10-12']])
 })
 
 test('line quantities fall back to a generic quantity column but never convert bottles', () => {

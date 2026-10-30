@@ -436,7 +436,7 @@ export interface MapAccount {
 export interface AccountDetail {
   id: string; name: string; type: string | null; firstVisit: string | null; lastOrder: string | null
   ordersAllTime: number; valueAllTime: number
-  products: { name: string; cases: number; bottles: number; lastOrdered: string }[]
+  products: { name: string; retail: boolean; cases: number; bottles: number; lastOrdered: string }[]
   orders: OrderRow[]
   visits: { id: string; date: string; notes: string; status: string; label: string; rep: string | null; win: boolean }[]
 }
@@ -564,19 +564,20 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const windowStartMs = mtStartOfDayMs(windowStartKey), windowEndMs = range.endMs
   const windowOrders = allOrders.filter(o => within(orderDateMs(o), windowStartMs, windowEndMs))
   const stockedIds = new Set(orderAccounts(windowOrders))
+  // Keyed by the stored product_name so a retail SKU ("… (Off-Premise)") stays its own row.
   const stockedByProduct = new Map<string, { retail: boolean; accts: Set<string> }>()
   const productsByStockedAccount = new Map<string, Set<string>>()
   for (const o of windowOrders) {
     const k = orderAccountKey(o); if (!k) continue
     for (const l of (o.po_line_items || [])) {
-      const name = stripProductName(l.product_name); if (!name) continue
-      let e = stockedByProduct.get(name); if (!e) { e = { retail: isRetailSku(l.product_name), accts: new Set() }; stockedByProduct.set(name, e) }
+      const key = String(l.product_name || '').trim(); if (!key) continue
+      let e = stockedByProduct.get(key); if (!e) { e = { retail: isRetailSku(key), accts: new Set() }; stockedByProduct.set(key, e) }
       e.accts.add(k)
-      const ps = productsByStockedAccount.get(k) || new Set<string>(); ps.add(name); productsByStockedAccount.set(k, ps)
+      const ps = productsByStockedAccount.get(k) || new Set<string>(); ps.add(key); productsByStockedAccount.set(k, ps)
     }
   }
   const stockedAtByProduct = new Map<string, number>()
-  for (const [name, e] of stockedByProduct) stockedAtByProduct.set(name, e.accts.size)
+  for (const [key, e] of stockedByProduct) stockedAtByProduct.set(key, e.accts.size)
 
   // ── Events ──
   const consumers = input.tastingConsumers || {}
@@ -636,7 +637,7 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const stocked = {
     windowStartKey, windowEndKey,
     accounts: stockedIds.size, reorderingAccounts, orderingAccounts, newAccounts: firstTime, tastings: tastings.length,
-    byProduct: [...stockedByProduct.entries()].map(([name, e]) => ({ name, retail: e.retail, accounts: e.accts.size }))
+    byProduct: [...stockedByProduct.entries()].map(([key, e]) => ({ name: stripProductName(key), retail: e.retail, accounts: e.accts.size }))
       .sort((a, b) => b.accounts - a.accounts || a.name.localeCompare(b.name)).slice(0, 8),
   }
 
@@ -697,10 +698,10 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const productRows = (O: PortalOrder[]): ProductRow[] => {
     const rows = new Map<string, ProductRow & { acctSet: Set<string> }>()
     for (const o of O) for (const l of (o.po_line_items || [])) {
-      const name = stripProductName(l.product_name)
-      if (!name) continue
-      let r = rows.get(name)
-      if (!r) { r = { name, retail: isRetailSku(l.product_name), cases: 0, bottles: 0, value: 0, accounts: 0, stockedAt: stockedAtByProduct.get(name) || 0, acctSet: new Set() }; rows.set(name, r) }
+      const key = String(l.product_name || '').trim()
+      if (!key) continue
+      let r = rows.get(key)
+      if (!r) { r = { name: stripProductName(key), retail: isRetailSku(key), cases: 0, bottles: 0, value: 0, accounts: 0, stockedAt: stockedAtByProduct.get(key) || 0, acctSet: new Set() }; rows.set(key, r) }
       const q = lineQty(l)
       r.cases += q.cases; r.bottles += q.bottles; r.value = round2(r.value + lineValue(l))
       const k = orderAccountKey(o); if (k) r.acctSet.add(k)
@@ -800,15 +801,15 @@ export function getAccountDetail(report: PeriodReport, accountId: string): Accou
   const orders = report.allOrders.filter(o => orderAccountKey(o) === accountId)   // newest first
   const firstMs = [...visits.map(v => toMs(v.visited_at)), ...orders.map(orderDateMs)].filter(n => !Number.isNaN(n))
   const firstVisit = firstMs.length ? mtDayKey(Math.min(...firstMs)) : null
-  const products = new Map<string, { name: string; cases: number; bottles: number; lastOrdered: string }>()
+  const products = new Map<string, { name: string; retail: boolean; cases: number; bottles: number; lastOrdered: string }>()
   for (const o of orders) {
     const day = mtDayKey(orderDateMs(o))
     for (const l of (o.po_line_items || [])) {
-      const n = stripProductName(l.product_name); if (!n) continue
+      const key = String(l.product_name || '').trim(); if (!key) continue
       const q = lineQty(l)
-      const p = products.get(n) || { name: n, cases: 0, bottles: 0, lastOrdered: day }
+      const p = products.get(key) || { name: stripProductName(key), retail: isRetailSku(key), cases: 0, bottles: 0, lastOrdered: day }
       p.cases += q.cases; p.bottles += q.bottles; if (day > p.lastOrdered) p.lastOrdered = day
-      products.set(n, p)
+      products.set(key, p)
     }
   }
   return {
@@ -853,7 +854,7 @@ export interface MonthlyPdfData {
   value: Delta
   weeks: { label: string; value: number }[]
   topAccounts: { name: string; orders: number; value: number }[]
-  products: { name: string; cases: number; bottles: number }[]
+  products: { name: string; retail: boolean; cases: number; bottles: number }[]
   stocked: { accounts: number; reorderingAccounts: number; newThisMonth: number; tastings: number }
 }
 
@@ -864,7 +865,7 @@ export interface QuarterlyPdfData {
   months: { key: string; label: string; accountsVisited: number; orders: number; value: number; newAccounts: number; tastings: number }[]
   totals: { accountsVisited: number; orders: number; value: number; newAccounts: number; tastings: number }
   topAccounts: { name: string; orders: number; value: number }[]
-  products: { name: string; cases: number; bottles: number }[]
+  products: { name: string; retail: boolean; cases: number; bottles: number }[]
 }
 
 export type PdfSource = Omit<ReportInput, 'range' | 'staff' | 'repNames'>
@@ -886,7 +887,7 @@ export function buildMonthlyPdfData(src: PdfSource, monthKey: string): MonthlyPd
     accountsVisited: r.measures.accountsVisited, visits: r.measures.visits, orders: r.measures.orders, value: r.measures.orderValue,
     weeks,
     topAccounts: r.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 10).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
-    products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),
+    products: productTotals.slice(0, 6).map(p => ({ name: p.name, retail: p.retail, cases: p.cases, bottles: p.bottles })),
     stocked: { accounts: r.stocked.accounts, reorderingAccounts: r.stocked.reorderingAccounts, newThisMonth: r.stocked.newAccounts, tastings: r.stocked.tastings },
   }
 }
@@ -908,6 +909,6 @@ export function buildQuarterlyPdfData(src: PdfSource, year: number, q: number): 
       newAccounts: qr.stocked.newAccounts, tastings: qr.stocked.tastings,
     },
     topAccounts: qr.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 8).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
-    products: productTotals.slice(0, 6).map(p => ({ name: p.name, cases: p.cases, bottles: p.bottles })),
+    products: productTotals.slice(0, 6).map(p => ({ name: p.name, retail: p.retail, cases: p.cases, bottles: p.bottles })),
   }
 }

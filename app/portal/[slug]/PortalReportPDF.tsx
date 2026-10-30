@@ -102,11 +102,11 @@ function AccountsTable({ rows }: { rows: { name: string; orders: number; value: 
   )
 }
 
-function ProductsTable({ rows }: { rows: { name: string; cases: number; bottles: number }[] }) {
+function ProductsTable({ rows }: { rows: { name: string; retail: boolean; cases: number; bottles: number }[] }) {
   return (
     <View>
       {rows.map(p => (
-        <View key={p.name} style={s.tr}><Text style={{ ...s.td, flex: 3 }}>{p.name}</Text><Text style={{ ...s.tdM, flex: 1.2 }}>{unitLabel(p)}</Text></View>
+        <View key={p.name + (p.retail ? '-r' : '')} style={s.tr}><Text style={{ ...s.td, flex: 3 }}>{p.name}{p.retail ? ' · retail' : ''}</Text><Text style={{ ...s.tdM, flex: 1.2 }}>{unitLabel(p)}</Text></View>
       ))}
     </View>
   )

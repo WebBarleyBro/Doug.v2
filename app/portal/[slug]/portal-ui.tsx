@@ -557,7 +557,7 @@ export function Ledger({ report, firm, accent, onOpenAccount }: { report: Period
     sub = `${cases} case${cases === 1 ? '' : 's'}${bottles ? `, ${bottles} bottle${bottles === 1 ? '' : 's'}` : ''} · ${list.length} product${list.length === 1 ? '' : 's'}`
     head = <tr>{th('name', 'Product', false, true)}{th('cases', 'Cases', true)}{th('value', 'Value', true)}{th('accts', 'Accounts ordering', true)}{th('stocked', 'Stocked at', true)}</tr>
     rows = list.map(r => (
-      <tr key={r.name}>
+      <tr key={r.name + (r.retail ? '-r' : '')}>
         <td>{r.name}{r.retail && <span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 1 }}>Retail size</span>}</td>
         <td className="r" style={{ ...mono, whiteSpace: 'nowrap' }}>
           {r.cases || (r.bottles ? '' : '—')}{r.bottles ? <span style={{ color: C.ink2 }}>{r.cases ? ' + ' : ''}{r.bottles} btl</span> : ''}
@@ -622,8 +622,8 @@ export function StockedPanel({ report }: { report: PeriodReport }) {
       {stocked.byProduct.length === 0 ? <div style={{ fontSize: 13, color: C.mute }}>No orders in the last 90 days.</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           {stocked.byProduct.map(p => (
-            <div key={p.name} className="pt-hb">
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</span>
+            <div key={p.name + (p.retail ? '-r' : '')} className="pt-hb">
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}{p.retail && <span style={{ color: C.mute }}> · retail</span>}</span>
               <div style={{ height: 8, background: C.line2, borderRadius: 3, overflow: 'hidden' }}><i style={{ display: 'block', height: '100%', background: C.bar2, borderRadius: '0 3px 3px 0', width: `${(p.accounts / mx) * 100}%` }} /></div>
               <span style={{ ...mono, textAlign: 'right', fontWeight: 500 }}>{p.accounts}</span>
             </div>
@@ -770,7 +770,7 @@ export function AccountDrawer({ detail, firm, onClose }: { detail: AccountDetail
         <div>
           <SectionLabel style={{ marginTop: 6 }}>Products ordered</SectionLabel>
           {detail.products.map(p => (
-            <div key={p.name} className="pt-file"><div>{p.name}<small style={{ display: 'block', color: C.mute, fontSize: 12, marginTop: 2 }}>last ordered {fmtShortYear(p.lastOrdered)}</small></div><span style={mono}>{unitLabel(p)}</span></div>
+            <div key={p.name + (p.retail ? '-r' : '')} className="pt-file"><div>{p.name}{p.retail ? ' · retail' : ''}<small style={{ display: 'block', color: C.mute, fontSize: 12, marginTop: 2 }}>last ordered {fmtShortYear(p.lastOrdered)}</small></div><span style={mono}>{unitLabel(p)}</span></div>
           ))}
         </div>
       )}
@@ -845,7 +845,7 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
             <tbody>{data.topAccounts.map(a => <tr key={a.name}><td style={pg.td}>{a.name}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{a.orders}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{money(a.value)}</td></tr>)}</tbody></table>
         </div>
         <div><h5 style={pg.h5}>Products ordered</h5>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name}><td style={pg.td}>{p.name}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name + (p.retail ? '-r' : '')}><td style={pg.td}>{p.name}{p.retail ? ' · retail' : ''}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
           <h5 style={{ ...pg.h5, marginTop: 10 }}>Stocked accounts</h5>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
             {[['Ordered in the last 90 days', data.stocked.accounts], ['Reordering accounts', data.stocked.reorderingAccounts], ['New this month', data.stocked.newThisMonth], ['Tastings', data.stocked.tastings]].map(([k, v]) => <tr key={String(k)}><td style={pg.td}>{k}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{v}</td></tr>)}
@@ -885,7 +885,7 @@ export function QuarterlyPreview({ data, clientName, preparedOn }: { data: Quart
             <tbody>{data.topAccounts.map(a => <tr key={a.name}><td style={pg.td}>{a.name}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{a.orders}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{money(a.value)}</td></tr>)}</tbody></table>
         </div>
         <div><h5 style={pg.h5}>Products ordered, quarter</h5>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name}><td style={pg.td}>{p.name}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>{data.products.map(p => <tr key={p.name + (p.retail ? '-r' : '')}><td style={pg.td}>{p.name}{p.retail ? ' · retail' : ''}</td><td style={{ ...pg.td, ...pg.m, textAlign: 'right' }}>{unitLabel(p)}</td></tr>)}</tbody></table>
         </div>
       </div>
       <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#777', borderTop: '1px solid #ddd', paddingTop: 6 }}><span>{FIRM.name} · {FIRM.city}</span><span>Questions: {FIRM.contact}</span></div>
