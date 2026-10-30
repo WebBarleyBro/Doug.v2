@@ -1,6 +1,6 @@
 # Client Portal Rebuild Spec
 
-Western Peak client portal (`/portal/[slug]`). Version 1.0, October 30, 2026.
+Western Peak client portal (`/portal/[slug]`). Version 1.2, October 30, 2026 (amended after the data audit; see DOUG_AUDIT.md Section 8).
 Reference design: `design/portal-mockup.html` in this repo. Open it in a browser. The build must match it in layout, hierarchy, labels, and behavior. Where this document and the mockup disagree, this document wins.
 
 ## 0. Rules that override everything else
@@ -11,7 +11,9 @@ Reference design: `design/portal-mockup.html` in this repo. Open it in a browser
 4. **The firm is Western Peak.** Remove every occurrence of "Barley Bros" and "barley-bros.com" from client-facing code (list in Section 11). Do not change email sender domains until `westernpeak.org` is verified in Resend; until then leave the `from:` addresses as they are and add a `// TODO: switch to westernpeak.org when Resend domain is verified` comment.
 5. Work in a branch (`portal-v2`). Commit in small steps. Do not deploy to production; Sara deploys after review.
 6. No new dependencies beyond what is in `package.json`, except `@next/font` is already available via `next/font/google`. Mapbox GL is already installed.
-7. Keep `portal-metrics.ts` as the single source of truth for all calculations. Screen and PDF both read from one `PeriodReport`. Extend it; do not compute numbers inside components.
+7. **An order is not a visit.** Many orders arrive by text. Never create or imply a visit from an order. The portal's first measure is therefore "Accounts worked" (visit or order in period) with the split shown underneath, and the timeline shows an order without a same-day visit as its own "Order" stop.
+8. **Do not build anything on the `placements` table.** It holds 24 rows across all brands and is not maintained. "Stocked" is derived from order history (Section 4.7).
+9. Keep `portal-metrics.ts` as the single source of truth for all calculations. Screen and PDF both read from one `PeriodReport`. Extend it; do not compute numbers inside components.
 
 ## 1. Files
 
@@ -22,7 +24,8 @@ Reference design: `design/portal-mockup.html` in this repo. Open it in a browser
 | `app/portal/[slug]/portal-metrics.ts` | Extend: cumulative series, funnel, since-tracking totals, per-account rollups, product rollups, placement-location rollup, timeline events. Remove `wins`, `winRate`, `inProgress` from the KPI set. |
 | `app/portal/[slug]/PortalReportPDF.tsx` | Rewrite: monthly one-page layout and quarterly one-page layout. |
 | `app/portal/[slug]/PortalMap.tsx` | New: Mapbox map of accounts. |
-| `app/lib/data.ts` → `getPortalData` | Extend the accounts fetch so portal receives `lat, lng, account_type` for accounts tied to this brand. Read-only query change. |
+| `app/lib/data.ts` → `getPortalData` | Extend the accounts fetch so portal receives `lat, lng, account_type` for accounts tied to this brand (tied = has a visit or order for the slug; do not use `account_clients`, which has 26 rows for 177 accounts). Read-only query change. |
+| `migrations/069_portal_rls_and_hygiene.sql` | Write the file, do not run it. Contents: (a) replace `accounts_portal_read` with a policy scoped to accounts having a visit, order, or placement for `get_my_client_slug()`; (b) `UPDATE brand_commission_structures SET effective_to = current_date WHERE effective_to IS NULL` with a comment that `clients.commission_rate` is canonical; (c) `CREATE UNIQUE INDEX ... ON products (client_slug, lower(name)) WHERE active` (check for existing duplicates first and list them in a comment). Sara runs it after reading. |
 | `design/portal-mockup.html` | Reference only. Do not import it. |
 
 ## 2. Data available (already returned by `getPortalData(slug)`)
@@ -67,7 +70,7 @@ Client logo (from `logo_url`, fallback: first letter on accent-tinted square), c
 Header row: left "{Period label}", right "Tracking since {Month YYYY}".
 
 Three primary measures, equal columns:
-1. **Accounts visited**: distinct `account_id` among deduped visits in period. Delta vs comparison period. Sparkline: last 6 calendar months. Footnote: "{all-time distinct accounts} accounts since {Mon} · {visits in period} visits this period".
+1. **Accounts worked**: distinct `account_id` with a deduped visit or a client-visible order in period (union). Footnote: "{v} visited in person · {o} placed orders". Delta vs comparison period. Sparkline: last 6 calendar months. Footnote: "{all-time distinct accounts} accounts since {Mon} · {visits in period} visits this period".
 2. **Orders**: count of client-visible orders in period. Delta. Sparkline. Footnote: "{all-time orders} orders since {Mon} · {distinct ordering accounts} accounts have ordered".
 3. **Order value**: sum of order values in period, formatted `$8,940`. Delta in dollars. Sparkline. Footnote: "{all-time value} since {Mon} · {average order value} average order".
 
@@ -78,9 +81,9 @@ Delta format: `▲ +4` / `▼ −2` / `— no change`, then " vs {comparison lab
 Sparkline: 6 points (calendar months ending with the current month), thin line in `--bar`, 8% area fill, endpoint dot, month abbreviations under the first, middle and last points only if space allows, otherwise first and last.
 
 Secondary strip (four cells, below a hairline):
-- **On shelf today**: active placements (`lost_at is null`) with status `on_shelf` or `reordering`.
+- **Stocked accounts**: accounts with a client-visible order in the last 90 days (as of the period end). Label "Stocked accounts".
 - **Reordering accounts**: accounts with 2+ client-visible orders all time, "of {accounts that ever ordered} that ordered".
-- **New placements**: placements with `created_at` in period, "{period label}".
+- **New accounts**: accounts whose first ever client-visible order falls in the period, "{period label}".
 - **Tastings held**: events with `event_type = 'tasting'` and `status != 'cancelled'` in period, "{period label}".
 
 ### 4.4 Order value chart (3/5 width) and funnel (2/5 width), equal height
@@ -88,38 +91,38 @@ Secondary strip (four cells, below a hairline):
 **Order value**: cumulative sum of order value by day through the period, drawn as a 2.2px line in `--bar` with a soft glow (`drop-shadow(0 0 6px rgba(242,243,245,.35))`), gradient area beneath (16% to 0%), endpoint dot with glow and the running total as a label. Comparison period's cumulative curve as a 1.5px dashed line in `--ghost`, aligned by day index, with its final value labeled in `--mute` at its end. X axis spans the full month/quarter even when partial. Y axis: three gridlines, labels in `$Nk`. X labels: Month → Oct 1, Oct 8, Oct 15, Oct 22, Oct 29; Quarter → every ~2 weeks; 30 days → weekly; custom → ~7 labels. Line draws in over 1.1 s on render. Hover: vertical crosshair + dot on the curve + tooltip "{date} · {running total} to date / {n} orders this day / {comparison label} at this point: {value}". Subtitle: "{total} across {n} orders" + " so far" when partial. Legend: solid line "{period label}", dashed "{Comparison label}".
 
 **From visit to order**: three horizontal bars, widths relative to the first.
-1. Accounts visited {n} · "{visits} visits · {prior n} in the {comparison label}"
+1. Accounts worked {n} · "{visits} visits logged · {prior n} in the {comparison label}"
 2. Placed an order {n} · "{first-time orderers} ordering for the first time · {prior n} in the {comparison label}". First-time = account whose earliest order ever falls in this period.
 3. Have ordered more than once {n} · "of the {n ordered} that ordered". All-time 2+ orders among accounts that ordered in the period.
 Subtitle: "{round(ordered/visited*100)}% of accounts visited placed an order". Bars animate from zero (scaleX) with 120 ms stagger.
 
 ### 4.5 Account map (full width, 320px tall, 10px radius)
-Mapbox GL, dark style (`mapbox://styles/mapbox/dark-v11`), token from `NEXT_PUBLIC_MAPBOX_TOKEN`. Fit bounds to all accounts for this brand that have `lat/lng` and either a visit or an active placement. Markers:
-- Account with an active placement: 6px circle, `--bar` at 90%.
-- Account visited in period but no placement: 5px circle, `--bar` at 45%.
+Mapbox GL, dark style (`mapbox://styles/mapbox/dark-v11`), token from `NEXT_PUBLIC_MAPBOX_TOKEN`. Fit bounds to all accounts for this brand that have `lat/lng` and either a visit or an order. Markers:
+- Stocked account (order in last 90 days): 6px circle, `--bar` at 90%.
+- Account visited but not stocked: 5px circle, `--bar` at 45%.
 - Account that ordered in the period: add a pulsing ring (CSS keyframe, 2 s, respects reduced motion).
-Hover: tooltip with account name, type, last visit date, on-shelf count, period order value. Click: opens the account drawer (4.6). Header: "Account map"; subtitle: "{n} accounts · {m} with your product on shelf". If no geocoded accounts, hide the panel entirely.
+Hover: tooltip with account name, type, last visit date, on-shelf count, period order value. Click: opens the account drawer (4.6). Header: "Account map"; subtitle: "{n} accounts · {m} stocked". If no geocoded accounts, hide the panel entirely.
 
 ### 4.6 Ledger (full width)
 Tabs: **Accounts {n}**, **Orders {n}**, **Products {n}**. Below the tabs: a two-option segmented control "{Period label}" | "Since {Mon YYYY}" (scope), a search field, and a right-aligned summary line. Columns sortable by clicking headers (arrow shows direction; default sort is value descending, date descending on Orders). Show 12 rows, then "Show all {n}" button. Clicking an Account row or an Order row opens the account drawer. Products rows are not clickable.
 
-Accounts columns: Account (name, sub-line "On-premise" or "Retail") · Last visit · Visits · Orders · Value (with a thin proportional bar to the right of the number) · All-time (only when scope is period) · On shelf (active on_shelf/reordering count). Firm view adds **Cadence** (Section 9).
+Accounts columns: Account (name, sub-line "On-premise" or "Retail") · Last visit (latest of visit or order date) · Visits · Orders · Value (with a thin proportional bar to the right of the number) · All-time (only when scope is period) · Last order. Firm view adds **Cadence** (Section 9).
 
 Orders columns: Date · PO · Account · Products ("2 cs Ridge Mountain Gin, 1 cs Single Malt"; strip " (Off-Premise)" suffixes) · Total · Status (tag; "Fulfilled" filled, "Sent" outlined).
 
-Products columns: Product (sub-line "Retail size" for off-premise SKUs) · Cases (with proportional bar) · Value · Accounts ordering · On shelf.
+Products columns: Product (sub-line "Retail size" for off-premise SKUs) · Cases (with proportional bar) · Value · Accounts ordering · Stocked at (accounts with this product in an order in the last 90 days).
 
-Case counts come from `po_line_items.quantity`. If a line item is bottle-based rather than case-based, show the unit as stored; do not convert.
+Case counts come from `po_line_items.cases` (the column is `cases`, with `bottles` alongside; show cases, and bottles only when cases is null). If a line item is bottle-based rather than case-based, show the unit as stored; do not convert.
 
-**Account drawer** (right side, 620px max): name, type, first visited date. Three stat cards: Orders all time, Value all time, On shelf now. Sections: On shelf (product, location, since date, stage tag), Orders (lines, date, PO, status, total), Visits (last 10: note, date, outcome label).
+**Account drawer** (right side, 620px max): name, type, first visited date. Three stat cards: Orders all time, Value all time, Last order. Sections: Products ordered (product, cases all time, last ordered), Orders (lines, date, PO, status, total), Visits (last 10: note, date, outcome label).
 
-### 4.7 Placements (1/2) and Tastings and events (1/2)
-**Placements**: subtitle "{active} active placements across {accounts} accounts, today". Four stage cells in one bordered row: Committed "Buyer said yes" · Ordered "First order in" · On shelf "Stocked or on menu" · Reordering "Two or more orders". Then "WHERE IT SITS": horizontal bars by `placement_type` among on_shelf/reordering, labels: Well, Back bar / shelf, Menu, Cocktail, Retail shelf, Seasonal.
+### 4.7 Stocked accounts (1/2) and Tastings and events (1/2)
+**Stocked accounts**: subtitle "{n} accounts ordered in the last 90 days". Three cells in one bordered row: Stocked "Ordered in the last 90 days" · Reordering "Two or more orders, all time" · New "First order in {period}". Then "BY PRODUCT": horizontal bars, one per product, value = number of distinct accounts that ordered that product in the last 90 days, top 8, from `po_line_items`. The `placements` table is not read.
 
-**Tastings and events**: subtitle "{t} tastings, {c} consumers signed up · {o} other events" (consumers from the tasting consumer table for events in period). Rows: date · account + event type label · consumer count for tastings. Event type labels: Tasting, Brand dinner, Buyer meeting, Staff training, Milestone; hide `planned_stop`. Max 7 rows, "Show all" if more.
+**Tastings and events**: hide the whole panel when there are no events in the period (currently true for every brand). When present: subtitle "{t} tastings, {c} consumers signed up · {o} other events" (consumers from `tasting_consumers` joined on event id). Rows: date · account + event type label · consumer count for tastings. Labels: Tasting, Brand dinner, Buyer meeting, Staff training, Milestone; hide `planned_stop` and `other`. Max 7 rows.
 
 ### 4.8 Field activity (full width)
-Timeline grouped by day. Left column: weekday, then "{Mon D} · {n} stops · {day order total}". Right: vertical rail with a node per stop. Filled node (with soft ring) for orders and placements; hollow node for other visits.
+Timeline grouped by day, built from the union of deduped visits and client-visible orders. A visit and an order for the same account on the same day merge into one stop showing both; an order with no visit that day is its own stop labeled "Order". Left column: weekday, then "{Mon D} · {n} stops · {day order total}". Right: vertical rail with a node per stop. Filled node (with soft ring) for orders; hollow node for other visits.
 
 Each stop: account name + "on-premise"/"retail"; then one line built from data, in this priority:
 1. If an order exists for that account on that day: "**Ordered** 2 cs Ridge Mountain Gin, 1 cs Single Malt" (+ " · first order here" if it is that account's first ever order). Amount right-aligned.
@@ -127,9 +130,9 @@ Each stop: account name + "on-premise"/"retail"; then one line built from data, 
 3. Else if status is Tasted: "**Tasting** · {notes}".
 4. Else if status is Will Order Soon or Needs Follow Up: "**Follow-up** · {notes}".
 5. Else: the visit notes.
-Visits with status Not Interested are hidden in client view. Notes are shown as logged; if a note is empty, show nothing after the label.
+Visits with status Not Interested are hidden in client view. Visits with status Needs Follow Up or Will Order Soon and an empty note show as "**Follow-up**" only. Notes are shown as logged; if a note is empty, show nothing after the label.
 
-Filter control (segmented): Everything · Orders and placements · Visits only. Show 16 stops, then "Show all {n}".
+Filter control (segmented): Everything · Orders · Visits only. Show 16 stops, then "Show all {n}".
 
 ### 4.9 Footer
 "Prepared by Western Peak · Updates as the field logs it · Mountain Time" left, "Questions: {primary contact name}" right (Chase Frakes).
@@ -150,13 +153,13 @@ Letter size, white background, `#111` text, grey rules. Fonts: register Schibste
 1. Header: client name (17pt semibold), "Brand report · {Month YYYY}" under it; right side "Western Peak" and "Prepared {date}". 1.5pt rule beneath.
 2. Three boxed figures: Accounts visited, Orders, Order value, each with "+N vs previous month" and (for accounts) "{n} visits".
 3. "ORDER VALUE BY WEEK": small bar chart, one bar per week, value labels above bars in `$Nk`, week start dates beneath.
-4. Two columns: left "TOP ACCOUNTS" table (top 10: account, orders, value); right "PRODUCTS ORDERED" (top 6: product, cases) and "PLACEMENTS TODAY" (on shelf or menu, reordering accounts, new this month, tastings).
+4. Two columns: left "TOP ACCOUNTS" table (top 10: account, orders, value); right "PRODUCTS ORDERED" (top 6: product, cases) and "ACCOUNTS" (stocked in last 90 days, reordering, new this month, tastings).
 5. Footer: "Western Peak · Fort Collins, Colorado" left, "Questions: Chase Frakes" right.
 Content must fit without overflow at the top-10 / top-6 limits. If a client has fewer rows, the page simply has whitespace at the bottom of those tables.
 
 **Quarterly, exactly one page:**
 1. Same header with "Quarterly report · Q{n} {YYYY}".
-2. Grid: rows Accounts visited, Orders, Order value, New placements, Tastings; columns the three months and a shaded Q total column.
+2. Grid: rows Accounts visited, Orders, Order value, New accounts, Tastings; columns the three months and a shaded Q total column.
 3. "ORDER VALUE BY MONTH": three bars with labels.
 4. Two columns: "TOP ACCOUNTS, QUARTER" (top 8) and "PRODUCTS ORDERED, QUARTER" (top 6).
 5. Same footer.
@@ -181,17 +184,16 @@ Spacing: panels 14px radius, 1px `--line` border, 20px/22px padding, 14px gap be
 
 Motion: count-up, curve draw, funnel grow, tile fade. All disabled under `prefers-reduced-motion: reduce`.
 
-Mobile (≤ 980px): measures stack to one column; chart and funnel stack; ledger scrolls horizontally inside its panel; placements and events stack; timeline date column goes above the stops. Nothing on the page may cause horizontal page scroll.
+Mobile (≤ 980px): measures stack to one column; chart and funnel stack; ledger scrolls horizontally inside its panel; stocked accounts and events stack; timeline date column goes above the stops. Nothing on the page may cause horizontal page scroll.
 
 ## 8. Labels (exact strings)
 
 Toolbar: Last 30 days · Month · Quarter · Custom · Files · Suggest an account · Download report
-Measures: Accounts visited · Orders · Order value · On shelf today · Reordering accounts · New placements · Tastings held
-Charts: Order value · From visit to order · Account map
+Measures: Accounts worked · Orders · Order value · Stocked accounts · Reordering accounts · New accounts · Tastings held
+Charts: Order value · From account to order · Account map · Stocked accounts · By product
 Ledger: Accounts · Orders · Products · Last visit · Visits · Orders · Value · All-time · On shelf · Date · PO · Account · Products · Total · Status · Product · Cases · Accounts ordering
-Placements: Placements · Committed · Ordered · On shelf · Reordering · Where it sits · Well · Back bar / shelf · Menu · Cocktail · Retail shelf · Seasonal
 Events: Tastings and events · Tasting · Brand dinner · Buyer meeting · Staff training · Milestone
-Activity: Field activity · Everything · Orders and placements · Visits only · Ordered · Menu feature · Tasting · Follow-up
+Activity: Field activity · Everything · Orders · Visits only · Ordered · Menu feature · Tasting · Follow-up
 Client-view outcome labels (visit status → label): Just Ordered → Ordered; New Placement → New placement; Menu Feature Won → Menu feature; Will Order Soon → Follow-up; Needs Follow Up → Follow-up; Tasted → Tasting; General Check-In → Visit; Not Interested → hidden.
 
 Never show the words "wins", "win rate", "interest", "pace", "this period", "Barley Bros", "Doug" to a client.
@@ -212,10 +214,10 @@ Extend `PeriodReport` with:
 - `funnel: { visited, visits, ordered, firstTime, repeat, priorVisited, priorOrdered }`
 - `accountsLedger: { id, name, type, lastVisit, visits, orders, value, allTimeValue, onShelf, cadence?: {sinceDays, flag} }[]` for both scopes
 - `ordersLedger` and `productsLedger` for both scopes
-- `placementLocations: { type, count }[]`
+- `stocked: { accounts, reordering, newAccounts, byProduct: { product, accounts }[] }`
 - `events: { id, date, account, type, consumers }[]`
 - `timeline: { date, stops: { accountId, name, type, kind: 'order'|'placement'|'tasting'|'followup'|'visit'|'passed', text, amount?, status, rep }[] }[]`
-Remove `wins`, `winRate`, `inProgress`, `outcomes`, `topAccounts`, `snapshot.reach`, `snapshot.repeat`. Keep `dedupeByAccountDay`, `resolveRange`, `delta`, date helpers. Unit-test the pure functions with a fixture (vitest or a plain node test file under `app/portal/[slug]/__tests__/`), at minimum: cumulative alignment across a month boundary, funnel first-time logic, cadence flags, dedupe.
+Remove `wins`, `winRate`, `inProgress`, `outcomes`, `topAccounts`, `snapshot` entirely (it was placement-based). Keep `dedupeByAccountDay`, `resolveRange`, `delta`, date helpers. Unit-test the pure functions with a fixture (vitest or a plain node test file under `app/portal/[slug]/__tests__/`), at minimum: cumulative alignment across a month boundary, funnel first-time logic, cadence flags, dedupe.
 
 ## 11. Rename list (Barley Bros → Western Peak)
 
@@ -236,6 +238,8 @@ Remove `wins`, `winRate`, `inProgress`, `outcomes`, `topAccounts`, `snapshot.rea
 - [ ] Not Interested never appears for portal-role users; cadence never appears for portal-role users.
 - [ ] Monthly PDF is one page for NoCo's real October data; quarterly PDF is one page for Q3.
 - [ ] Map shows geocoded accounts; panel hidden when none.
+- [ ] October 2026 for NoCo shows "Accounts worked" ≥ 17 with the footnote showing 3 visited in person; no number on the page implies the orders were visits.
+- [ ] Nothing reads the `placements` table.
 - [ ] Zero occurrences of "Barley Bros" in `app/portal/**` and `app/layout-shell.tsx`.
 - [ ] `npm run typecheck` and `npm run lint` pass.
 - [ ] Screenshots of client view and firm view at 1280px and 390px saved to `design/screens/` for Sara's review.
