@@ -750,7 +750,7 @@ function OrderDetailModal({ order, clients, onEdit, onClose }: { order: any; cli
                   : total > 0 ? `Order amount: ${formatCurrency(total)}\n\n` : ''
                 }
                 {order.notes ? `Notes: ${order.notes}\n\n` : ''}
-                {`Please let me know estimated lead time and any questions.\n\nThank you,\nBarley Bros`}
+                {`Please let me know estimated lead time and any questions.\n\nThank you,\nWestern Peak`}
               </div>
             </div>
           </div>

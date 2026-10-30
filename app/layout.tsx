@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Doug — Barley Bros CRM',
-  description: 'The Barley Bros spirits rep agency command center',
+  title: 'Doug — Western Peak',
+  description: 'Western Peak field sales and brand representation',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
             Set New Password
           </h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '4px' }}>
-            Barley Bros CRM
+            Doug
           </p>
         </div>
 
@@ -206,7 +206,7 @@ export default function ResetPasswordPage() {
         )}
 
         <p style={{ textAlign: 'center', fontSize: '12px', color: t.text.muted, marginTop: '24px' }}>
-          Barley Bros spirits rep agency · Fort Collins, CO
+          Western Peak · Fort Collins, Colorado
         </p>
       </div>
     </div>
