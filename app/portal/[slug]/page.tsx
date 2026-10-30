@@ -12,7 +12,7 @@ import { clientLogoUrl, WESTERN_PEAK_LOGO_SCREEN_URL } from '../../lib/constants
 import {
   type PeriodSelection, type PeriodReport, type PdfSource,
   resolveRange, parseHash, toHash, stepSelection, defaultSelection, buildPeriodReport, getAccountDetail,
-  buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthShort, fmtShortYear, quarterOf, quarterFirstMonth, addMonths, mtDayKey, isoDayKey,
+  buildMonthlyPdfData, buildQuarterlyPdfData, fmtMonthLong, fmtMonthShort, fmtShortYear, quarterOf, quarterFirstMonth, addMonths, mtDayKey, isoDayKey,
 } from './portal-metrics'
 import {
   C, FS, FM, FIRM, accentTokens, PortalStyles, Seg, Btn, Panel, MeasuresBlock, CumulativeChart, Funnel, Ledger, AccountsPanel, EventsPanel, Timeline,
@@ -199,8 +199,15 @@ export default function ClientPortalPage() {
     const sb = getSupabase()
     sb.storage.from('client-files').list(`reports/${slug}`, { limit: 50, sortBy: { column: 'created_at', order: 'desc' } })
       .then(({ data: files }) => {
+        // Saved by the scheduled reports as {slug}-YYYY-MM.pdf or {slug}-Qn-YYYY.pdf.
+        const label = (file: string) => {
+          const m = file.match(/-(\d{4})-(\d{2})\.pdf$/i), q = file.match(/-Q([1-4])-(\d{4})\.pdf$/i)
+          if (m) return fmtMonthLong(`${m[1]}-${m[2]}`)
+          if (q) return `Q${q[1]} ${q[2]}`
+          return file.replace(/\.pdf$/i, '')
+        }
         const rows = (files || []).filter(f => f.name && !f.name.startsWith('.')).map(f => ({
-          name: f.name.replace(/\.pdf$/i, ''), url: sb.storage.from('client-files').getPublicUrl(`reports/${slug}/${f.name}`).data.publicUrl,
+          name: label(f.name), url: sb.storage.from('client-files').getPublicUrl(`reports/${slug}/${f.name}`).data.publicUrl,
           date: f.created_at ? fmtShortYear(isoDayKey(f.created_at)) : '',
         }))
         setEarlier(rows)
@@ -414,7 +421,7 @@ export default function ClientPortalPage() {
 
         <footer style={{ marginTop: 26, paddingTop: 16, borderTop: `1px solid ${C.line}`, fontSize: 12.5, color: C.mute, display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <span>Prepared by {FIRM.name} · All times Mountain Time</span>
-          <span>Questions? Contact {FIRM.contact}</span>
+          <span>Questions? <a href={`mailto:${FIRM.contactEmail}`} style={{ color: 'inherit' }}>{FIRM.contactEmail}</a></span>
         </footer>
       </div>
 

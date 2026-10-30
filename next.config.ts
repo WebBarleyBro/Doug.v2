@@ -3,6 +3,8 @@ import withPWA from '@ducanh2912/next-pwa'
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  // The scheduled report route renders PDFs on the server with react-pdf.
+  serverExternalPackages: ['@react-pdf/renderer'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
