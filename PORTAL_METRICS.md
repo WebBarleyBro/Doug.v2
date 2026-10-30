@@ -328,18 +328,45 @@ ORDER BY e.start_time DESC;   -- 0 rows for NoCo
 
 ## 10. Field activity
 
-Stops are the union of deduplicated visits and client-visible orders by account and day, distributor orders included. A visit and an order on the same day merge into one "Ordered" stop. An order with no visit that day is its own "Order" stop. Not Interested visits are omitted for portal users.
+One row per client-visible order and one per visit, grouped by Mountain-Time day. An order is not a visit, so an order and a visit at the same account on the same day are two rows. Distributor orders appear as order rows. Not Interested visits are omitted for portal users.
+
+- **Order row:** "{account} · Order · {units} · {total}". Units are the order's summed `cases` and `bottles`, as stored.
+- **Placement row (Placements filter):** "{account} · New placement · {product}", or "New placements · {product}, +{n} more" when one order placed several. Under Everything and Orders, the same information is the "{n} new" tag on the order row.
+- **Visit row:** "{account} · Visit · {note}", with the note cut to one line.
+
+A **placement** is the first client-visible order line for a (venue account, `product_name`) pair, across all time. Its date is its order's date. The `placements` table is not read. A retail "(Off-Premise)" SKU is a different `product_name`, so it places separately.
 
 ```sql
-SELECT day, account_id, round(sum(value), 2) AS ordered_that_day
-FROM o_all CROSS JOIN params WHERE day BETWEEN p_start AND p_end
-GROUP BY day, account_id
-UNION ALL
-SELECT day, account_id, NULL FROM v CROSS JOIN params
-WHERE day BETWEEN p_start AND p_end
-  AND NOT EXISTS (SELECT 1 FROM o_all WHERE o_all.account_id = v.account_id AND o_all.day = v.day)
-ORDER BY day DESC;   -- 15 stops across 13 days for NoCo in October
+-- Placements made in the period, one row per order that placed something.
+WITH lines AS (
+  SELECT o.id AS order_id, o.account_id, o.day, li.product_name,
+         row_number() OVER (PARTITION BY o.account_id, li.product_name ORDER BY o.day, o.id, li.id) AS nth
+  FROM o JOIN po_line_items li ON li.po_id = o.id          -- o = venue orders only
+)
+SELECT day, order_id, a.name,
+       array_agg(regexp_replace(product_name, '\s*\(Off-Premise\)\s*$', '') ORDER BY product_name) AS new_products
+FROM lines JOIN accounts a ON a.id = lines.account_id CROSS JOIN params
+WHERE nth = 1 AND day BETWEEN params.p_start AND params.p_end
+GROUP BY day, order_id, a.name
+ORDER BY day DESC;
 ```
+
+The portal breaks ties between same-day orders by their stored order of line items. This SQL breaks them by order id and line id, so two orders for the same new product on the same day could pick a different "first" order. No NoCo account has such a pair.
+
+Rows per day and the day header "{Mon D} · {n} stops · {day order total}":
+
+```sql
+SELECT day, count(*) AS rows, round(sum(value), 2) AS day_order_total
+FROM (
+  SELECT day, value FROM o_all
+  UNION ALL
+  SELECT day, NULL FROM v
+) t CROSS JOIN params
+WHERE day BETWEEN params.p_start AND params.p_end
+GROUP BY day ORDER BY day DESC;   -- October: 17 order rows, 0 visit rows, across 13 days
+```
+
+Clicking an order or placement row opens the Order drawer: account, date, PO, status, and each line's product, quantity with unit, `unit_price`, `total`, plus a "New placement" tag on lines the query above marks `nth = 1`.
 
 ## 11. PDF
 
