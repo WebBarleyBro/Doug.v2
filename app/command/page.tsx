@@ -1174,7 +1174,7 @@ function CommandContent() {
             <HeroTile label="Revenue" value={loading ? '—' : formatCurrency(metrics.revenue)} trend={metrics.revenueTrend} color={t.gold} loading={loading}
               desc="Total billed on sent/fulfilled orders in this period" />
             <HeroTile label="Commission" value={loading ? '—' : formatCurrency(metrics.commission)} color={t.status.success} loading={loading}
-              desc="Barley Bros' cut — your commission rate × revenue" />
+              desc="Western Peak's cut — your commission rate × revenue" />
             <HeroTile label="Active Buyers" value={loading ? '—' : String(metrics.buyingAccounts)} sub={`of ${metrics.totalAccounts} accounts`} color={t.status.success} loading={loading}
               desc="Accounts with at least one order this period" />
             <HeroTile label="Field Visits" value={loading ? '—' : String(metrics.visitCount)} sub={metrics.coverage > 0 ? `${Math.round(metrics.coverage)}% of accounts visited` : undefined} color={t.status.info} loading={loading}

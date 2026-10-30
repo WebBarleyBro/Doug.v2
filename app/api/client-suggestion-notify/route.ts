@@ -54,13 +54,17 @@ export async function POST(request: NextRequest) {
 
     const text = lines.filter(l => l !== null).join('\n')
 
-    await resend.emails.send({
-      // TODO: switch to westernpeak.org when Resend domain is verified
-      from: 'portal@barley-bros.com',
-      to: ['sara@barley-bros.com'],
+    // westernpeak.org is verified in Resend.
+    const { error } = await resend.emails.send({
+      from: 'Western Peak Portal <portal@westernpeak.org>',
+      to: ['sara@westernpeak.org', 'chase@westernpeak.org'],
       subject: `[${client_name}] New ${typeLabel}: ${name}`,
       text,
     })
+    if (error) {
+      console.error('client-suggestion-notify.resend', error)
+      return NextResponse.json({ error: error.message, code: 'EMAIL_SEND_FAILED' }, { status: 502 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err: any) {

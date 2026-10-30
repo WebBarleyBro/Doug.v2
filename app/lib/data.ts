@@ -651,12 +651,15 @@ export async function updateOrder(id: string, updates: Partial<PurchaseOrder> & 
   // Strip joined/virtual fields that don't exist as DB columns
   const { po_line_items, accounts, ...rest } = updates as any
   const dbUpdates: any = { ...rest }
-  // Stamp sent_at on first transition to 'sent' — skip the pre-check SELECT, just set it
-  if (dbUpdates.status === 'sent' && !dbUpdates.sent_at) {
-    dbUpdates.sent_at = new Date().toISOString()
-  }
   const { error } = await sb.from('purchase_orders').update(dbUpdates).eq('id', id)
   if (error) throw error
+  // Stamp sent_at only the first time an order is sent; a re-send must not move it
+  // (commission and the portal both date orders by sent_at).
+  if (dbUpdates.status === 'sent' && !dbUpdates.sent_at) {
+    const { error: stampErr } = await sb.from('purchase_orders')
+      .update({ sent_at: new Date().toISOString() }).eq('id', id).is('sent_at', null)
+    if (stampErr) console.error('updateOrder.sent_at', stampErr)
+  }
   invalidatePrefix('dashboard-stats')
   invalidate('pending-distributor-inquiries')
   if (updates.client_slug) invalidate(`orders:${updates.client_slug}`)

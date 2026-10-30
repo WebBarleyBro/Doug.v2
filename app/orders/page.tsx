@@ -24,114 +24,28 @@ import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl } from '../lib/constants'
 import type { Client, Contact } from '../lib/types'
 import { getSupabase } from '../lib/supabase'
+import { buildOrderEmail, FIRM_EMAIL, type OrderEmailLine } from '../lib/order-email'
+
+// Renders the email exactly as sent, isolated from the app's styles.
+function EmailPreviewFrame({ html, height = 560 }: { html: string; height?: number }) {
+  return (
+    <iframe title="Email preview" srcDoc={html} sandbox="" style={{ width: '100%', height, border: 0, borderRadius: 8, background: '#f0ede8', display: 'block' }} />
+  )
+}
+
+function EmailMeta() {
+  return (
+    <div style={{ fontSize: '12px', color: t.text.muted, lineHeight: 1.6 }}>
+      From: Western Peak Orders &lt;orders@westernpeak.org&gt;<br />
+      Replies go to: {FIRM_EMAIL.replyTo.join(', ')}
+    </div>
+  )
+}
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   const { data: { session } } = await getSupabase().auth.getSession()
   if (!session?.access_token) return {}
   return { Authorization: `Bearer ${session.access_token}` }
-}
-
-function buildOrderHtml(params: {
-  poNumber: string
-  clientName: string
-  date: string
-  isInquiry: boolean
-  deliverToName: string
-  deliverToAddress?: string
-  deliverToPhone?: string
-  rows: Array<{ name: string; qty: string; price: string; total: string }>
-  grossTotal: number
-  discountAmt: number
-  total: number
-  notes?: string
-}): string {
-  const { poNumber, clientName, date, isInquiry, deliverToName, deliverToAddress, deliverToPhone, rows, grossTotal, discountAmt, total, notes } = params
-
-  const tableRows = rows.map(r =>
-    `<tr>
-      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;color:#1a1a18">${r.name}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;color:#444;text-align:center">${r.qty}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:13px;color:#666;text-align:right">${r.price}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #e8e6e2;font-size:14px;font-weight:700;color:#1a1a18;text-align:right">${r.total}</td>
-    </tr>`
-  ).join('')
-
-  const discountRows = discountAmt > 0 ? `
-    <tr>
-      <td colspan="3" style="padding:8px 0 2px;font-size:13px;color:#666">Subtotal</td>
-      <td style="padding:8px 0 2px;font-size:13px;color:#666;text-align:right">$${grossTotal.toFixed(2)}</td>
-    </tr>
-    <tr>
-      <td colspan="3" style="padding:2px 0;font-size:13px;color:#c0392b">Discount</td>
-      <td style="padding:2px 0;font-size:13px;color:#c0392b;text-align:right">−$${discountAmt.toFixed(2)}</td>
-    </tr>` : ''
-
-  const notesHtml = notes ? `
-  <tr>
-    <td style="padding:0 32px 20px">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f7f5f2">
-        <tr><td style="padding:14px 16px;font-size:13px;color:#555;line-height:1.6">${notes}</td></tr>
-      </table>
-    </td>
-  </tr>` : ''
-
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f0ede8;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0ede8">
-<tr><td align="center" style="padding:32px 16px">
-<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:#ffffff;border:1px solid #dedad4">
-  <tr>
-    <td style="padding:28px 32px 24px;border-bottom:1px solid #e8e6e2">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#999999">Barley Bros</div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#b8860b;margin-top:18px">${isInquiry ? 'Order Inquiry' : 'Purchase Order'}</div>
-      <div style="font-size:26px;font-weight:700;color:#1a1a18;margin:4px 0 0;letter-spacing:-0.02em">${poNumber}</div>
-      <div style="font-size:13px;color:#888888;margin-top:6px">${clientName} &nbsp;&middot;&nbsp; ${date}</div>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:20px 32px;border-bottom:1px solid #e8e6e2;background-color:#faf8f5">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#aaaaaa;margin-bottom:8px">Deliver To</div>
-      <div style="font-size:15px;font-weight:700;color:#1a1a18">${deliverToName}</div>
-      ${deliverToAddress ? `<div style="font-size:13px;color:#666666;margin-top:3px">${deliverToAddress}</div>` : ''}
-      ${deliverToPhone ? `<div style="font-size:13px;color:#666666;margin-top:2px">${deliverToPhone}</div>` : ''}
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:0 32px">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0">
-        <tr style="border-bottom:2px solid #1a1a18">
-          <th style="padding:0 0 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999">Product</th>
-          <th style="padding:0 0 8px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:80px">Qty</th>
-          <th style="padding:0 0 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:110px">Price</th>
-          <th style="padding:0 0 8px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#999999;width:90px">Total</th>
-        </tr>
-        ${tableRows}
-        ${discountRows}
-        <tr>
-          <td colspan="3" style="padding:12px 0 0;font-size:16px;font-weight:700;color:#1a1a18;border-top:2px solid #1a1a18">Total</td>
-          <td style="padding:12px 0 0;text-align:right;font-size:20px;font-weight:700;color:#1a1a18;border-top:2px solid #1a1a18">$${total.toFixed(2)}</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-  ${notesHtml}
-  <tr>
-    <td style="padding:4px 32px 28px">
-      <p style="font-size:14px;color:#555555;line-height:1.7;margin:0">${isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.'}</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:18px 32px;border-top:1px solid #e8e6e2;background-color:#faf8f5">
-      <div style="font-size:12px;color:#aaaaaa">Barley Bros &nbsp;&middot;&nbsp; Fort Collins, CO &nbsp;&middot;&nbsp; sara@barley-bros.com</div>
-    </td>
-  </tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`
 }
 
 // ─── Account Search Dropdown ──────────────────────────────────────────────
@@ -386,6 +300,8 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [resendTo, setResendTo] = useState('')
   const [resendState, setResendState] = useState<'idle' | 'open' | 'sending' | 'sent'>('idle')
+  const [resendError, setResendError] = useState('')
+  const sendingRef = useRef(false)
   const [editingOrder, setEditingOrder] = useState(false)
   const [editNotesDraft, setEditNotesDraft] = useState('')
   const [editStatusDraft, setEditStatusDraft] = useState('')
@@ -536,7 +452,7 @@ export default function OrdersPage() {
     })
   }
 
-  function buildEmailBody(): { subject: string; text: string; html: string; replyTo?: string } {
+  function buildEmailBody(): { subject: string; text: string; html: string } {
     const client = selectedClient
     const settings = clientSettings[form.client_slug] || {}
     const contactName = settings.primary_contact_name || client?.contact_name || client?.name
@@ -557,75 +473,30 @@ export default function OrdersPage() {
     const discountAmt = (form as any).discount || 0
     const total = grossTotal - discountAmt
 
-    const itemLines = lineItems.map(li => {
+    const lines: OrderEmailLine[] = lineItems.map(li => {
       const prod = clientProducts.find((p: any) => p.name === li.product_name)
-      const cases = (li as any).cases || 0
-      const bottles = (li as any).bottles || 0
-      const casePrice = prod?.price ?? li.price ?? 0
-      const bottlePrice = prod?.bottle_price ?? 0
-      const parts = [
-        cases > 0 ? `${cases} case${cases !== 1 ? 's' : ''} @ $${casePrice.toFixed(2)}` : '',
-        bottles > 0 ? `${bottles} btl @ $${bottlePrice.toFixed(2)}` : '',
-      ].filter(Boolean).join(' + ')
-      return `  • ${li.product_name}${parts ? ` — ${parts} = $${resolveLineTotal(li).toFixed(2)}` : ''}`
-    }).join('\n')
-
-    const subject = isOI
-      ? `Order Inquiry ${form.po_number} – ${form.deliver_to_name}`
-      : `PO ${form.po_number} – ${form.deliver_to_name}`
-
-    const text = [
-      isOI ? `Order Inquiry: ${form.po_number}` : `PO Number: ${form.po_number}`,
-      `Client: ${client?.name || form.client_slug}`,
-      `Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
-      `Deliver To: ${form.deliver_to_name}${form.deliver_to_address ? ' · ' + form.deliver_to_address : ''}`,
-      '',
-      'Line Items:',
-      itemLines || '  (no items)',
-      '',
-      discountAmt > 0 ? `Subtotal: $${grossTotal.toFixed(2)}` : null,
-      discountAmt > 0 ? `Discount: -$${discountAmt.toFixed(2)}` : null,
-      `Total: $${total.toFixed(2)}`,
-      form.notes ? `\nNotes: ${form.notes}` : null,
-      '',
-      isOI ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
-      '',
-      '— Barley Bros',
-    ].filter(l => l !== null).join('\n')
-
-    const htmlRows = lineItems.map(li => {
-      const prod = clientProducts.find((p: any) => p.name === li.product_name)
-      const cases = (li as any).cases || 0
-      const bottles = (li as any).bottles || 0
-      const casePrice = prod?.price ?? li.price ?? 0
-      const bottlePrice = prod?.bottle_price ?? 0
-      const qtyLabel = [
-        cases > 0 ? `${cases} case${cases !== 1 ? 's' : ''}` : '',
-        bottles > 0 ? `${bottles} btl` : '',
-      ].filter(Boolean).join(' + ') || String(li.quantity)
-      const lineTotal = resolveLineTotal(li)
-      const priceLabel = casePrice > 0
-        ? `$${casePrice.toFixed(2)}/cs${bottlePrice > 0 ? ` · $${bottlePrice.toFixed(2)}/btl` : ''}`
-        : '—'
-      return { name: li.product_name, qty: qtyLabel, price: priceLabel, total: `$${lineTotal.toFixed(2)}` }
+      return {
+        name: li.product_name,
+        cases: Number((li as any).cases) || 0,
+        bottles: Number((li as any).bottles) || 0,
+        casePrice: prod?.price ?? li.price ?? null,
+        bottlePrice: prod?.bottle_price ?? null,
+        total: resolveLineTotal(li),
+      }
     })
-
-    const html = buildOrderHtml({
+    void grossTotal; void total; void contactName; void contactEmail; void contactPhone
+    const { subject, text, html } = buildOrderEmail({
       poNumber: form.po_number,
-      clientName: client?.name || form.client_slug,
-      date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      brandName: client?.name || form.client_slug,
+      dateISO: new Date().toISOString(),
       isInquiry: isOI,
       deliverToName: form.deliver_to_name,
-      deliverToAddress: form.deliver_to_address || undefined,
-      rows: htmlRows,
-      grossTotal,
-      discountAmt,
-      total,
-      notes: form.notes || undefined,
+      deliverToAddress: form.deliver_to_address || null,
+      lines,
+      discount: discountAmt,
+      notes: form.notes || null,
     })
-
-    const replyTo = contactEmail.split(',')[0].trim() || undefined
-    return { subject, text, html, replyTo }
+    return { subject, text, html }
   }
 
   async function handleCreate() {
@@ -1018,62 +889,63 @@ export default function OrdersPage() {
                       ? (o.distributor_email || '')
                       : (clientSettings[o.client_slug || '']?.primary_contact_email || client?.contact_email || '')
 
-                    const doSend = async (email: string) => {
-                      if (!email.trim() || resendState === 'sending') return
-                      setResendState('sending')
-                      const itemLines = items.length > 0
-                        ? items.map((li: any) => {
-                            const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
-                            const price = Number(li.unit_price||li.price||0)
-                            return `  • ${li.product_name} – Qty: ${qty}${price > 0 ? ` @ $${price.toFixed(2)} = $${(qty*price).toFixed(2)}` : ''}`
-                          }).join('\n')
-                        : `  Total: $${total.toFixed(2)}`
-                      const subject = isInquiry ? `Order Inquiry ${o.po_number} – ${o.deliver_to_name}` : `PO ${o.po_number} – ${o.deliver_to_name}`
-                      const text = [
-                        isInquiry ? `Order Inquiry #: ${o.po_number}` : `PO Number: ${o.po_number}`,
-                        `Ship To: ${o.deliver_to_name}`,
-                        o.deliver_to_address ? `Address: ${o.deliver_to_address}` : null,
-                        o.deliver_to_phone ? `Phone: ${o.deliver_to_phone}` : null,
-                        '', itemLines, '',
-                        `Order Total: $${total.toFixed(2)}`,
-                        o.notes ? `Notes: ${o.notes}` : null, '',
-                        isInquiry ? 'Please process this order inquiry and confirm pricing and availability.' : 'Please process this order at your earliest convenience.',
-                        '', '— Barley Bros',
-                      ].filter(l => l !== null).join('\n')
-                      const resendRows = items.length > 0
-                        ? items.map((li: any) => {
-                            const qty = Number(li.cases||0)+Number(li.bottles||0)+Number(li.quantity||0)||1
-                            const price = Number(li.unit_price||li.price||0)
-                            const qtyLabel = [
-                              li.cases > 0 ? `${li.cases} case${li.cases !== 1 ? 's' : ''}` : '',
-                              li.bottles > 0 ? `${li.bottles} btl` : '',
-                            ].filter(Boolean).join(' + ') || String(qty)
-                            return { name: li.product_name, qty: qtyLabel, price: price > 0 ? `$${price.toFixed(2)}/cs` : '—', total: `$${(qty*price).toFixed(2)}` }
-                          })
-                        : [{ name: 'See notes', qty: '—', price: '—', total: `$${total.toFixed(2)}` }]
-                      const html = buildOrderHtml({
+                    const resendEmail = () => {
+                      // Numbers come from the saved line items, exactly as stored.
+                      const lines: OrderEmailLine[] = items.map((li: any) => {
+                        const cases = Number(li.cases) || 0
+                        const bottles = Number(li.bottles) || 0
+                        const unit = Number(li.unit_price ?? li.price) || 0
+                        const stored = Number(li.total) || 0
+                        return {
+                          name: li.product_name || 'Item',
+                          cases: cases || (bottles ? 0 : Number(li.quantity) || 0),
+                          bottles,
+                          casePrice: unit || null,
+                          bottlePrice: bottles && stored && !cases ? Math.round((stored / bottles) * 100) / 100 : null,
+                          total: stored > 0 ? stored : unit * (cases + bottles || Number(li.quantity) || 0),
+                        }
+                      })
+                      const { subject, text, html } = buildOrderEmail({
                         poNumber: o.po_number,
-                        clientName: o.client_name || o.client_slug || '',
-                        date: new Date(o.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+                        brandName: o.client_name || client?.name || o.client_slug || '',
+                        dateISO: o.sent_at || o.created_at,
                         isInquiry,
                         deliverToName: o.deliver_to_name,
-                        deliverToAddress: o.deliver_to_address || undefined,
-                        deliverToPhone: o.deliver_to_phone || undefined,
-                        rows: resendRows,
-                        grossTotal: total,
-                        discountAmt: 0,
-                        total,
-                        notes: o.notes || undefined,
+                        deliverToAddress: o.deliver_to_address || null,
+                        deliverToPhone: o.deliver_to_phone || null,
+                        lines: lines.length ? lines : [{ name: 'Order total', cases: 0, bottles: 0, casePrice: null, bottlePrice: null, total: resolveTotal(o) }],
+                        discount: Number(o.discount_amount) || 0,
+                        notes: o.notes || null,
                       })
+                      return { subject, text, html }
+                    }
+
+                    const doSend = async (email: string) => {
+                      if (!email.trim() || resendState === 'sending' || sendingRef.current) return
+                      sendingRef.current = true
+                      setResendState('sending'); setResendError('')
+                      const { subject, text, html } = resendEmail()
                       try {
                         const res = await fetch('/api/send-email', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', ...await getAuthHeader() },
-                          body: JSON.stringify({ to: email.trim(), subject, text, html, ...(isInquiry ? { orderId: o.id } : {}) }),
+                          body: JSON.stringify({ to: email.trim(), subject, text, html, orderId: o.id }),
                         })
-                        if (res.ok) { await updateOrder(o.id, { status: 'sent' }); load(); setResendState('sent'); setResendTo('') }
-                        else setResendState('open')
-                      } catch { setResendState('open') }
+                        if (!res.ok) {
+                          const j = await res.json().catch(() => ({}))
+                          setResendError(typeof j.error === 'string' ? j.error : 'The email did not send. Please try again.')
+                          setResendState('open')
+                          return
+                        }
+                        // Only a draft becomes sent; fulfilled or cancelled orders keep their status.
+                        if (o.status === 'draft') await updateOrder(o.id, { status: 'sent' })
+                        toast(`${isInquiry ? 'Inquiry' : 'Order'} ${o.po_number} sent to ${email.trim()}`)
+                        load(); setResendState('sent'); setResendTo('')
+                      } catch (e) {
+                        console.error('orders.resend', e)
+                        setResendError('Could not reach the server. Check your connection and try again.')
+                        setResendState('open')
+                      } finally { sendingRef.current = false }
                     }
 
                     if (resendState === 'sent') return (
@@ -1090,9 +962,18 @@ export default function OrdersPage() {
                           placeholder="Recipient email address"
                           style={{ backgroundColor: t.bg.input, border: `1px solid ${t.border.default}`, borderRadius: '6px', padding: '12px', color: t.text.primary, fontSize: '14px', outline: 'none', width: '100%' }}
                         />
+                        {resendError && <div role="alert" style={{ fontSize: '12.5px', color: t.status.danger }}>{resendError}</div>}
+                        <details>
+                          <summary style={{ fontSize: '12.5px', color: t.text.secondary, cursor: 'pointer', padding: '4px 0' }}>Preview email</summary>
+                          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ fontSize: '12px', color: t.text.muted }}>Subject: {resendEmail().subject}</div>
+                            <EmailMeta />
+                            <EmailPreviewFrame html={resendEmail().html} height={520} />
+                          </div>
+                        </details>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button onClick={() => { setResendState('idle'); setResendTo('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
-                          <button onClick={() => doSend(resendTo)}
+                          <button onClick={() => { setResendState('idle'); setResendTo(''); setResendError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '12px' }}>Cancel</button>
+                          <button onClick={() => doSend(resendTo)} disabled={resendState === 'sending'}
                             style={{ ...btnPrimary, flex: 2, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation', opacity: resendState === 'sending' ? 0.6 : 1 } as any}>
                             <Send size={14} /> {resendState === 'sending' ? 'Sending...' : 'Send'}
                           </button>
@@ -1103,12 +984,10 @@ export default function OrdersPage() {
                     return (
                       <button
                         onClick={() => {
-                          if (autoEmail) {
-                            doSend(autoEmail)
-                          } else {
-                            setResendTo('')
-                            setResendState('open')
-                          }
+                          // Show who it's going to before anything is sent.
+                          setResendTo(autoEmail || '')
+                          setResendError('')
+                          setResendState('open')
                         }}
                         style={{ ...btnSecondary, justifyContent: 'center', padding: '12px', minHeight: '48px', touchAction: 'manipulation' } as any}>
                         <Send size={15} /> {isInquiry ? 'Send to Distributor' : 'Resend Order'}
@@ -1490,8 +1369,9 @@ export default function OrdersPage() {
 
               {/* Body preview */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', WebkitOverflowScrolling: 'touch' } as any}>
-                <div style={{ backgroundColor: t.bg.card, borderRadius: '8px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
-                  <div dangerouslySetInnerHTML={{ __html: html }} />
+                <div style={{ marginBottom: '10px' }}><EmailMeta /></div>
+                <div style={{ borderRadius: '8px', overflow: 'hidden', border: `1px solid ${t.border.default}` }}>
+                  <EmailPreviewFrame html={html} height={isMobile ? 460 : 600} />
                 </div>
               </div>
 
@@ -1499,24 +1379,32 @@ export default function OrdersPage() {
               <div style={{ padding: '16px 20px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', borderTop: `1px solid ${t.border.default}`, display: 'flex', gap: '10px', flexShrink: 0 } as any}>
                 <button onClick={() => { setShowEmailPreview(false); setSendEmailError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
                 <button
+                  disabled={creating}
                   onClick={async () => {
+                    if (sendingRef.current) return
                     if (!previewEmail.trim()) {
                       setSendEmailError('Enter a recipient email address above')
                       return
                     }
+                    const emptyLine = form.line_items.find(li => li.product_name && !((Number((li as any).cases) || 0) + (Number((li as any).bottles) || 0) > 0))
+                    if (emptyLine) {
+                      setSendEmailError(`Enter cases or bottles for ${emptyLine.product_name}`)
+                      return
+                    }
+                    sendingRef.current = true
                     setSendEmailError('')
                     setCreating(true)
                     try {
                       // Send email FIRST — if it fails, nothing gets written to DB
-                      const { subject: subj, text: txt, html: htmlBody, replyTo } = buildEmailBody()
+                      const { subject: subj, text: txt, html: htmlBody } = buildEmailBody()
                       const emailRes = await fetch('/api/send-email', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', ...await getAuthHeader() },
-                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody, replyTo }),
+                        body: JSON.stringify({ to: previewEmail.trim(), subject: subj, text: txt, html: htmlBody }),
                       })
                       if (!emailRes.ok) {
                         const errJson = await emailRes.json().catch(() => ({}))
-                        throw new Error(errJson.error || 'Email delivery failed — check the address and try again')
+                        throw new Error(typeof errJson.error === 'string' ? errJson.error : 'Email delivery failed. Check the address and try again.')
                       }
                       // Email confirmed — now save the order
                       const resolvedItems = form.line_items.filter(li => li.product_name).map(li => {
@@ -1543,8 +1431,14 @@ export default function OrdersPage() {
                         order_type: 'direct',
                         discount_amount: (form as any).discount || 0,
                       })
-                      await updateOrder(newOrder.id, { status: 'sent' })
+                      try {
+                        await updateOrder(newOrder.id, { status: 'sent' })
+                      } catch (e2) {
+                        console.error('orders.markSent', e2)
+                        toast(`Email sent, but the order wasn't marked sent. Mark it sent from the order.`)
+                      }
                       invalidatePrefix('dashboard-stats')
+                      toast(`Order ${form.po_number} sent to ${previewEmail.trim()}`)
                       setShowEmailPreview(false)
                       setSendEmailError('')
                       setShowCreate(false)
@@ -1552,8 +1446,9 @@ export default function OrdersPage() {
                       load()
                       setActiveTab('direct')
                     } catch (e: any) {
+                      console.error('orders.send', e)
                       setSendEmailError(e?.message || 'Failed to send order')
-                    } finally { setCreating(false) }
+                    } finally { setCreating(false); sendingRef.current = false }
                   }}
                   style={{ ...btnPrimary, flex: 2, justifyContent: 'center', minHeight: '48px', touchAction: 'manipulation', opacity: creating ? 0.6 : 1 } as any}
                 >

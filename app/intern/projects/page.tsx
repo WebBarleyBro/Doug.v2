@@ -104,7 +104,7 @@ export default function InternProjectsPage() {
           <h1 style={{ fontSize: '22px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <FolderOpen size={20} /> Projects
           </h1>
-          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Projects assigned to you by the Barley Bros team</p>
+          <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '2px' }}>Projects assigned to you by the Western Peak team</p>
         </div>
 
         {error && (
