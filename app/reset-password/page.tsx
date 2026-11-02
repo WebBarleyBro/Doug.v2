@@ -215,7 +215,7 @@ export default function ResetPasswordPage() {
                 letterSpacing: '-0.01em',
               }}
             >
-              {status === 'saving' ? 'Updating…' : 'Set New Password'}
+              {status === 'saving' ? 'Saving…' : isInvite ? 'Save password' : 'Set New Password'}
             </button>
           </form>
         )}
