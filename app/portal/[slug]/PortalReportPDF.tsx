@@ -120,7 +120,7 @@ function ProductsTable({ rows }: { rows: { name: string; retail: boolean; cases:
 export function MonthlyReportPDF({ data, clientName, preparedOn }: { data: MonthlyPdfData; clientName: string; preparedOn: string }) {
   registerPortalFonts()
   const figs: [string, string, string][] = [
-    ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} placed orders · ${data.visitedInPerson} in person`],
+    ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.visits} visit${data.visits === 1 ? '' : 's'}`],
     ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
     ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
   ]

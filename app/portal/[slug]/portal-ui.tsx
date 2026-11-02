@@ -356,7 +356,7 @@ export function MeasuresBlock({ report }: { report: PeriodReport }) {
       <div className="pt-m3">
         <Measure label="Accounts visited" value={measures.accountsWorked.current} d={measures.accountsWorked} compareLabel={range.compareLabel}
           spark={sparklines.accountsWorked} sparkLabels={sparklines.months.map(m => m.label)}
-          foot={`${measures.orderedAccounts.toLocaleString('en-US')} placed orders · ${measures.visitedInPerson.toLocaleString('en-US')} visited in person`} />
+          foot={`${measures.visits.toLocaleString('en-US')} visit${measures.visits === 1 ? '' : 's'} · ${allTime.accounts.toLocaleString('en-US')} accounts visited since ${mon}`} />
         <Measure label="Orders" value={measures.orders.current} d={measures.orders} compareLabel={range.compareLabel}
           spark={sparklines.orders} sparkLabels={sparklines.months.map(m => m.label)}
           foot={`${allTime.orders.toLocaleString('en-US')} orders since ${mon} · ${allTime.orderingAccounts.toLocaleString('en-US')} accounts have ordered`} />
@@ -477,7 +477,7 @@ export function Funnel({ report }: { report: PeriodReport }) {
   const { funnel, range } = report
   const denom = Math.max(1, funnel.worked, funnel.ordered)
   const rows = [
-    { label: 'Accounts visited', n: funnel.worked, small: `${funnel.visitedInPerson} in person · ${funnel.priorWorked} in the ${range.compareLabel}` },
+    { label: 'Accounts visited', n: funnel.worked, small: `${funnel.visits} visit${funnel.visits === 1 ? '' : 's'} · ${funnel.priorWorked} in the ${range.compareLabel}` },
     { label: 'Placed an order', n: funnel.ordered, small: `${funnel.firstTime} ordering for the first time · ${funnel.priorOrdered} in the ${range.compareLabel}` },
     { label: 'Have ordered more than once', n: funnel.repeat, small: `of the ${funnel.ordered} that ordered` },
   ]
@@ -947,7 +947,7 @@ export function MonthlyPreview({ data, clientName, preparedOn }: { data: Monthly
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
         {[
-          ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.orderedAccounts} placed orders · ${data.visitedInPerson} in person`],
+          ['Accounts visited', String(data.accountsWorked.current), `${formatPdfDelta(data.accountsWorked, 'count', data.compareLabel)} · ${data.visits} visit${data.visits === 1 ? '' : 's'}`],
           ['Orders', String(data.orders.current), formatPdfDelta(data.orders, 'count', data.compareLabel)],
           ['Order value', money(data.value.current), formatPdfDelta(data.value, 'dollars', data.compareLabel)],
         ].map(([k, v, c]) => (

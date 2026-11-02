@@ -120,17 +120,17 @@ test('cumulative series bucket by MT day; a late-night Sep 30 order lands in the
 
 // ── Accounts worked: visit or order, with the split kept separate ─────────────
 
-test('accounts worked is the union of visited and ordered venue accounts; the split is reported alongside', () => {
+test('accounts visited counts only accounts with a visit logged; orders are counted separately', () => {
   const r = buildPeriodReport(base({
     visits: [visit('v1', 'accA', '2026-10-05T18:00:00'), visit('v2', 'accA', '2026-10-06T18:00:00'), visit('v3', 'accZ', '2026-10-06T18:00:00')],
     orders: [order('o1', 'accA', '2026-10-05T20:00:00Z', 100), order('o2', 'accB', '2026-10-07T20:00:00Z', 40), order('o3', 'accC', '2026-09-07T20:00:00Z', 40)],
   }))
-  assert.equal(r.measures.accountsWorked.current, 3)      // A (visited + ordered), B (ordered only), Z (visited only)
+  assert.equal(r.measures.accountsWorked.current, 2)      // A and Z were visited; B only ordered, so it does not count
   assert.equal(r.measures.visitedInPerson, 2); assert.equal(r.measures.orderedAccounts, 2)
-  assert.equal(r.measures.accountsWorked.prior, 1)        // C ordered in September
+  assert.equal(r.measures.accountsWorked.prior, 0)        // C only ordered in September
   assert.equal(r.measures.visits, 3)                      // three visit rows logged
-  assert.equal(r.allTime.accounts, 4)
-  assert.deepEqual(r.sparklines.accountsWorked.slice(-2), [1, 3])
+  assert.equal(r.allTime.accounts, 2)
+  assert.deepEqual(r.sparklines.accountsWorked.slice(-2), [0, 2])
 })
 
 // ── Distributor accounts ──────────────────────────────────────────────────────
@@ -177,10 +177,10 @@ test('funnel: first-time means the earliest order ever falls in the period; repe
       order('o4', 'accD', '2026-10-14T15:00:00Z', 60),      // D ordered without a visit → worked, not visited
     ],
   }))
-  assert.equal(r.funnel.worked, 4); assert.equal(r.funnel.visitedInPerson, 3); assert.equal(r.funnel.visits, 4)
+  assert.equal(r.funnel.worked, 3); assert.equal(r.funnel.visitedInPerson, 3); assert.equal(r.funnel.visits, 4)
   assert.equal(r.funnel.ordered, 3); assert.equal(r.funnel.firstTime, 2); assert.equal(r.funnel.repeat, 1)
-  assert.equal(r.funnel.priorWorked, 1); assert.equal(r.funnel.priorOrdered, 1)
-  assert.equal(r.funnel.conversionPct, 75)
+  assert.equal(r.funnel.priorWorked, 0); assert.equal(r.funnel.priorOrdered, 1)
+  assert.equal(r.funnel.conversionPct, 67)   // A and B of the 3 visited accounts ordered
   assert.equal(r.active.newAccounts, 2)
   assert.equal(buildPeriodReport(base()).funnel.conversionPct, null)
 })
@@ -349,7 +349,7 @@ test('tracking start, all-time rollups, reordering accounts, six-month sparkline
   assert.equal(r.trackingStart, '2026-04-16'); assert.equal(r.trackingStartLabel, 'April 2026'); assert.equal(r.trackingStartMon, 'Apr')
   assert.deepEqual(r.allTime, { accounts: 2, orders: 3, value: 180, orderingAccounts: 2, reorderingAccounts: 1, avgOrder: 60 })
   assert.deepEqual(r.sparklines.months.map(m => m.label), ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'])
-  assert.deepEqual(r.sparklines.accountsWorked, [0, 1, 0, 1, 0, 1])
+  assert.deepEqual(r.sparklines.accountsWorked, [0, 1, 0, 0, 0, 0])
   assert.deepEqual(r.sparklines.orderValue, [0, 0, 0, 50, 0, 30])
   // The 90-day window ending Oct 30 starts Aug 2, so A's Aug 1 order no longer counts as active.
   assert.deepEqual(r.mapAccounts.map(a => [a.id, a.active, a.orderedInPeriod, a.lastVisit]), [['accA', false, false, '2026-08-01'], ['accB', true, true, '2026-10-01']])
@@ -395,13 +395,13 @@ test('monthly PDF weeks start on the 1st and quarterly totals equal the sum of m
   assert.equal(m.label, 'October 2026')
   assert.deepEqual(m.weeks.map(w => w.label), ['Oct 1', 'Oct 8', 'Oct 15', 'Oct 22', 'Oct 29'])
   assert.deepEqual(m.weeks.map(w => w.value), [0, 60, 0, 0, 10])
-  assert.equal(m.orders.current, 2); assert.equal(m.orders.prior, 1); assert.equal(m.visitedInPerson, 1); assert.equal(m.orderedAccounts, 2); assert.equal(m.accountsWorked.current, 2)
+  assert.equal(m.orders.current, 2); assert.equal(m.orders.prior, 1); assert.equal(m.visitedInPerson, 1); assert.equal(m.orderedAccounts, 2); assert.equal(m.accountsWorked.current, 1); assert.equal(m.visits, 1)
   assert.deepEqual(m.topAccounts.map(a => a.name), ['Account accB', 'Account accA'])
   assert.deepEqual(m.active, { accounts: 2, reorderingAccounts: 2, newThisMonth: 0, tastings: 0 })
   const q = buildQuarterlyPdfData(src, 2026, 3)
   assert.equal(q.label, 'Q3 2026')
   assert.deepEqual(q.months.map(x => x.label), ['Jul', 'Aug', 'Sep'])
-  assert.equal(q.totals.orders, 2); assert.equal(q.totals.value, 140); assert.equal(q.totals.accountsWorked, 2); assert.equal(q.totals.newAccounts, 2)
+  assert.equal(q.totals.orders, 2); assert.equal(q.totals.value, 140); assert.equal(q.totals.accountsWorked, 1); assert.equal(q.totals.newAccounts, 2)
   assert.equal(q.months.reduce((s, x) => s + x.orders, 0), q.totals.orders)
 })
 

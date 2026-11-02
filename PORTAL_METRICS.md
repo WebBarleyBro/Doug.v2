@@ -4,7 +4,7 @@ Every value the client portal shows is computed in `app/portal/[slug]/portal-met
 
 Rules from `PORTAL_SPEC.md` v1.2 and the October 30 review that shape every query:
 
-- **An order is not a visit.** The "Accounts visited" measure counts the union of accounts with a visit row and accounts with a client-visible order. The split ("{o} placed orders · {v} visited in person") is always shown with it.
+- **An order is not a visit.** "Accounts visited" counts only accounts with a visit logged in Doug. Orders are counted separately. The map and the accounts table still include accounts that only ordered.
 - **Client-visible orders** are `purchase_orders.status IN ('sent', 'fulfilled')`. The order date is `COALESCE(sent_at, created_at)`.
 - **Distributors are not venues.** An account with `account_kind = 'distributor'` (added by migration 069), or whose name contains "Distribut" until 069 runs, is left out of every account count, the accounts ledger, the funnel and the map. Its orders still count in Orders and Order value.
 - **The `placements` table is never read.** "Active" means a client-visible order in the 90 days ending at the period end.
@@ -48,7 +48,7 @@ o_all AS (
 ),
 -- Venue orders only (used for every account-based number).
 o AS (SELECT * FROM o_all WHERE NOT is_distributor),
--- Account-days worked: visits ∪ venue orders.
+-- Account-days with a visit or an order (map and accounts table only).
 worked AS (
   SELECT account_id, day FROM v
   UNION
@@ -75,19 +75,19 @@ SELECT least((SELECT min(day) FROM v), (SELECT min(day) FROM o_all)) AS tracking
 
 ## 2. Measures block
 
-### Accounts visited: 8, previous month 24, ▼ −16
+### Accounts visited: 0, previous month 17, ▼ −17
 
 ```sql
 SELECT
-  (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN p_start AND p_end) AS current,  -- 8
-  (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN q_start AND q_end) AS prior;    -- 24
+  (SELECT count(DISTINCT account_id) FROM v, params WHERE day BETWEEN p_start AND p_end) AS current,  -- 0
+  (SELECT count(DISTINCT account_id) FROM v, params WHERE day BETWEEN q_start AND q_end) AS prior;    -- 17
 ```
 
-Footnote "{o} placed orders · {v} visited in person":
+Footnote "{visits} visits · {all-time} accounts visited since Apr":
 
 ```sql
-SELECT (SELECT count(DISTINCT account_id) FROM o, params WHERE day BETWEEN p_start AND p_end) AS ordered,  -- 8
-       (SELECT count(DISTINCT account_id) FROM v, params WHERE day BETWEEN p_start AND p_end) AS visited;  -- 0
+SELECT (SELECT count(*) FROM v, params WHERE day BETWEEN p_start AND p_end) AS visits,           -- 0
+       (SELECT count(DISTINCT account_id) FROM v) AS accounts_visited_all_time;                  -- 88
 ```
 
 NoCo has no visit rows in October 2026; its latest visit is September 23. Every October account came from an order.
@@ -125,12 +125,12 @@ SELECT round(sum(value), 2) AS all_value, round(avg(value), 2) AS avg_order FROM
 
 ```sql
 SELECT m.month,
-       (SELECT count(DISTINCT account_id) FROM worked WHERE date_trunc('month', day) = m.month) AS accounts_worked,
+       (SELECT count(DISTINCT account_id) FROM v WHERE date_trunc('month', day) = m.month) AS accounts_visited,
        (SELECT count(*) FROM o_all WHERE date_trunc('month', day) = m.month) AS orders,
        (SELECT round(coalesce(sum(value), 0), 2) FROM o_all WHERE date_trunc('month', day) = m.month) AS order_value
 FROM generate_series(date '2026-05-01', date '2026-10-01', interval '1 month') AS m(month)
 ORDER BY m.month;
--- accounts visited: 24, 20, 33, 25, 24, 8
+-- accounts visited: 23, 17, 21, 17, 17, 0
 -- orders:           8,  9, 18, 12, 11, 17
 -- order value: 1757.33, 2216.60, 8058.08, 3318.55, 3611.47, 13142.54
 ```
@@ -183,15 +183,15 @@ For the comparison curve, use `q_start`/`q_end` in both places (last point: 2026
 
 ```sql
 SELECT
-  (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN p_start AND p_end) AS worked,      -- 8
   (SELECT count(DISTINCT account_id) FROM v, params WHERE day BETWEEN p_start AND p_end) AS visited,         -- 0
+  (SELECT count(*) FROM v, params WHERE day BETWEEN p_start AND p_end) AS visits,                           -- 0
   (SELECT count(DISTINCT account_id) FROM o, params WHERE day BETWEEN p_start AND p_end) AS ordered,         -- 8
   (SELECT count(*) FROM first_order, params WHERE first_day BETWEEN p_start AND p_end) AS first_time,        -- 2
   (SELECT count(*) FROM first_order f, params
      WHERE f.n_orders >= 2 AND EXISTS (SELECT 1 FROM o WHERE o.account_id = f.account_id AND o.day BETWEEN p_start AND p_end)) AS repeat,  -- 6
-  (SELECT count(DISTINCT account_id) FROM worked, params WHERE day BETWEEN q_start AND q_end) AS prior_worked, -- 24
+  (SELECT count(DISTINCT account_id) FROM v, params WHERE day BETWEEN q_start AND q_end) AS prior_visited, -- 17
   (SELECT count(DISTINCT account_id) FROM o, params WHERE day BETWEEN q_start AND q_end) AS prior_ordered;     -- 9
--- subtitle: round(ordered / worked * 100) = 100% of accounts visited placed an order
+-- subtitle: share of visited accounts that also ordered; hidden when no accounts were visited (October)
 ```
 
 ## 5. Account map

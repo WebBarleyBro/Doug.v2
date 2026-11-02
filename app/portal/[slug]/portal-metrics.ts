@@ -589,7 +589,10 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   const distOf = (list: PortalOrder[]) => { const d = list.filter(o => { const k = orderAccountKey(o); return k && isDist(k) }); return { count: d.length, value: valueOf(d) } }
 
   // Accounts worked = venue accounts with a visit row or an order (an order is not a visit; the split is reported alongside).
-  const worked = (V: PortalVisit[], O: PortalOrder[]) => uniq([...visitAccounts(V), ...orderAccounts(O)])
+  // "Accounts visited" counts only accounts with a visit logged; orders are their own measure.
+  const worked = (V: PortalVisit[], _O?: PortalOrder[]) => visitAccounts(V)
+  // Every venue the brand has touched (a visit or an order): used for the map only.
+  const reached = (V: PortalVisit[], O: PortalOrder[]) => uniq([...visitAccounts(V), ...orderAccounts(O)])
 
   // Orders per venue account, all time, oldest first (for first-order and frequency logic)
   const ordersByAccount = new Map<string, PortalOrder[]>()
@@ -695,7 +698,8 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
     repeat: orderedIds.filter(id => (ordersByAccount.get(id)?.length || 0) >= 2).length,
     priorWorked: worked(priorVisits, priorOrders).length,
     priorOrdered: orderAccounts(priorOrders).length,
-    conversionPct: workedIds.length ? Math.round(orderedIds.length / workedIds.length * 100) : null,
+    // Share of visited accounts that also ordered in the period.
+    conversionPct: workedIds.length ? Math.round(orderedIds.filter(id => workedIds.includes(id)).length / workedIds.length * 100) : null,
   }
 
   const active = {
@@ -810,7 +814,7 @@ export function buildPeriodReport(input: ReportInput): PeriodReport {
   }))
 
   // ── Map ──
-  const tiedIds = new Set(worked(allVisits, allOrders))
+  const tiedIds = new Set(reached(allVisits, allOrders))
   const visitedInPeriod = new Set(visitAccounts(visits))
   const orderedInPeriod = new Set(orderedIds)
   const periodValueByAccount = new Map<string, number>()
@@ -898,6 +902,7 @@ export interface MonthlyPdfData {
   accountsWorked: Delta
   visitedInPerson: number
   orderedAccounts: number
+  visits: number
   orders: Delta
   value: Delta
   weeks: { label: string; value: number }[]
@@ -932,7 +937,7 @@ export function buildMonthlyPdfData(src: PdfSource, monthKey: string): MonthlyPd
   const productTotals = r.productsLedger.period.slice().sort((a, b) => b.cases - a.cases || b.bottles - a.bottles || b.value - a.value)
   return {
     monthKey, label: range.label, compareLabel: range.compareLabel,
-    accountsWorked: r.measures.accountsWorked, visitedInPerson: r.measures.visitedInPerson, orderedAccounts: r.measures.orderedAccounts,
+    accountsWorked: r.measures.accountsWorked, visitedInPerson: r.measures.visitedInPerson, orderedAccounts: r.measures.orderedAccounts, visits: r.measures.visits,
     orders: r.measures.orders, value: r.measures.orderValue,
     weeks,
     topAccounts: r.accountsLedger.period.filter(a => a.orders > 0).sort((a, b) => b.value - a.value).slice(0, 10).map(a => ({ name: a.name, orders: a.orders, value: a.value })),
