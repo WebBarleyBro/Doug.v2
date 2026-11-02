@@ -14,6 +14,13 @@ export default function LoginPage() {
   const [redirectTo, setRedirectTo] = useState('/')
 
   useEffect(() => {
+    // Supabase invite/reset emails return to the site with the session in the URL hash.
+    // Send those straight to the password page instead of the login form.
+    const hash = new URLSearchParams(window.location.hash.substring(1))
+    if (hash.get('error') || ['invite', 'recovery', 'signup', 'magiclink'].includes(hash.get('type') || '')) {
+      window.location.replace('/reset-password' + window.location.hash)
+      return
+    }
     const params = new URLSearchParams(window.location.search)
     const r = params.get('redirect')
     if (r && r.startsWith('/')) setRedirectTo(r)

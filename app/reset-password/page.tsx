@@ -12,6 +12,7 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm]   = useState('')
   const [error, setError]       = useState('')
+  const [isInvite, setIsInvite] = useState(false)
 
   useEffect(() => {
     const sb = getSupabase()
@@ -24,7 +25,16 @@ export default function ResetPasswordPage() {
     const access = params.get('access_token')
     const refresh = params.get('refresh_token')
 
-    if (type === 'recovery' && access && refresh) {
+    // An expired or already-used email link comes back as #error=…&error_code=otp_expired.
+    if (params.get('error')) {
+      setStatus('error')
+      setError('This link has expired or was already used. Ask Western Peak to send a new one.')
+      return
+    }
+    // Invite links (first-time setup) and reset links both carry a session; either way
+    // the person chooses a password here.
+    if (type === 'invite' || type === 'signup') setIsInvite(true)
+    if ((type === 'recovery' || type === 'invite' || type === 'signup' || type === 'magiclink') && access && refresh) {
       sb.auth.setSession({ access_token: access, refresh_token: refresh })
         .then(({ error: err }) => {
           if (err) { setStatus('error'); setError('Link is invalid or expired. Request a new one.') }
@@ -102,10 +112,10 @@ export default function ResetPasswordPage() {
             boxShadow: `0 8px 32px rgba(212,168,67,0.25)`,
           }}>D</div>
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: t.text.primary, letterSpacing: '-0.02em' }}>
-            Set New Password
+            {isInvite ? 'Choose your password' : 'Set New Password'}
           </h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '4px' }}>
-            Doug
+            {isInvite ? 'Welcome to Western Peak. Pick a password to finish setting up your login.' : 'Western Peak'}
           </p>
         </div>
 
