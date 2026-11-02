@@ -83,8 +83,13 @@ export default function ResetPasswordPage() {
 
       if (profile?.role === 'portal' && profile?.client_slug) {
         router.push(`/portal/${profile.client_slug}`)
-      } else {
+      } else if (profile?.role) {
         router.push('/')
+      } else {
+        // Password is saved, but the login isn't linked to a brand yet: say so instead of
+        // bouncing between pages.
+        setStatus('error')
+        setError("Your password is saved, but your login isn't linked to a brand yet. Please contact Western Peak to finish setting it up.")
       }
     } else {
       router.push('/login')
@@ -115,7 +120,7 @@ export default function ResetPasswordPage() {
             {isInvite ? 'Choose your password' : 'Set New Password'}
           </h1>
           <p style={{ fontSize: '13px', color: t.text.muted, marginTop: '4px' }}>
-            {isInvite ? 'Welcome to Western Peak. Pick a password to finish setting up your login.' : 'Western Peak'}
+            {isInvite ? 'Pick a password to finish setting up your Doug login.' : 'Doug'}
           </p>
         </div>
 

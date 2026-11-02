@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { signIn, getCurrentUserWithProfile } from '../lib/auth'
+import { signIn, signOut, getCurrentUserWithProfile } from '../lib/auth'
 import { t, inputStyle, labelStyle } from '../lib/theme'
 import { WESTERN_PEAK_LOGO_SCREEN_URL } from '../lib/constants'
 
@@ -23,7 +23,8 @@ export default function LoginPage() {
     }
     const params = new URLSearchParams(window.location.search)
     const r = params.get('redirect')
-    if (r && r.startsWith('/')) setRedirectTo(r)
+    // Same-site paths only: '//host' and '/\host' would leave the site after sign-in.
+    if (r && /^\/(?![/\\])/.test(r)) setRedirectTo(r)
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -36,6 +37,9 @@ export default function LoginPage() {
       const result = await getCurrentUserWithProfile()
       if (result?.profile?.role === 'portal' && result.profile.client_slug) {
         router.push(`/portal/${result.profile.client_slug}`)
+      } else if (!result?.profile?.role) {
+        setError("Your login isn't linked to a brand yet. Please contact Western Peak.")
+        await signOut()
       } else {
         router.push(redirectTo)
       }
