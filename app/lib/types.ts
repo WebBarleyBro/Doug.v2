@@ -299,7 +299,14 @@ export interface Product {
   price?: number        // case price
   bottle_price?: number // per-bottle price
   case_count?: number   // bottles per case
+  price_tiers?: PriceTier[] | null // quantity pricing; price/bottle_price above are the 1-case prices
   active: boolean
+}
+
+export interface PriceTier {
+  min_cases: number     // tier applies from this many cases on one line
+  price: number         // case price
+  bottle_price?: number // per-bottle price
 }
 
 // ─── New tables ──────────────────────────────────────────────────────────

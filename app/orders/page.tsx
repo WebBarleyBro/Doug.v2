@@ -22,6 +22,7 @@ import { formatCurrency, formatShortDateMT, startOfMonthMT, resolveTotal, resolv
 import { getCommissionAmount, getEffectiveOrderDate, isCommissionEligible } from '../lib/commission'
 import { useIsMobile } from '../lib/use-is-mobile'
 import { clientLogoUrl } from '../lib/constants'
+import { applyPriceTier } from '../lib/pricing'
 import type { Client, Contact } from '../lib/types'
 import { getSupabase } from '../lib/supabase'
 import { buildOrderEmail, FIRM_EMAIL, type OrderEmailLine } from '../lib/order-email'
@@ -428,8 +429,12 @@ export default function OrdersPage() {
     }))
   }
 
+  // Catalog row for a line, priced at the quantity tier its case count reaches.
+  const productFor = (li: { product_name: string }) =>
+    applyPriceTier(clientProducts.find(p => p.name === li.product_name), Number((li as any).cases) || 0)
+
   const orderGross = form.line_items.reduce((s, li) => {
-    const prod = clientProducts.find(p => p.name === li.product_name)
+    const prod = productFor(li)
     const cases = (li as any).cases || 0
     const bottles = (li as any).bottles || 0
     const casePrice = prod?.price ?? li.price ?? 0
@@ -462,7 +467,7 @@ export default function OrdersPage() {
     const isOI = orderType === 'distributor'
 
     const resolveLineTotal = (li: any) => {
-      const prod = clientProducts.find((p: any) => p.name === li.product_name)
+      const prod = productFor(li)
       const cases = li.cases || 0
       const bottles = li.bottles || 0
       const casePrice = prod?.price ?? li.price ?? 0
@@ -474,7 +479,7 @@ export default function OrdersPage() {
     const total = grossTotal - discountAmt
 
     const lines: OrderEmailLine[] = lineItems.map(li => {
-      const prod = clientProducts.find((p: any) => p.name === li.product_name)
+      const prod = productFor(li)
       return {
         name: li.product_name,
         cases: Number((li as any).cases) || 0,
@@ -519,7 +524,7 @@ export default function OrdersPage() {
         po_number: form.po_number,
         notes: form.notes,
         line_items: form.line_items.filter(li => li.product_name).map(li => {
-          const prod = clientProducts.find(p => p.name === li.product_name)
+          const prod = productFor(li)
           return {
             product_name: li.product_name,
             quantity: li.quantity,
@@ -1135,7 +1140,7 @@ export default function OrdersPage() {
               <div style={{ marginBottom: '20px' }}>
                 {/* Line item rows */}
                 {form.line_items.map((li, i) => {
-                  const prod = clientProducts.find(p => p.name === li.product_name)
+                  const prod = productFor(li)
                   const cases = (li as any).cases || 0
                   const bottles = (li as any).bottles || 0
                   const caseAmt = cases * (prod?.price ?? li.price ?? 0)
@@ -1223,7 +1228,8 @@ export default function OrdersPage() {
                           <input type="number" value={(li as any).cases ?? ''} min="0" placeholder="0"
                             onChange={e => {
                               const c = parseInt(e.target.value) || 0
-                              setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases: c, quantity: c + ((item as any).bottles || 0) }) }))
+                              const tiered = applyPriceTier(clientProducts.find(p => p.name === li.product_name), c)
+                              setForm(f => ({ ...f, line_items: f.line_items.map((item, idx) => idx !== i ? item : { ...item, cases: c, quantity: c + ((item as any).bottles || 0), price: tiered?.price_tiers?.length ? (tiered.price ?? item.price) : item.price }) }))
                             }}
                             style={{ ...inputStyle, fontSize: '14px' }} />
                         </div>
@@ -1408,7 +1414,7 @@ export default function OrdersPage() {
                       }
                       // Email confirmed — now save the order
                       const resolvedItems = form.line_items.filter(li => li.product_name).map(li => {
-                        const prod = clientProducts.find(p => p.name === li.product_name)
+                        const prod = productFor(li)
                         return {
                           product_name: li.product_name,
                           quantity: li.quantity,
